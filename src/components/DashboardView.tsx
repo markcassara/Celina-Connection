@@ -1,0 +1,3061 @@
+import React, { useState } from 'react';
+import { Business, Review, Tier, UserProfile, ReportedBug } from '../types';
+import { CATEGORIES } from '../data/mockBusinesses';
+import {
+  Building2,
+  Bug,
+  Lock,
+  Star,
+  Zap,
+  Sparkles,
+  Award,
+  Plus,
+  Image as ImageIcon,
+  MessageSquare,
+  ShieldAlert,
+  ChevronRight,
+  TrendingUp,
+  Globe,
+  Clock,
+  MapPin,
+  Phone,
+  Mail,
+  Receipt,
+  Eye,
+  CheckCircle,
+  HelpCircle,
+  Trash2,
+  Edit,
+  RefreshCw,
+  LogOut,
+  Filter,
+  ShieldCheck,
+  Upload
+} from 'lucide-react';
+import { motion } from 'motion/react';
+
+interface DashboardViewProps {
+  currentUser: UserProfile;
+  setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile>>;
+  businesses: Business[];
+  onAddBusiness: (business: any) => string;
+  onUpdateBusiness: (
+    businessIdOrIds: string | string[],
+    updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
+  ) => void;
+  onUpgradePrompt: (tier: Tier) => void;
+  onDeleteBusiness?: (businessIdOrIds: string | string[]) => void;
+  onResetDatabase?: () => void;
+  reportedBugs?: ReportedBug[];
+  onUpdateBugStatus?: (bugId: string, status: ReportedBug['status']) => void;
+  onDeleteBugStatus?: (bugId: string) => void;
+  portalMode: 'owner' | 'admin';
+  setPortalMode: (mode: 'owner' | 'admin') => void;
+}
+
+export default function DashboardView({
+  currentUser,
+  setCurrentUser,
+  businesses,
+  onAddBusiness,
+  onUpdateBusiness,
+  onUpgradePrompt,
+  onDeleteBusiness,
+  onResetDatabase,
+  reportedBugs = [],
+  onUpdateBugStatus,
+  onDeleteBugStatus,
+  portalMode,
+  setPortalMode,
+}: DashboardViewProps) {
+  const [isSigningIn, setIsSigningIn] = useState(false); // Toggle Owner Register vs Owner Login
+
+  // Owner Login State
+  const [ownerLoginEmail, setOwnerLoginEmail] = useState('');
+  const [ownerLoginError, setOwnerLoginError] = useState('');
+
+  // Admin Login State
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminError, setAdminError] = useState('');
+
+  // Admin Panel states
+  const [adminSearch, setAdminSearch] = useState('');
+
+  // Admin Create Listing Fields
+  const [acName, setAcName] = useState('');
+  const [acCategory, setAcCategory] = useState('Dining');
+  const [acPhone, setAcPhone] = useState('');
+  const [acEmail, setAcEmail] = useState('');
+  const [acDesc, setAcDesc] = useState('');
+  const [acIsUnclaimed, setAcIsUnclaimed] = useState(true);
+  const [acTier, setAcTier] = useState<Tier>('basic');
+  const [acAddress, setAcAddress] = useState('');
+  const [acWebsite, setAcWebsite] = useState('');
+
+  // Authentication Sub-state
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [regEmail, setRegEmail] = useState('');
+  const [regBusinessName, setRegBusinessName] = useState('');
+  const [regCategory, setRegCategory] = useState('Dining');
+  const [regPhone, setRegPhone] = useState('');
+  const [regDesc, setRegDesc] = useState('');
+  
+  // Tab control inside dashboard
+  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'media' | 'reviews' | 'billing' | 'metrics'>('profile');
+
+  // Multi-business list and active selection
+  const myBusinesses = businesses.filter(
+    (b) => b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase())
+  );
+  
+  const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
+  const [isAddingListing, setIsAddingListing] = useState(false);
+
+  // States for adding an additional listing
+  const [newBusName, setNewBusName] = useState('');
+  const [newBusCategory, setNewBusCategory] = useState('Dining');
+  const [newBusPhone, setNewBusPhone] = useState('');
+  const [newBusEmail, setNewBusEmail] = useState(currentUser?.email || '');
+  const [newBusDesc, setNewBusDesc] = useState('');
+
+  // Active business being edited
+  const myBusiness = myBusinesses.find((b) => b.id === selectedListingId) || myBusinesses[0] || null;
+
+  // Form field bindings (pre-filled inside useEffect or conditionally)
+  const [editName, setEditName] = useState(myBusiness?.name || '');
+  const [editDesc, setEditDesc] = useState(myBusiness?.description || '');
+  const [editPhone, setEditPhone] = useState(myBusiness?.phone || '');
+  const [editEmail, setEditEmail] = useState(myBusiness?.email || '');
+  const [editCategory, setEditCategory] = useState(myBusiness?.category || 'Dining');
+  
+  // Pro/Premium unlocked fields
+  const [editWebsite, setEditWebsite] = useState(myBusiness?.website || '');
+  const [editAddress, setEditAddress] = useState(myBusiness?.address || '');
+  const [editMonFri, setEditMonFri] = useState(myBusiness?.hours?.monFri || '9:00 AM - 5:00 PM');
+  const [editSat, setEditSat] = useState(myBusiness?.hours?.sat || '10:00 AM - 4:00 PM');
+  const [editSun, setEditSun] = useState(myBusiness?.hours?.sun || 'Closed');
+  
+  // Premium only fields
+  const [editCtaText, setEditCtaText] = useState(myBusiness?.ctaText || 'Learn More');
+  const [editFacebook, setEditFacebook] = useState(myBusiness?.socialLinks?.facebook || '');
+  const [editInstagram, setEditInstagram] = useState(myBusiness?.socialLinks?.instagram || '');
+  const [editTwitter, setEditTwitter] = useState(myBusiness?.socialLinks?.twitter || '');
+
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [replyInputs, setReplyInputs] = useState<{ [reviewId: string]: string }>({});
+
+  // Sync edit fields if business changes or loads
+  React.useEffect(() => {
+    if (myBusiness) {
+      setEditName(myBusiness.name);
+      setEditDesc(myBusiness.description);
+      setEditPhone(myBusiness.phone);
+      setEditEmail(myBusiness.email);
+      setEditCategory(myBusiness.category);
+      setEditWebsite(myBusiness.website || '');
+      setEditAddress(myBusiness.address || '');
+      setEditMonFri(myBusiness.hours?.monFri || '9:00 AM - 5:00 PM');
+      setEditSat(myBusiness.hours?.sat || '10:00 AM - 4:00 PM');
+      setEditSun(myBusiness.hours?.sun || 'Closed');
+      setEditCtaText(myBusiness.ctaText || 'Learn More');
+      setEditFacebook(myBusiness.socialLinks?.facebook || '');
+      setEditInstagram(myBusiness.socialLinks?.instagram || '');
+      setEditTwitter(myBusiness.socialLinks?.twitter || '');
+    }
+  }, [myBusiness?.id, activeSubTab]);
+
+  // Instant Test Drive
+  const handleInstantTestDrive = () => {
+    const randomSuffix = Math.random().toString(36).substring(2, 7);
+    const guestOwnerId = `guest-owner-${randomSuffix}`;
+    const guestBusId = `guest-business-${randomSuffix}`;
+    const guestEmail = `guest-${randomSuffix}@celinaconnection.com`;
+    const guestBusName = `Celina Bistro #${randomSuffix.toUpperCase()}`;
+
+    // Standard properties
+    const guestBus = {
+      id: guestBusId,
+      name: guestBusName,
+      category: "Dining",
+      description: "A cozy, welcoming guest bistro created on-the-fly for your sandbox test drive. Manage this listing, add custom media, post replies to reviews, and see simulated visitor metrics in action!",
+      phone: "(972) 555-0111",
+      email: guestEmail,
+      website: "https://www.celinaguestbistro.com",
+      address: "142 N Ohio St, Celina, TX 75009",
+      hours: {
+        monFri: "8:00 AM - 10:00 PM",
+        sat: "8:00 AM - 11:00 PM",
+        sun: "9:00 AM - 9:00 PM"
+      },
+      logoUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=150&h=150&q=80",
+      images: [
+        "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
+        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80"
+      ],
+      socialLinks: {
+        facebook: "https://facebook.com/celinabistro",
+        instagram: "https://instagram.com/celinabistro"
+      },
+      featured: true,
+      ctaText: "Reserve Table",
+      tier: "premium" as Tier,
+      ownerId: guestOwnerId,
+      createdAt: new Date().toISOString(),
+      viewsCount: 284,
+      reviews: [
+        {
+          id: `rev-g1-${randomSuffix}`,
+          authorName: "Travis K.",
+          rating: 5,
+          text: "Phenomenal addition to our local Celina food scene! Warm hospitality and spectacular menu.",
+          createdAt: new Date().toISOString()
+        }
+      ]
+    };
+
+    onAddBusiness(guestBus);
+
+    setCurrentUser({
+      id: guestOwnerId,
+      email: guestEmail,
+      businessName: guestBusName,
+      businessId: guestBusId,
+      tier: "premium" as Tier,
+      isLoggedIn: true,
+      addonSlots: 0,
+      role: 'owner'
+    });
+
+    setActiveSubTab('profile');
+  };
+
+  const handleOwnerLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ownerLoginEmail || !ownerLoginEmail.trim()) {
+      setOwnerLoginError('Please enter your email.');
+      return;
+    }
+    const emailLower = ownerLoginEmail.trim().toLowerCase();
+    
+    // Find business owned by this email
+    const match = businesses.find(b => b.email.toLowerCase() === emailLower);
+    if (!match) {
+      setOwnerLoginError('We could not find a registered business under that email. Select "Register Free Spot" to get listed.');
+      return;
+    }
+
+    if (match.isUnclaimed) {
+      setOwnerLoginError('This business is unclaimed. Please find and claim this profile on the home directory first.');
+      return;
+    }
+
+    // Success login
+    const ownerId = match.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`;
+    setCurrentUser({
+      id: ownerId,
+      email: match.email,
+      businessName: match.name,
+      businessId: match.id,
+      tier: match.tier,
+      isLoggedIn: true,
+      addonSlots: 0,
+      role: 'owner',
+    });
+    setOwnerLoginError('');
+    setActiveSubTab('profile');
+  };
+
+  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (adminEmail.trim().toLowerCase() === 'mark@legacywealthco.com' && adminPassword === 'Alpha@2026!') {
+      setCurrentUser({
+        id: 'admin-mark',
+        email: 'mark@legacywealthco.com',
+        businessName: 'Master Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        addonSlots: 0,
+        role: 'admin',
+      });
+      setAdminError('');
+    } else {
+      setAdminError('Invalid admin email or password. Please try again.');
+    }
+  };
+
+  const handleRegisterSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regEmail || !regBusinessName || !regPhone || !regDesc) {
+      alert('Please fill out all onboarding fields.');
+      return;
+    }
+
+    // Enforce 100 free listings competitive cap
+    const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'basic' && b.ownerId && !b.isUnclaimed).length);
+    if (claimedBasicCount >= 100) {
+      alert("⚠️ We've reached our competitive cap of 100 free listings! If you have an unclaimed listing on the front page, please claim it, or choose one of our Premium/Pro packages to activate a premium presence immediately.");
+      return;
+    }
+
+    const newOwnerId = `owner-${Math.random().toString(36).substring(2, 7)}`;
+    
+    // Add business to state via parent callback
+    const newBusId = onAddBusiness({
+      name: regBusinessName,
+      category: regCategory,
+      description: regDesc,
+      phone: regPhone,
+      email: regEmail,
+      tier: 'basic', // Starts free
+      ownerId: newOwnerId,
+    });
+
+    // Log user in
+    setCurrentUser({
+      id: newOwnerId,
+      email: regEmail,
+      businessName: regBusinessName,
+      businessId: newBusId,
+      tier: 'basic',
+      isLoggedIn: true,
+      addonSlots: 0,
+      role: 'owner',
+    });
+
+    setActiveSubTab('profile');
+  };
+
+  const handleNewListingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (currentUser.id === 'owner-lucy') {
+      alert('This is a demo test drive account. Actions and modifications are disabled to preserve the demo environment.');
+      return;
+    }
+    if (currentUser.tier === 'basic') {
+      alert('Adding an additional business listing is a Paid Tier feature. Please upgrade your membership first!');
+      return;
+    }
+    if (!newBusName || !newBusPhone || !newBusDesc) {
+      alert('Please fill out all required listing details.');
+      return;
+    }
+
+    const newBusId = onAddBusiness({
+      name: newBusName,
+      category: newBusCategory,
+      description: newBusDesc,
+      phone: newBusPhone,
+      email: newBusEmail || currentUser.email,
+      tier: 'basic', // Starts basic/free
+      ownerId: currentUser.id,
+    });
+
+    // Reset and select newly created business
+    setNewBusName('');
+    setNewBusPhone('');
+    setNewBusDesc('');
+    setSelectedListingId(newBusId);
+    setIsAddingListing(false);
+  };
+
+  const handleProfileSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myBusiness) return;
+
+    if (currentUser.id === 'owner-lucy') {
+      alert('This is a demo test drive account. Profile editing is disabled to preserve the demo environment.');
+      return;
+    }
+
+    // Build patch based on active tier locks
+    const patch: Partial<Business> = {
+      name: editName,
+      description: editDesc,
+      phone: editPhone,
+      email: editEmail,
+      category: editCategory,
+    };
+
+    if (myBusiness.tier === 'pro' || myBusiness.tier === 'premium') {
+      patch.website = editWebsite;
+      patch.address = editAddress;
+      patch.hours = {
+        monFri: editMonFri,
+        sat: editSat,
+        sun: editSun,
+      };
+    }
+
+    if (myBusiness.tier === 'premium') {
+      patch.ctaText = editCtaText;
+      patch.socialLinks = {
+        facebook: editFacebook,
+        instagram: editInstagram,
+        twitter: editTwitter,
+      };
+    }
+
+    onUpdateBusiness(myBusiness.id, patch);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
+  };
+
+  const handleReplySubmit = (reviewId: string) => {
+    if (!myBusiness) return;
+    if (currentUser.id === 'owner-lucy') {
+      alert('This is a demo test drive account. Review replies are disabled to preserve the demo environment.');
+      return;
+    }
+    const replyText = replyInputs[reviewId];
+    if (!replyText || !replyText.trim()) return;
+
+    // Find and update review replies
+    const updatedReviews = myBusiness.reviews.map((rev) => {
+      if (rev.id === reviewId) {
+        return { ...rev, ownerReply: replyText };
+      }
+      return rev;
+    });
+
+    onUpdateBusiness(myBusiness.id, { reviews: updatedReviews });
+    // Clear input
+    setReplyInputs((prev) => ({ ...prev, [reviewId]: '' }));
+  };
+
+  // Mock Photo Library (Unsplash Celina themed images)
+  const mockPhotoLibrary = [
+    { url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80', label: 'Diner Storefront' },
+    { url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=600&q=80', label: 'Boutique Interior' },
+    { url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80', label: 'Artisanal Bakery' },
+    { url: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=600&q=80', label: 'Craft Studio Workshop' },
+    { url: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=600&q=80', label: 'Family Taproom' },
+    { url: 'https://images.unsplash.com/photo-1534710961216-75c9d402f03e?auto=format&fit=crop&w=600&q=80', label: 'Fresh Green Landscaping' },
+    { url: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=600&q=80', label: 'Dentistry Checkup' },
+    { url: 'https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?auto=format&fit=crop&w=600&q=80', label: 'Plumbing Tools' },
+  ];
+
+  const handleAddPhoto = (url: string) => {
+    if (!myBusiness) return;
+    if (currentUser.id === 'owner-lucy') {
+      alert('This is a demo test drive account. Uploading new images is disabled to preserve the demo environment.');
+      return;
+    }
+    const currentImages = myBusiness.images || [];
+
+    // Check limits
+    const max = myBusiness.tier === 'basic' ? 1 : myBusiness.tier === 'pro' ? 5 : 10;
+    if (currentImages.length >= max) {
+      alert(`Tier limit reached! Basic members get 1, Pro get 5, and Premium get 10. Upgrade to add more!`);
+      return;
+    }
+
+    onUpdateBusiness(myBusiness.id, {
+      images: [...currentImages, url],
+    });
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    if (!myBusiness || !myBusiness.images) return;
+    if (currentUser.id === 'owner-lucy') {
+      alert('This is a demo test drive account. Modifying images is disabled to preserve the demo environment.');
+      return;
+    }
+    const filtered = myBusiness.images.filter((_, idx) => idx !== index);
+    onUpdateBusiness(myBusiness.id, { images: filtered });
+  };
+
+  const handleUpdateLogo = (url: string) => {
+    if (!myBusiness) return;
+    if (currentUser.id === 'owner-lucy') {
+      alert('This is a demo test drive account. Changing the business logo is disabled to preserve the demo environment.');
+      return;
+    }
+    onUpdateBusiness(myBusiness.id, { logoUrl: url });
+  };
+
+  // If NOT logged in, show onboarding portal
+  if (!currentUser.isLoggedIn) {
+    return (
+      <div className="py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch" id="dashboard-login-portal">
+        {/* Left Side: Welcoming intro */}
+        <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 uppercase tracking-wider self-start">
+            <Building2 className="w-3.5 h-3.5" /> Celina Owner Center
+          </span>
+          <h2 className="font-display text-3xl sm:text-4.5xl font-extrabold text-slate-950 tracking-tight leading-tight">
+            Claim Your Spot on the{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">
+              Celina Directory Map
+            </span>
+          </h2>
+          <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
+            Welcome, Celina business owners! Whether your business is on the historic Downtown Square, Preston Road, or serving our community home-to-home, register in seconds to make sure local families can find you. 
+          </p>
+
+          {/* Quick Demo Login Cards */}
+          <div className="space-y-4 pt-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Sandbox Test Drive</span>
+              <span className="h-px bg-slate-200 flex-grow" />
+            </div>
+            
+            <div className="p-1 rounded-3xl bg-slate-50 border border-slate-100">
+              <button
+                onClick={handleInstantTestDrive}
+                className="w-full py-4 px-4 bg-slate-950 text-amber-400 hover:bg-slate-900 hover:text-amber-300 rounded-2xl cursor-pointer text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border border-amber-400/20 shadow-lg shadow-slate-900/10 transition-all group"
+              >
+                <Zap className="w-4 h-4 fill-amber-400 text-amber-400 group-hover:scale-110 transition-transform animate-pulse" />
+                <span>⚡ Instant Sandbox Test Drive (Anon Login)</span>
+              </button>
+              <div className="p-3">
+                <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
+                  Skip the form! This automatically generates a unique Premium guest business profile and logs you in instantly so you can explore the business owner portal immediately.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side: Tabbed Login/Register/Admin Forms */}
+        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden flex flex-col justify-between animate-fade-in" id="portal-form-container">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-orange-500 to-amber-500" />
+          
+          <div className="space-y-4">
+            {/* Top portal mode selector tabs removed to prevent confusion. Admin entrance is placed in the footer. */}
+
+            {/* Portal Heading descriptions */}
+            <div>
+              <h3 className="font-display text-xl font-extrabold text-slate-900">
+                {portalMode === 'admin' 
+                  ? 'Master Admin Dashboard' 
+                  : isSigningIn 
+                  ? 'Owner Sign-In' 
+                  : 'Register Free Spot'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1 leading-normal">
+                {portalMode === 'admin' 
+                  ? 'Enter administrative system credentials to access all local listings.' 
+                  : isSigningIn 
+                  ? 'Access your existing profile metrics, reviews, and media settings.' 
+                  : 'List your Celina business. Strictly capped for the first 100 claimed profiles!'}
+              </p>
+            </div>
+
+            {/* Owner Register / Owner Login Inner Tabs */}
+            {portalMode === 'owner' && (
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSigningIn(false)}
+                  className={`text-[11px] font-bold pb-1 cursor-pointer transition-all ${
+                    !isSigningIn ? 'text-orange-600 border-b-2 border-orange-500' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Register Spot
+                </button>
+                <span className="text-slate-200 text-xs">|</span>
+                <button
+                  type="button"
+                  onClick={() => setIsSigningIn(true)}
+                  className={`text-[11px] font-bold pb-1 cursor-pointer transition-all ${
+                    isSigningIn ? 'text-orange-600 border-b-2 border-orange-500' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  Sign In with Email
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Render Active Form */}
+          <div className="mt-5 flex-grow">
+            {portalMode === 'admin' ? (
+              <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Admin Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="mark@legacywealthco.com"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    System Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="••••••••••••"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                </div>
+
+                {adminError && <p className="text-rose-600 text-[11px] font-semibold">{adminError}</p>}
+
+                <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
+                  ⚠️ <strong>Note:</strong> Log in as system administrator using the credentials from the platform live specification config.
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                >
+                  Authorize Admin Entry
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPortalMode('owner')}
+                  className="w-full py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl cursor-pointer mt-1"
+                >
+                  ← Back to Owner Portal
+                </button>
+              </form>
+            ) : isSigningIn ? (
+              <form onSubmit={handleOwnerLoginSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Your Registered Business Email
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="owner@yourcelinabusiness.com"
+                    value={ownerLoginEmail}
+                    onChange={(e) => setOwnerLoginEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                </div>
+
+                {ownerLoginError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{ownerLoginError}</p>}
+
+                <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
+                  💡 <strong>Tip:</strong> Log back into your profile by typing the email registered to your listing (e.g. <code>lucy@celinaconnection.com</code> or <code>owner-registered</code>).
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-100 transition-all cursor-pointer"
+                >
+                  Sign In to Dashboard
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Owner Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="owner@yourcelinabusiness.com"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Business Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Celina Cafe / Plumbing Services"
+                    value={regBusinessName}
+                    onChange={(e) => setRegBusinessName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Business Category
+                    </label>
+                    <select
+                      value={regCategory}
+                      onChange={(e) => setRegCategory(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900 cursor-pointer"
+                    >
+                      {CATEGORIES.filter(c => c !== 'All').map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="(972) 555-0199"
+                      value={regPhone}
+                      onChange={(e) => setRegPhone(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Short Business Summary
+                  </label>
+                  <textarea
+                    required
+                    placeholder="Explain what you provide, and where you're located in Celina..."
+                    value={regDesc}
+                    onChange={(e) => setRegDesc(e.target.value)}
+                    rows={2.5}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-100 transition-all cursor-pointer"
+                >
+                  Register Free Listing
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Master Admin Dashboard Panel
+  if (currentUser.isLoggedIn && currentUser.role === 'admin') {
+    return (
+      <AdminDashboardView
+        businesses={businesses}
+        onUpdateBusiness={onUpdateBusiness}
+        onAddBusiness={onAddBusiness}
+        onDeleteBusiness={onDeleteBusiness}
+        onResetDatabase={onResetDatabase}
+        setCurrentUser={setCurrentUser}
+        reportedBugs={reportedBugs}
+        onUpdateBugStatus={onUpdateBugStatus}
+        onDeleteBugStatus={onDeleteBugStatus}
+      />
+    );
+  }
+
+  // Safe Guard: Ensure user business exists
+  if (!myBusiness) {
+    return (
+      <div className="py-12 text-center max-w-md mx-auto space-y-4">
+        <ShieldAlert className="w-12 h-12 text-orange-500 mx-auto" />
+        <h3 className="font-display text-xl font-bold">Business Registry Out of Sync</h3>
+        <p className="text-slate-500 text-xs">Could not locate an active directory entry tied to your owner ID.</p>
+        <button
+          onClick={() => setCurrentUser({ id: '', email: '', businessName: '', tier: 'basic', isLoggedIn: false })}
+          className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg cursor-pointer"
+        >
+          Reset and Retry
+        </button>
+      </div>
+    );
+  }
+
+  const isBasic = myBusiness.tier === 'basic';
+  const isPro = myBusiness.tier === 'pro';
+  const isPremium = myBusiness.tier === 'premium';
+
+  return (
+    <div className="py-4 space-y-6" id="owner-active-dashboard">
+      {/* Dashboard Top Mini-Hero */}
+      <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Managing Listing</span>
+          <h2 className="font-display text-xl sm:text-2xl font-black text-slate-900">
+            {isAddingListing ? 'New Business Registry Onboarding' : myBusiness?.name || 'My Listing'}
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {isAddingListing ? (
+              <span>Expanding your business footprint in Celina</span>
+            ) : (
+              <>
+                Level:{' '}
+                <span className="font-bold text-orange-600 uppercase tracking-wide">
+                  {myBusiness?.tier} Membership
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+
+        {/* Upgrade quick CTA */}
+        <div className="flex gap-2">
+          {!isAddingListing && myBusiness && myBusiness.tier !== 'premium' && (
+            <button
+              onClick={() => onUpgradePrompt(myBusiness.tier === 'basic' ? 'pro' : 'premium')}
+              className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer shadow-sm animate-pulse"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>Upgrade {myBusiness.name}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Grid: Tabs + Workspace Panel */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left column: Listing switch and workspace sidebar navigation */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* My Listings Switcher Box */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-sm">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              My Businesses ({myBusinesses.length})
+            </span>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto">
+              {myBusinesses.map((b) => {
+                const isActive = b.id === myBusiness?.id && !isAddingListing;
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => {
+                      setSelectedListingId(b.id);
+                      setIsAddingListing(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer border ${
+                      isActive
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200/60'
+                    }`}
+                  >
+                    <span className="truncate pr-2">{b.name}</span>
+                    <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
+                      b.tier === 'premium' 
+                        ? 'bg-amber-500 text-slate-950' 
+                        : b.tier === 'pro' 
+                          ? 'bg-orange-500 text-white' 
+                          : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {b.tier}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => {
+                if (currentUser.tier === 'basic') {
+                  alert("Adding an additional business listing is a Paid Tier feature (requires a Pro or Premium plan plus add-on listings slot). Please upgrade your membership under the Billing tab first!");
+                  setActiveSubTab('billing');
+                  return;
+                }
+                setIsAddingListing(true);
+              }}
+              className={`w-full py-2 border rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all ${
+                isAddingListing
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : currentUser.tier === 'basic'
+                    ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200/60'
+                    : 'bg-orange-50/50 hover:bg-orange-100/50 text-orange-700 border-dashed border-orange-200'
+              }`}
+            >
+              {currentUser.tier === 'basic' ? (
+                <Lock className="w-3.5 h-3.5" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>Add Additional Business</span>
+            </button>
+          </div>
+
+          {/* Sidebar Navigation */}
+          {!isAddingListing && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-2.5 space-y-1" id="dash-sidebar">
+              {[
+                { id: 'profile', label: 'Business Profile', icon: <Building2 className="w-4 h-4" /> },
+                { id: 'media', label: 'Gallery & Logo', icon: <ImageIcon className="w-4 h-4" /> },
+                { id: 'reviews', label: 'Review Responder', icon: <MessageSquare className="w-4 h-4" /> },
+                { id: 'metrics', label: 'Traffic Metrics', icon: <TrendingUp className="w-4 h-4" /> },
+                { id: 'billing', label: 'Billing & Tiers', icon: <Receipt className="w-4 h-4" /> },
+              ].map((tab) => {
+                const isSelected = activeSubTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveSubTab(tab.id as any)}
+                    className={`w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-orange-50 text-orange-700 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                    }`}
+                  >
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right column: Main Form / Editor Pane */}
+        <div className="lg:col-span-9 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8" id="dash-content-pane">
+          {/* ADD NEW BUSINESS FORM OVERLAY */}
+          {isAddingListing ? (
+            <form onSubmit={handleNewListingSubmit} className="space-y-6">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-950">Add Additional Business Listing</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Register an additional business location or service line under your account.</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Business Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Celina Boutique"
+                      value={newBusName}
+                      onChange={(e) => setNewBusName(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={newBusCategory}
+                      onChange={(e) => setNewBusCategory(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    >
+                      {CATEGORIES.filter(c => c !== 'All').map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Public Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="(972) 555-0100"
+                      value={newBusPhone}
+                      onChange={(e) => setNewBusPhone(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Contact Email
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="owner@yourcelinabusiness.com"
+                      value={newBusEmail}
+                      onChange={(e) => setNewBusEmail(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Business Summary / Biography
+                  </label>
+                  <textarea
+                    required
+                    placeholder="Short summary describing your services..."
+                    value={newBusDesc}
+                    onChange={(e) => setNewBusDesc(e.target.value)}
+                    rows={3}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Status info/notice */}
+              <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 text-[11px] leading-normal font-medium flex gap-2">
+                <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block text-blue-900 mb-0.5">Listing Tier Notice:</span>
+                  Additional businesses start on the Free Basic plan. You can upgrade any of your listings to Pro or Premium by checking out with the "Additional Business Listing Add-on" under the Billing tab!
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingListing(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Create Listing
+                </button>
+              </div>
+            </form>
+          ) : !myBusiness ? (
+            <div className="py-12 text-center max-w-sm mx-auto space-y-3">
+              <ShieldAlert className="w-12 h-12 text-orange-500 mx-auto" />
+              <h3 className="font-display text-lg font-bold">No Listing Selected</h3>
+              <p className="text-slate-500 text-xs">Please select a business from the left side panel to continue editing.</p>
+            </div>
+          ) : (
+            <>
+              {/* PROFILE EDITOR SUBTAB */}
+              {activeSubTab === 'profile' && (
+            <form onSubmit={handleProfileSave} className="space-y-6">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-950">Business Profile Info</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Edit basic, pro, and premium fields regarding your Celina directory card.</p>
+              </div>
+
+              {saveSuccess && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 animate-pulse">
+                  <CheckCircle className="w-4 h-4" /> Changes saved successfully! Updated listing immediately.
+                </div>
+              )}
+
+              {/* Standard Fields (Always Unlocked) */}
+              <div className="space-y-4">
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">Standard Fields</span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Business Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    >
+                      {CATEGORIES.filter(c => c !== 'All').map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Public Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Owner Contact Email
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Business Biography
+                  </label>
+                  <textarea
+                    required
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    rows={3}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Pro Fields (Locked for Basic) */}
+              <div className="space-y-4 border-t border-slate-100 pt-5 relative">
+                <div className="flex items-center justify-between">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">Pro-Partner Fields</span>
+                  {isBasic && (
+                    <span 
+                      onClick={() => onUpgradePrompt('pro')} 
+                      className="text-[10px] font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded cursor-pointer flex items-center gap-0.5"
+                    >
+                      <Lock className="w-2.5 h-2.5" /> Unlock with Pro ($5/m)
+                    </span>
+                  )}
+                </div>
+
+                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${isBasic ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Website URL
+                    </label>
+                    <div className="relative">
+                      <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <input
+                        type="url"
+                        disabled={isBasic}
+                        placeholder="https://www.yourbusiness.com"
+                        value={editWebsite}
+                        onChange={(e) => setEditWebsite(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Street Address (Celina, TX)
+                    </label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                      <input
+                        type="text"
+                        disabled={isBasic}
+                        placeholder="127 N Ohio St, Celina, TX 75009"
+                        value={editAddress}
+                        onChange={(e) => setEditAddress(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hours Group */}
+                <div className={`space-y-2.5 ${isBasic ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Hours of Operation</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Monday - Friday</span>
+                      <input
+                        type="text"
+                        disabled={isBasic}
+                        value={editMonFri}
+                        onChange={(e) => setEditMonFri(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Saturday</span>
+                      <input
+                        type="text"
+                        disabled={isBasic}
+                        value={editSat}
+                        onChange={(e) => setEditSat(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                      />
+                    </div>
+                    <div>
+                      <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Sunday</span>
+                      <input
+                        type="text"
+                        disabled={isBasic}
+                        value={editSun}
+                        onChange={(e) => setEditSun(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Premium Fields (Locked for Basic & Pro) */}
+              <div className="space-y-4 border-t border-slate-100 pt-5">
+                <div className="flex items-center justify-between">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">Premium-Partner Fields</span>
+                  {!isPremium && (
+                    <span 
+                      onClick={() => onUpgradePrompt('premium')} 
+                      className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded cursor-pointer flex items-center gap-0.5"
+                    >
+                      <Lock className="w-2.5 h-2.5" /> Unlock with Premium ($10/m)
+                    </span>
+                  )}
+                </div>
+
+                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${!isPremium ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Custom Call-To-Action Button Text
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!isPremium}
+                      placeholder="Book a Table / Check Workshop"
+                      value={editCtaText}
+                      onChange={(e) => setEditCtaText(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Facebook Fan Page Link
+                    </label>
+                    <input
+                      type="url"
+                      disabled={!isPremium}
+                      placeholder="https://facebook.com/yourpage"
+                      value={editFacebook}
+                      onChange={(e) => setEditFacebook(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${!isPremium ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Instagram Username URL
+                    </label>
+                    <input
+                      type="url"
+                      disabled={!isPremium}
+                      placeholder="https://instagram.com/yourhandle"
+                      value={editInstagram}
+                      onChange={(e) => setEditInstagram(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Twitter / X Link
+                    </label>
+                    <input
+                      type="url"
+                      disabled={!isPremium}
+                      placeholder="https://twitter.com/yourhandle"
+                      value={editTwitter}
+                      onChange={(e) => setEditTwitter(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-xs rounded-xl shadow-md hover:from-orange-600 hover:to-amber-600 transition-all cursor-pointer"
+                >
+                  Save Business Profile
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* MEDIA / PHOTO GALLERY SUBTAB */}
+          {activeSubTab === 'media' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-950">Logo & Photo Gallery Manager</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Update your listing branding assets. Basic profiles support 1 image. Pro supports 5. Premium supports 10.
+                </p>
+              </div>
+
+              {/* Logo URL Picker */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Business Round Logo</h4>
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-full overflow-hidden bg-slate-200 border-2 border-orange-200 flex-shrink-0 flex items-center justify-center">
+                    {myBusiness.logoUrl ? (
+                      <img src={myBusiness.logoUrl} alt="Logo preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                    ) : (
+                      <Building2 className="w-8 h-8 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="flex-grow">
+                    <input
+                      type="text"
+                      placeholder="Paste your square logomark URL"
+                      value={myBusiness.logoUrl || ''}
+                      onChange={(e) => handleUpdateLogo(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-orange-500 focus:outline-none"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">Provide a web-address (https://) image link representing your shop logo.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Current Photo Gallery */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Listing Photo Gallery</h4>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                    {myBusiness.images?.length || 0} / {isBasic ? 1 : isPro ? 5 : 10} Images
+                  </span>
+                </div>
+
+                {(!myBusiness.images || myBusiness.images.length === 0) ? (
+                  <p className="text-slate-400 text-xs italic text-center py-6 border border-dashed rounded-2xl">
+                    No images added to gallery. Add some using the picker below!
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {myBusiness.images.map((img, idx) => (
+                      <div key={idx} className="relative h-24 rounded-xl overflow-hidden group bg-slate-100 border">
+                        <img src={img} alt={`Gallery index ${idx}`} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                        <button
+                          onClick={() => handleRemovePhoto(idx)}
+                          className="absolute right-1.5 top-1.5 h-6 w-6 rounded-full bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center justify-center shadow-md cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          &times;
+                        </button>
+                        {idx === 0 && (
+                          <span className="absolute bottom-1 left-1 bg-slate-900/80 backdrop-blur-sm text-[8px] font-bold text-white px-1.5 py-0.5 rounded uppercase">
+                            Cover Image
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Upload Simulator Picker */}
+              <div className="space-y-3 border-t border-slate-100 pt-5">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Simulated Upload Library</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Click any Celina-themed stock storefront below to instantly add it to your listing!</p>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {mockPhotoLibrary.map((item, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => handleAddPhoto(item.url)}
+                      className="relative h-20 rounded-xl overflow-hidden cursor-pointer group border border-slate-200"
+                    >
+                      <img src={item.url} alt={item.label} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Plus className="w-5 h-5 text-white" />
+                      </div>
+                      <span className="absolute bottom-1 left-1 right-1 text-center bg-slate-950/70 text-[8px] font-bold text-white py-0.5 rounded truncate">
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* REVIEWS MANAGER SUBTAB */}
+          {activeSubTab === 'reviews' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-950">Review Responder Desk</h3>
+                <p className="text-xs text-slate-500 mt-0.5">View feedback left by Celina local directory users, and reply to bolster your rating score.</p>
+              </div>
+
+              <div className="space-y-4">
+                {myBusiness.reviews.length === 0 ? (
+                  <p className="text-slate-400 text-xs italic text-center py-10 border border-dashed rounded-2xl">
+                    No directory reviews recorded yet. Visitors will see your reviews listed here once posted.
+                  </p>
+                ) : (
+                  myBusiness.reviews.map((rev) => (
+                    <div key={rev.id} className="p-4.5 rounded-2xl border border-slate-150 space-y-3 shadow-sm bg-white">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800 text-xs">{rev.authorName}</span>
+                        <div className="flex items-center gap-1">
+                          <div className="flex text-amber-400">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-3 h-3 ${
+                                  i < rev.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(rev.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <p className="text-slate-600 text-xs italic leading-relaxed">
+                        "{rev.text}"
+                      </p>
+
+                      {/* Reply field or lock */}
+                      <div className="border-t border-slate-100 pt-3">
+                        {isBasic ? (
+                          <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">
+                            <span className="flex items-center gap-1">
+                              <Lock className="w-3 h-3" /> Basic owners cannot reply to customer reviews.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onUpgradePrompt('pro')}
+                              className="text-orange-600 font-bold hover:underline cursor-pointer"
+                            >
+                              Upgrade ($5/m)
+                            </button>
+                          </div>
+                        ) : rev.ownerReply ? (
+                          <div className="p-3 bg-orange-50/40 rounded-xl border-l-2 border-orange-400 text-xs space-y-1">
+                            <p className="font-bold text-slate-800 flex items-center gap-1">
+                              <CheckCircle className="w-3.5 h-3.5 text-orange-600" />
+                              Active Owner Reply
+                            </p>
+                            <p className="text-slate-600">{rev.ownerReply}</p>
+                            <button
+                              onClick={() => {
+                                setReplyInputs((prev) => ({ ...prev, [rev.id]: rev.ownerReply || '' }));
+                                onUpdateBusiness(myBusiness.id, {
+                                  reviews: myBusiness.reviews.map((r) => r.id === rev.id ? { ...r, ownerReply: undefined } : r)
+                                });
+                              }}
+                              className="text-[9px] text-slate-400 hover:text-slate-600 font-semibold pt-1 block"
+                            >
+                              Edit Reply
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Write a sweet owner reply..."
+                              value={replyInputs[rev.id] || ''}
+                              onChange={(e) => setReplyInputs((prev) => ({ ...prev, [rev.id]: e.target.value }))}
+                              className="flex-grow px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-1 focus:ring-orange-500"
+                            />
+                            <button
+                              onClick={() => handleReplySubmit(rev.id)}
+                              className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
+                            >
+                              Reply
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* BILLING AND TIERS MANAGER */}
+          {activeSubTab === 'billing' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-950">Billing, Invoices & Membership</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Control your business tier plan, manage pricing, and view invoice transactions.</p>
+              </div>
+
+              {/* Status block */}
+              <div className="p-6 rounded-2xl border border-slate-200 bg-slate-950 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl pointer-events-none" />
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-orange-400 tracking-wider">Active Subscription Status</span>
+                  <h4 className="font-display text-2xl font-black mt-1 flex items-center gap-1.5">
+                    {isPremium ? (
+                      <>
+                        <Sparkles className="w-6 h-6 text-amber-400" /> Premium Gold Partner
+                      </>
+                    ) : isPro ? (
+                      <>
+                        <Zap className="w-5 h-5 text-orange-400" /> Pro Directory Partner
+                      </>
+                    ) : (
+                      <>
+                        <Award className="w-5 h-5 text-slate-400" /> Free Basic Member
+                      </>
+                    )}
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {isPremium ? '$10.00 / month, billing active' : isPro ? '$5.00 / month, billing active' : 'No active recurring billing fees'}
+                  </p>
+                </div>
+
+                {/* Billing Action buttons */}
+                <div className="flex gap-2">
+                  {!isPremium && (
+                    <button
+                      onClick={() => onUpgradePrompt('premium')}
+                      className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 hover:from-amber-500 hover:to-amber-600 font-extrabold text-xs rounded-xl cursor-pointer shadow-md"
+                    >
+                      Go Premium Gold
+                    </button>
+                  )}
+                  {!isPro && !isPremium && (
+                    <button
+                      onClick={() => onUpgradePrompt('pro')}
+                      className="px-4 py-2 bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 font-bold text-xs rounded-xl cursor-pointer shadow-md"
+                    >
+                      Go Pro Standard
+                    </button>
+                  )}
+                  {(isPro || isPremium) && (
+                    <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to cancel your paid plan and return to the Free Basic Tier? Your address, hours, extra photos, and social links will be hidden.')) {
+                          onUpdateBusiness(myBusiness.id, { tier: 'basic', featured: false });
+                          setCurrentUser(prev => ({ ...prev, tier: 'basic' }));
+                        }
+                      }}
+                      className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl cursor-pointer"
+                    >
+                      Cancel Plan
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Mock Invoice logs */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                  <Receipt className="w-4 h-4" /> Transaction Invoice Ledger
+                </h4>
+                
+                <div className="border border-slate-150 rounded-2xl divide-y divide-slate-150 text-xs">
+                  {isBasic ? (
+                    <p className="p-4 text-center text-slate-400 italic">No paid invoices recorded for free tier members.</p>
+                  ) : (
+                    <>
+                      <div className="p-4 flex justify-between items-center bg-slate-50/50">
+                        <div>
+                          <p className="font-bold text-slate-800">Celina Connection Subscription Fee</p>
+                          <p className="text-[10px] text-slate-400">Invoice #CC-004392 • Jul 2026</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-emerald-600">{isPremium ? '$10.00' : '$5.00'}</p>
+                          <span className="inline-flex items-center gap-0.5 text-[8px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                            Paid (Secure)
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-4 flex justify-between items-center opacity-70">
+                        <div>
+                          <p className="font-bold text-slate-800">Celina Connection Subscription Fee</p>
+                          <p className="text-[10px] text-slate-400">Invoice #CC-002183 • Jun 2026</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-emerald-600">{isPremium ? '$10.00' : '$5.00'}</p>
+                          <span className="inline-flex items-center gap-0.5 text-[8px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                            Paid (Secure)
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* METRICS AND TRAFFIC ANALYTICS */}
+          {activeSubTab === 'metrics' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-950">Listing Metrics Analytics</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Track your business traffic, card views, and review counts from the Celina local population.</p>
+              </div>
+
+              {!isPremium ? (
+                <div className="relative rounded-3xl border border-dashed border-amber-300 bg-amber-50/20 p-8 text-center space-y-4 shadow-sm" id="premium-gated-metrics-panel">
+                  <div className="mx-auto h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
+                    <Lock className="w-6 h-6" />
+                  </div>
+                  <div className="max-w-md mx-auto space-y-2">
+                    <h4 className="font-display text-base font-bold text-slate-900">Preston Elite (Premium) Feature Gated</h4>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Detailed monthly views, click conversion tracking, and traffic analytics are strictly reserved for <strong className="text-amber-700">Preston Elite (Premium)</strong> partners.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onUpgradePrompt('premium')}
+                    className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    Unlock Premium Metrics
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Bento-grid of scorecard metrics */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Card Views</span>
+                      <span className="font-display text-2.5xl font-extrabold block">
+                        {myBusiness.viewsCount + 12}
+                      </span>
+                      <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5">
+                        +15% from last week
+                      </span>
+                    </div>
+
+                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Average Rating</span>
+                      <span className="font-display text-2.5xl font-extrabold block text-amber-500 flex items-center gap-1">
+                        {myBusiness.reviews.length
+                          ? (myBusiness.reviews.reduce((s, r) => s + r.rating, 0) / myBusiness.reviews.length).toFixed(1)
+                          : '5.0'}
+                        <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-medium block">
+                        Based on {myBusiness.reviews.length} reviews
+                      </span>
+                    </div>
+
+                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Website Clicks</span>
+                      <span className="font-display text-2.5xl font-extrabold block">
+                        {isBasic ? '0' : Math.floor(myBusiness.viewsCount * 0.22)}
+                      </span>
+                      {isBasic ? (
+                        <span onClick={() => onUpgradePrompt('pro')} className="text-[9px] text-orange-600 font-bold hover:underline cursor-pointer block">
+                          Requires Pro tier
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5">
+                          22.4% conversion rate
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Leads Generated</span>
+                      <span className="font-display text-2.5xl font-extrabold block">
+                        {isBasic ? '0' : Math.floor(myBusiness.viewsCount * 0.08)}
+                      </span>
+                      {isBasic ? (
+                        <span onClick={() => onUpgradePrompt('pro')} className="text-[9px] text-orange-600 font-bold hover:underline cursor-pointer block">
+                          Requires Pro tier
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-slate-400 font-medium block">
+                          Phone dials & map loads
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Beautiful SVG Views Line Chart */}
+                  <div className="bg-slate-50 border border-slate-150 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Directory Traffic (Views over 7 Days)</h4>
+                      <span className="text-[9px] text-slate-400 font-medium">Auto-updated hourly</span>
+                    </div>
+
+                    {/* SVG Visual graph */}
+                    <div className="h-44 w-full relative pt-2">
+                      <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        {/* SVG Grid Lines */}
+                        <line x1="0" y1="20" x2="100" y2="20" stroke="#f1f5f9" strokeWidth="0.5" />
+                        <line x1="0" y1="50" x2="100" y2="50" stroke="#f1f5f9" strokeWidth="0.5" />
+                        <line x1="0" y1="80" x2="100" y2="80" stroke="#f1f5f9" strokeWidth="0.5" />
+
+                        {/* Chart Gradient Area */}
+                        <defs>
+                          <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
+                            <stop offset="100%" stopColor="#f97316" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        <path
+                          d="M 0 90 L 0 75 Q 16 65 16 60 T 32 45 T 48 55 T 64 25 T 80 40 T 100 15 L 100 90 Z"
+                          fill="url(#chartGlow)"
+                        />
+
+                        {/* Chart Polyline stroke */}
+                        <path
+                          d="M 0 75 Q 16 65 16 60 T 32 45 T 48 55 T 64 25 T 80 40 T 100 15"
+                          fill="none"
+                          stroke="#f97316"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+
+                        {/* Interaction node indicators */}
+                        <circle cx="16" cy="60" r="2.5" fill="#f97316" stroke="#ffffff" strokeWidth="1" />
+                        <circle cx="48" cy="55" r="2.5" fill="#f97316" stroke="#ffffff" strokeWidth="1" />
+                        <circle cx="64" cy="25" r="2.5" fill="#f97316" stroke="#ffffff" strokeWidth="1" />
+                        <circle cx="100" cy="15" r="3" fill="#f59e0b" stroke="#ffffff" strokeWidth="1.5" />
+                      </svg>
+
+                      {/* Absolute Labels */}
+                      <div className="absolute top-1 right-2 bg-slate-900 text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow flex items-center gap-0.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" /> Today Peak
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between text-[9px] text-slate-400 font-semibold px-1 uppercase tracking-wider">
+                      <span>Mon</span>
+                      <span>Tue</span>
+                      <span>Wed</span>
+                      <span>Thu</span>
+                      <span>Fri</span>
+                      <span>Sat</span>
+                      <span>Sun (Today)</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// MASTER ADMINISTRATOR DASHBOARD VIEW
+// ==========================================
+
+interface AdminDashboardViewProps {
+  businesses: Business[];
+  onUpdateBusiness: (
+    businessIdOrIds: string | string[],
+    updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
+  ) => void;
+  onAddBusiness: (business: any) => string;
+  onDeleteBusiness?: (businessIdOrIds: string | string[]) => void;
+  onResetDatabase?: () => void;
+  setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile>>;
+  reportedBugs?: ReportedBug[];
+  onUpdateBugStatus?: (bugId: string, status: ReportedBug['status']) => void;
+  onDeleteBugStatus?: (bugId: string) => void;
+}
+
+function AdminDashboardView({
+  businesses,
+  onUpdateBusiness,
+  onAddBusiness,
+  onDeleteBusiness,
+  onResetDatabase,
+  setCurrentUser,
+  reportedBugs = [],
+  onUpdateBugStatus,
+  onDeleteBugStatus,
+}: AdminDashboardViewProps) {
+  const [adminActiveTab, setAdminActiveTab] = useState<'listings' | 'bugs'>('listings');
+  const [bugSearch, setBugSearch] = useState('');
+  const [bugCategoryFilter, setBugCategoryFilter] = useState<'all' | 'visual' | 'functional' | 'data' | 'other'>('all');
+  const [bugSeverityFilter, setBugSeverityFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
+  const [bugStatusFilter, setBugStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'resolved'>('all');
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [tierFilter, setTierFilter] = useState<'all' | 'premium' | 'pro' | 'basic' | 'unclaimed'>('all');
+  const [selectedBusIds, setSelectedBusIds] = useState<string[]>([]);
+
+  // CSV Importer States & Handlers
+  const [csvInput, setCsvInput] = useState('');
+  const [csvImportSuccess, setCsvImportSuccess] = useState<string | null>(null);
+  const [showCsvImporter, setShowCsvImporter] = useState(false);
+
+  const handleCsvImport = (textToParse: string) => {
+    if (!textToParse.trim()) {
+      alert("Please paste some CSV data or select a valid file first.");
+      return;
+    }
+
+    const lines = textToParse.split(/\r?\n/);
+    if (lines.length < 1) {
+      alert("No data found in the CSV input.");
+      return;
+    }
+
+    const parseCsvLine = (line: string) => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"' || char === "'") {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    let headerLine = lines[0];
+    let headers = parseCsvLine(headerLine).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
+    
+    const hasHeaders = headers.includes('name') || headers.includes('businessname') || headers.includes('title');
+    let dataLines = lines;
+    if (hasHeaders) {
+      dataLines = lines.slice(1);
+    } else {
+      headers = ['name', 'category', 'description', 'phone', 'email', 'address', 'website'];
+    }
+
+    let importCount = 0;
+    dataLines.forEach((line) => {
+      if (!line.trim()) return;
+      const values = parseCsvLine(line);
+      if (values.length === 0 || !values[0]) return;
+
+      const record: Record<string, string> = {};
+      headers.forEach((header, index) => {
+        record[header] = values[index] || '';
+      });
+
+      const bName = record['name'] || record['businessname'] || record['title'] || values[0] || '';
+      if (!bName) return;
+
+      const bCategory = record['category'] || record['type'] || values[1] || 'Dining';
+      const bDesc = record['description'] || record['summary'] || record['desc'] || values[2] || 'Local business listing in Celina, Texas.';
+      const bPhone = record['phone'] || record['tel'] || values[3] || '(972) 555-0100';
+      const bEmail = record['email'] || record['mail'] || values[4] || `info@${bName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'local'}.com`;
+      const bAddress = record['address'] || record['loc'] || values[5] || 'Celina, TX 75009';
+      const bWebsite = record['website'] || record['url'] || record['web'] || values[6] || '';
+
+      let matchedCategory = 'Dining';
+      const lowerCategory = bCategory.toLowerCase();
+      if (lowerCategory.includes('shop') || lowerCategory.includes('boutique') || lowerCategory.includes('retail') || lowerCategory.includes('store')) {
+        matchedCategory = 'Shopping & Boutiques';
+      } else if (lowerCategory.includes('health') || lowerCategory.includes('beauty') || lowerCategory.includes('spa') || lowerCategory.includes('hair') || lowerCategory.includes('barber') || lowerCategory.includes('salon') || lowerCategory.includes('dent')) {
+        matchedCategory = 'Health & Beauty';
+      } else if (lowerCategory.includes('home') || lowerCategory.includes('service') || lowerCategory.includes('plumb') || lowerCategory.includes('lawn') || lowerCategory.includes('clean') || lowerCategory.includes('mechanic')) {
+        matchedCategory = 'Home & Professional Services';
+      } else if (lowerCategory.includes('activit') || lowerCategory.includes('commun') || lowerCategory.includes('event') || lowerCategory.includes('art') || lowerCategory.includes('wood')) {
+        matchedCategory = 'Activities & Community';
+      } else if (lowerCategory.includes('dine') || lowerCategory.includes('food') || lowerCategory.includes('restaurant') || lowerCategory.includes('cafe') || lowerCategory.includes('baker') || lowerCategory.includes('donut')) {
+        matchedCategory = 'Dining';
+      } else {
+        matchedCategory = 'Home & Professional Services';
+      }
+
+      onAddBusiness({
+        name: bName,
+        category: matchedCategory,
+        description: bDesc,
+        phone: bPhone,
+        email: bEmail,
+        tier: 'basic',
+        isUnclaimed: true,
+        ownerId: '',
+        address: bAddress,
+        website: bWebsite,
+      });
+      importCount++;
+    });
+
+    setCsvInput('');
+    setCsvImportSuccess(`Successfully imported ${importCount} unclaimed listings into the directory!`);
+    setTimeout(() => setCsvImportSuccess(null), 8000);
+  };
+
+  const handleCsvFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (text) {
+        handleCsvImport(text);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Modal Control
+  const [editingBusiness, setEditingBusiness] = useState<Business | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // New Business Fields State
+  const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState('Dining');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newTier, setNewTier] = useState<Tier>('basic');
+  const [newIsUnclaimed, setNewIsUnclaimed] = useState(true);
+  const [newAddress, setNewAddress] = useState('');
+  const [newWebsite, setNewWebsite] = useState('');
+
+  // Edit Business Fields State
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('Dining');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editTier, setEditTier] = useState<Tier>('basic');
+  const [editIsUnclaimed, setEditIsUnclaimed] = useState(true);
+  const [editAddress, setEditAddress] = useState('');
+  const [editWebsite, setEditWebsite] = useState('');
+
+  // Handle opening the Edit modal
+  const openEditModal = (bus: Business) => {
+    setEditingBusiness(bus);
+    setEditName(bus.name);
+    setEditCategory(bus.category);
+    setEditPhone(bus.phone);
+    setEditEmail(bus.email);
+    setEditDesc(bus.description);
+    setEditTier(bus.tier);
+    setEditIsUnclaimed(!!bus.isUnclaimed);
+    setEditAddress(bus.address || '');
+    setEditWebsite(bus.website || '');
+  };
+
+  // Stats calculation
+  const totalListings = businesses.length;
+  const claimedListingsCount = businesses.filter((b) => !b.isUnclaimed && b.ownerId).length;
+  const unclaimedListingsCount = businesses.filter((b) => b.isUnclaimed).length;
+  
+  // Free spots calculation (starting at 92 to simulate high competitive demand)
+  const freeClaimedBasicCount = Math.min(
+    100,
+    92 + businesses.filter((b) => b.tier === 'basic' && b.ownerId && !b.isUnclaimed).length
+  );
+
+  // Filter listings
+  const filteredListings = businesses.filter((b) => {
+    const matchesSearch =
+      b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.email.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesTier =
+      tierFilter === 'all' ||
+      (tierFilter === 'unclaimed' ? b.isUnclaimed : b.tier === tierFilter && !b.isUnclaimed);
+
+    return matchesSearch && matchesTier;
+  });
+
+  const filteredBugs = reportedBugs.filter((b) => {
+    const matchesSearch =
+      b.title.toLowerCase().includes(bugSearch.toLowerCase()) ||
+      b.description.toLowerCase().includes(bugSearch.toLowerCase()) ||
+      b.email.toLowerCase().includes(bugSearch.toLowerCase());
+    const matchesCategory = bugCategoryFilter === 'all' || b.category === bugCategoryFilter;
+    const matchesSeverity = bugSeverityFilter === 'all' || b.severity === bugSeverityFilter;
+    const matchesStatus = bugStatusFilter === 'all' || b.status === bugStatusFilter;
+    return matchesSearch && matchesCategory && matchesSeverity && matchesStatus;
+  });
+
+  // Bulk actions handlers
+  const handleMassChangeTier = (nextTier: Tier) => {
+    const count = selectedBusIds.length;
+    onUpdateBusiness(selectedBusIds, { tier: nextTier });
+    setSelectedBusIds([]);
+    alert(`Successfully changed ${count} listings to ${nextTier.toUpperCase()} membership.`);
+  };
+
+  const handleMassChangeClaimStatus = (isUnclaimed: boolean) => {
+    const count = selectedBusIds.length;
+    onUpdateBusiness(selectedBusIds, (b) => {
+      const ownerId = isUnclaimed ? '' : `owner-${Math.random().toString(36).substring(2, 7)}`;
+      const email = isUnclaimed ? '' : `owner-${Math.random().toString(36).substring(2, 7)}@celinaconnection.com`;
+      return {
+        isUnclaimed,
+        ownerId,
+        email,
+        createdAt: isUnclaimed ? new Date().toISOString() : b.createdAt
+      };
+    });
+    setSelectedBusIds([]);
+    alert(`Successfully updated claim status for ${count} listings.`);
+  };
+
+  const handleMassDelete = () => {
+    const count = selectedBusIds.length;
+    if (onDeleteBusiness && window.confirm(`Are you absolutely sure you want to permanently delete these ${count} selected listings? This action is irreversible.`)) {
+      onDeleteBusiness(selectedBusIds);
+      setSelectedBusIds([]);
+    }
+  };
+
+  const handleMassResetViews = () => {
+    const count = selectedBusIds.length;
+    if (window.confirm(`Are you sure you want to reset the traffic views count to 0 for these ${count} selected listings?`)) {
+      onUpdateBusiness(selectedBusIds, { viewsCount: 0 });
+      setSelectedBusIds([]);
+    }
+  };
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim() || !newPhone.trim() || !newDesc.trim()) {
+      alert('Please fill out all required fields.');
+      return;
+    }
+
+    const ownerId = newIsUnclaimed ? '' : `owner-${Math.random().toString(36).substring(2, 7)}`;
+    onAddBusiness({
+      name: newName,
+      category: newCategory,
+      description: newDesc,
+      phone: newPhone,
+      email: newEmail,
+      tier: newTier,
+      ownerId: ownerId,
+      isUnclaimed: newIsUnclaimed,
+      address: newAddress,
+      website: newWebsite,
+    });
+
+    // Reset states
+    setNewName('');
+    setNewCategory('Dining');
+    setNewPhone('');
+    setNewEmail('');
+    setNewDesc('');
+    setNewTier('basic');
+    setNewIsUnclaimed(true);
+    setNewAddress('');
+    setNewWebsite('');
+    setShowCreateModal(false);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBusiness) return;
+
+    onUpdateBusiness(editingBusiness.id, {
+      name: editName,
+      category: editCategory,
+      phone: editPhone,
+      email: editEmail,
+      description: editDesc,
+      tier: editTier,
+      isUnclaimed: editIsUnclaimed,
+      address: editAddress,
+      website: editWebsite,
+      ownerId: editIsUnclaimed ? '' : editingBusiness.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`,
+    });
+
+    setEditingBusiness(null);
+  };
+
+  const handleFastToggleClaim = (bus: Business) => {
+    const nextUnclaimed = !bus.isUnclaimed;
+    const ownerId = nextUnclaimed ? '' : bus.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`;
+    const email = nextUnclaimed ? '' : bus.email || `owner-${Math.random().toString(36).substring(2, 7)}@celinaconnection.com`;
+    
+    onUpdateBusiness(bus.id, {
+      isUnclaimed: nextUnclaimed,
+      ownerId: ownerId,
+      email: email
+    });
+  };
+
+  const handleFastCycleTier = (bus: Business) => {
+    const tiers: Tier[] = ['basic', 'pro', 'premium'];
+    const currentIndex = tiers.indexOf(bus.tier);
+    const nextTier = tiers[(currentIndex + 1) % tiers.length];
+    onUpdateBusiness(bus.id, { tier: nextTier });
+  };
+
+  const handleDeleteClick = (busId: string, name: string) => {
+    if (window.confirm(`Are you absolutely sure you want to permanently delete "${name}" from Celina Connection? This action is irreversible.`)) {
+      if (onDeleteBusiness) {
+        onDeleteBusiness(busId);
+      }
+    }
+  };
+
+  const handleLocalLogout = () => {
+    setCurrentUser({
+      id: '',
+      email: '',
+      businessName: '',
+      tier: 'basic',
+      isLoggedIn: false,
+    });
+  };
+
+  return (
+    <div className="py-6 space-y-8 animate-fade-in" id="admin-workspace-panel">
+      {/* Admin Top Mini-Hero */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl -z-10" />
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400">🔑 Master System Administrator Workspace</span>
+          </div>
+          <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-white">
+            Celina Connection Control Panel
+          </h2>
+          <p className="text-slate-400 text-xs font-semibold">
+            Logged in as <span className="text-white">mark@legacywealthco.com</span> • Operational Control Active
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4.5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-orange-500/10 transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> Add New Profile
+          </button>
+          
+          <button
+            onClick={handleLocalLogout}
+            className="px-4.5 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" /> Logout Admin
+          </button>
+        </div>
+      </div>
+
+      {/* Admin Segment Tabs Navigation */}
+      <div className="flex border-b border-slate-200" id="admin-workspace-tabs">
+        <button
+          onClick={() => setAdminActiveTab('listings')}
+          className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            adminActiveTab === 'listings'
+              ? 'border-orange-500 text-orange-600 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Directory Listings ({businesses.length})</span>
+        </button>
+        <button
+          onClick={() => setAdminActiveTab('bugs')}
+          className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 relative ${
+            adminActiveTab === 'bugs'
+              ? 'border-orange-500 text-orange-600 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Bug className="w-4.5 h-4.5 text-rose-500" />
+          <span>Reported Bug Tickets ({reportedBugs.length})</span>
+          {reportedBugs.some(b => b.status === 'open') && (
+            <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+          )}
+        </button>
+      </div>
+
+      {adminActiveTab === 'listings' ? (
+        <>
+          {/* Admin Dashboard Statistics Overview */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Directory Listings</span>
+          <span className="font-display text-3xl font-black text-slate-900 block">{totalListings}</span>
+          <span className="text-[10px] text-slate-500 font-medium block">All local business database entries</span>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Claimed listings</span>
+          <span className="font-display text-3xl font-black text-emerald-600 block">{claimedListingsCount}</span>
+          <span className="text-[10px] text-slate-500 font-medium block">Assigned to active business owners</span>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Unclaimed Listings</span>
+          <span className="font-display text-3xl font-black text-rose-500 block">{unclaimedListingsCount}</span>
+          <span className="text-[10px] text-slate-500 font-medium block">Profiles awaiting owner claiming actions</span>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1.5 flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Free Spot Cap Progress</span>
+            <span className="font-display text-2xl font-black text-slate-900 block mt-0.5">{freeClaimedBasicCount} <span className="text-slate-400 text-sm">/ 100 claimed</span></span>
+          </div>
+          <div className="space-y-1">
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-orange-500 to-amber-500 h-1.5 rounded-full" 
+                style={{ width: `${freeClaimedBasicCount}%` }}
+              />
+            </div>
+            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider block text-right">{100 - freeClaimedBasicCount} slots remaining</span>
+          </div>
+        </div>
+      </div>
+
+      {/* CSV Mass Import Control Section */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-display text-lg font-bold text-slate-900 flex items-center gap-2">
+              📂 Scraped Listings Mass Importer
+            </h3>
+            <p className="text-xs text-slate-500">
+              Paste your scraped business lists in CSV format, or upload a <code>.csv</code> file to mass-add profiles to an unclaimed status.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowCsvImporter(!showCsvImporter)}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+          >
+            {showCsvImporter ? "Hide CSV Panel" : "Open CSV Importer"}
+          </button>
+        </div>
+
+        {csvImportSuccess && (
+          <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-semibold animate-fade-in flex items-center gap-2">
+            <CheckCircle className="w-4.5 h-4.5 text-emerald-600 flex-shrink-0" />
+            <span>{csvImportSuccess}</span>
+          </div>
+        )}
+
+        {showCsvImporter && (
+          <div className="border border-slate-100 bg-slate-50/50 p-5 rounded-2xl space-y-4 animate-fade-in">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Option A: Upload .csv File</span>
+                <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-orange-400 bg-white hover:bg-orange-50/5 p-6 rounded-xl cursor-pointer transition-all group">
+                  <Upload className="w-8 h-8 text-slate-400 group-hover:text-orange-500 mb-2 transition-colors" />
+                  <span className="text-xs font-bold text-slate-700">Select CSV file</span>
+                  <span className="text-[10px] text-slate-400 mt-1">Accepts comma-delimited tables</span>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    onChange={handleCsvFileChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Option B: Paste Raw CSV Text</span>
+                <textarea
+                  placeholder="name,category,description,phone,email,address,website&#10;Celina Patisserie,Dining,Handmade French pastries,(972) 382-8822,info@celinapatisserie.com,104 N Ohio St,https://patisserie.com"
+                  value={csvInput}
+                  onChange={(e) => setCsvInput(e.target.value)}
+                  className="w-full h-28 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-slate-800"
+                />
+                <button
+                  onClick={() => handleCsvImport(csvInput)}
+                  className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-sm hover:from-orange-600 hover:to-amber-600 cursor-pointer transition-all animate-pulse"
+                >
+                  🚀 Parse and Import Raw Text
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-100/80 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">CSV Column Formatting Guide:</span>
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                If your CSV includes a header line, we will auto-detect columns: <strong>name</strong>, <strong>category</strong>, <strong>description</strong>, <strong>phone</strong>, <strong>email</strong>, <strong>address</strong>, <strong>website</strong>. Otherwise, columns are parsed in that exact order. Categories are automatically normalized into existing directory categories (Dining, Shopping, Health, Services, Community).
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Directory Management Table Section */}
+      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+        {/* Controls Bar */}
+        <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="relative w-full md:w-80">
+            <SearchQueryIcon className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by name, email, or category..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-800 shadow-xs"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 self-stretch md:self-auto overflow-x-auto pb-1 md:pb-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 flex-shrink-0">
+              <Filter className="w-3.5 h-3.5" /> Filter:
+            </span>
+            {(['all', 'basic', 'pro', 'premium', 'unclaimed'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setTierFilter(mode)}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold capitalize cursor-pointer transition-all ${
+                  tierFilter === mode
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {mode === 'unclaimed' ? '⚠️ Unclaimed' : mode}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Bulk Actions Panel */}
+        {selectedBusIds.length > 0 && (
+          <div className="p-4 bg-orange-500 text-slate-950 font-sans flex flex-col md:flex-row items-center justify-between gap-4 border-b border-orange-600 animate-fade-in relative" id="bulk-actions-panel">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-950 text-white text-[10px] font-black">
+                {selectedBusIds.length}
+              </span>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-950">
+                Listings Selected for Bulk Action
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Change Tier */}
+              <div className="flex items-center gap-1 bg-white/20 p-1 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 text-slate-900">Tier:</span>
+                <button
+                  onClick={() => handleMassChangeTier('basic')}
+                  className="px-2.5 py-1 bg-white hover:bg-slate-50 text-[10px] font-bold rounded-lg shadow-sm text-slate-800 cursor-pointer"
+                >
+                  Basic
+                </button>
+                <button
+                  onClick={() => handleMassChangeTier('pro')}
+                  className="px-2.5 py-1 bg-white hover:bg-indigo-50 text-[10px] font-bold rounded-lg shadow-sm text-indigo-700 cursor-pointer"
+                >
+                  Pro
+                </button>
+                <button
+                  onClick={() => handleMassChangeTier('premium')}
+                  className="px-2.5 py-1 bg-white hover:bg-amber-50 text-[10px] font-bold rounded-lg shadow-sm text-orange-700 cursor-pointer"
+                >
+                  Premium
+                </button>
+              </div>
+
+              {/* Change Claim Status */}
+              <div className="flex items-center gap-1 bg-white/20 p-1 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 text-slate-900">Claim:</span>
+                <button
+                  onClick={() => handleMassChangeClaimStatus(false)}
+                  className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-[10px] font-bold rounded-lg shadow-sm text-emerald-700 cursor-pointer"
+                >
+                  Claimed
+                </button>
+                <button
+                  onClick={() => handleMassChangeClaimStatus(true)}
+                  className="px-2.5 py-1 bg-white hover:bg-rose-50 text-[10px] font-bold rounded-lg shadow-sm text-rose-600 cursor-pointer"
+                >
+                  Unclaimed
+                </button>
+              </div>
+
+              {/* Reset Traffic Views */}
+              <button
+                onClick={handleMassResetViews}
+                className="px-3 py-2 bg-slate-950 hover:bg-slate-900 text-white font-bold text-[10px] rounded-xl shadow-md cursor-pointer flex items-center gap-1 transition-colors"
+                title="Reset views count to 0"
+              >
+                <Eye className="w-3 h-3" />
+                <span>Reset Views</span>
+              </button>
+
+              {/* Delete Selected */}
+              <button
+                onClick={handleMassDelete}
+                className="px-3 py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold text-[10px] rounded-xl shadow-md cursor-pointer flex items-center gap-1 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Delete Selected</span>
+              </button>
+
+              <span className="text-slate-950/40 text-xs">|</span>
+
+              {/* Clear Selection */}
+              <button
+                onClick={() => setSelectedBusIds([])}
+                className="px-3 py-2 bg-slate-950/10 hover:bg-slate-950/20 text-slate-950 font-bold text-[10px] rounded-xl cursor-pointer"
+              >
+                Cancel Selection
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Responsive Table Grid */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-600 border-collapse">
+            <thead>
+              <tr className="bg-slate-100/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <th className="p-4 pl-6 w-12 text-center">
+                  <input
+                    type="checkbox"
+                    id="select-all-checkbox"
+                    className="h-4.5 w-4.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500 cursor-pointer accent-orange-600"
+                    checked={filteredListings.length > 0 && filteredListings.every(b => selectedBusIds.includes(b.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        const allFilteredIds = filteredListings.map(b => b.id);
+                        setSelectedBusIds(prev => {
+                          const combined = new Set([...prev, ...allFilteredIds]);
+                          return Array.from(combined);
+                        });
+                      } else {
+                        const filteredIdsSet = new Set(filteredListings.map(b => b.id));
+                        setSelectedBusIds(prev => prev.filter(id => !filteredIdsSet.has(id)));
+                      }
+                    }}
+                  />
+                </th>
+                <th className="p-4">Business Details</th>
+                <th className="p-4">Owner Assignment</th>
+                <th className="p-4">Membership Level</th>
+                <th className="p-4">Traffic</th>
+                <th className="p-4 pr-6 text-right">Administrative Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+              {filteredListings.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-slate-400 font-semibold italic">
+                    No matching listings found in the directory database.
+                  </td>
+                </tr>
+              ) : (
+                filteredListings.map((bus) => (
+                  <tr key={bus.id} className={`hover:bg-slate-50/50 transition-colors ${selectedBusIds.includes(bus.id) ? 'bg-orange-50/10' : ''}`}>
+                    <td className="p-4 pl-6 w-12 text-center">
+                      <input
+                        type="checkbox"
+                        id={`select-checkbox-${bus.id}`}
+                        className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 cursor-pointer accent-orange-600"
+                        checked={selectedBusIds.includes(bus.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedBusIds(prev => [...prev, bus.id]);
+                          } else {
+                            setSelectedBusIds(prev => prev.filter(id => id !== bus.id));
+                          }
+                        }}
+                      />
+                    </td>
+                    <td className="p-4">
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-slate-900 text-sm">{bus.name}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                          <span className="font-bold uppercase text-orange-600">{bus.category}</span>
+                          <span>•</span>
+                          <span>ID: {bus.id}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      {bus.isUnclaimed ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black bg-rose-50 border border-rose-200 text-rose-600 animate-pulse">
+                          ⚠️ Unclaimed Listing
+                        </span>
+                      ) : (
+                        <div className="space-y-0.5">
+                          <p className="font-bold text-slate-900 text-[11px] truncate max-w-[160px]">{bus.email}</p>
+                          <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider block">Owner ID: {bus.ownerId}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4">
+                      <button
+                        onClick={() => handleFastCycleTier(bus)}
+                        title="Click to instantly toggle membership tier!"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer transition-all border shadow-xs ${
+                          bus.tier === 'premium'
+                            ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-orange-700 border-orange-300'
+                            : bus.tier === 'pro'
+                            ? 'bg-gradient-to-r from-indigo-500/10 to-blue-500/10 text-indigo-700 border-indigo-200'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {bus.tier === 'premium' ? '✨ Premium Spotlight' : bus.tier === 'pro' ? '⭐ Pro Partner' : '💼 Basic (Free)'}
+                        <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black block ml-1 hover:underline">Cycle</span>
+                      </button>
+                    </td>
+                    <td className="p-4 text-slate-500">
+                      <div className="flex items-center gap-1">
+                        <Eye className="w-3.5 h-3.5 text-slate-400" />
+                        <span className="text-slate-900 font-bold">{bus.viewsCount}</span>
+                        <span className="text-[10px] text-slate-400 font-semibold">views</span>
+                      </div>
+                    </td>
+                    <td className="p-4 pr-6 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleFastToggleClaim(bus)}
+                          title={bus.isUnclaimed ? 'Verify and assign owner email' : 'Mark profile as unclaimed'}
+                          className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                            bus.isUnclaimed 
+                              ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-600'
+                              : 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-600'
+                          }`}
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => openEditModal(bus)}
+                          title="Edit complete profile information"
+                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-all cursor-pointer"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteClick(bus.id, bus.name)}
+                          title="Permanently remove profile from database"
+                          className="p-2 rounded-xl border border-rose-100 bg-white hover:bg-rose-50 text-rose-500 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Database Restore Action Panel Footer */}
+        {onResetDatabase && (
+          <div className="p-4 border-t border-slate-200 bg-slate-50/70 flex justify-between items-center text-xs">
+            <span className="text-slate-400 font-semibold">Database Management Controls</span>
+            <button
+              onClick={() => {
+                if (window.confirm("Restore platform data? This will overwrite your active database with the original 9 Celina Connection mock profiles (including our 3 Unclaimed profiles) and reset all statistics.")) {
+                  onResetDatabase();
+                }
+              }}
+              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Reset Database to Original Defaults
+            </button>
+          </div>
+        )}
+      </div>
+        </>
+      ) : (
+        /* Bug Tickets Section */
+        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in" id="admin-bugs-card">
+          {/* Controls Bar */}
+          <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="relative w-full md:w-80">
+              <SearchQueryIcon className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search bugs by title, reporter..."
+                value={bugSearch}
+                onChange={(e) => setBugSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-800 shadow-sm"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Severity:</span>
+                <select
+                  value={bugSeverityFilter}
+                  onChange={(e) => setBugSeverityFilter(e.target.value as any)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  <option value="all">All Severities</option>
+                  <option value="high">🔴 High</option>
+                  <option value="medium">🟡 Medium</option>
+                  <option value="low">⚪ Low</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Category:</span>
+                <select
+                  value={bugCategoryFilter}
+                  onChange={(e) => setBugCategoryFilter(e.target.value as any)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  <option value="all">All Categories</option>
+                  <option value="visual">🎨 Visual</option>
+                  <option value="functional">⚙️ Functional</option>
+                  <option value="data">📊 Data</option>
+                  <option value="other">❓ Other</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px]">Status:</span>
+                <select
+                  value={bugStatusFilter}
+                  onChange={(e) => setBugStatusFilter(e.target.value as any)}
+                  className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 cursor-pointer"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="open">🟢 Open</option>
+                  <option value="in-progress">🔄 In Progress</option>
+                  <option value="resolved">✅ Resolved</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Ticket List Table/Grid */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600 border-collapse">
+              <thead>
+                <tr className="bg-slate-100/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <th className="p-4 pl-6">Bug Ticket details</th>
+                  <th className="p-4">Category</th>
+                  <th className="p-4">Severity</th>
+                  <th className="p-4">Reporter</th>
+                  <th className="p-4">Status / Action</th>
+                  <th className="p-4 pr-6 text-right">Delete</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {filteredBugs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400 italic">
+                      No matching bug reports found in active registry database.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBugs.map((bug) => {
+                    return (
+                      <tr key={bug.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="p-4 pl-6 max-w-sm">
+                          <div className="space-y-1">
+                            <p className="font-bold text-slate-900 text-sm">{bug.title}</p>
+                            <p className="text-slate-500 text-xs leading-relaxed font-normal whitespace-pre-wrap">{bug.description}</p>
+                            <span className="text-[9px] text-slate-400 block font-semibold">Reported on: {new Date(bug.createdAt).toLocaleString()}</span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-orange-50 border border-orange-100 text-orange-600">
+                            {bug.category}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          {bug.severity === 'high' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black bg-rose-50 border border-rose-200 text-rose-600">
+                              🔴 High Severity
+                            </span>
+                          ) : bug.severity === 'medium' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-700">
+                              🟡 Medium
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-bold bg-slate-50 border border-slate-200 text-slate-600">
+                              ⚪ Low
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <span className="font-bold text-slate-900 block">{bug.email}</span>
+                          <span className="text-[9px] text-slate-400 block uppercase tracking-wider font-semibold">Reporter</span>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={bug.status}
+                              onChange={(e) => onUpdateBugStatus && onUpdateBugStatus(bug.id, e.target.value as any)}
+                              className={`px-2.5 py-1 bg-white border text-[10px] font-bold rounded-lg cursor-pointer transition-colors shadow-sm ${
+                                bug.status === 'resolved'
+                                  ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                                  : bug.status === 'in-progress'
+                                  ? 'border-indigo-200 text-indigo-700 hover:bg-indigo-50'
+                                  : 'border-rose-200 text-rose-600 hover:bg-rose-50'
+                              }`}
+                            >
+                              <option value="open">🟢 Open</option>
+                              <option value="in-progress">🔄 In Progress</option>
+                              <option value="resolved">✅ Resolved</option>
+                            </select>
+                          </div>
+                        </td>
+                        <td className="p-4 pr-6 text-right">
+                          <button
+                            onClick={() => {
+                              if (confirm('Are you sure you want to permanently delete this bug ticket?')) {
+                                onDeleteBugStatus && onDeleteBugStatus(bug.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-xl border border-rose-100 bg-white hover:bg-rose-50 text-rose-500 transition-all cursor-pointer"
+                            title="Delete bug ticket"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE NEW LISTING OVERLAY MODAL */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+          <div onClick={() => setShowCreateModal(false)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-2xl max-w-lg w-full z-10 space-y-5">
+            <button
+              onClick={() => setShowCreateModal(false)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+            >
+              &times;
+            </button>
+
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="font-display text-xl font-extrabold text-slate-900">Add New Directory Profile</h3>
+              <p className="text-xs text-slate-500">Insert custom or unclaimed records directly into the Celina Connection registry.</p>
+            </div>
+
+            <form onSubmit={handleCreateSubmit} className="space-y-4 text-left">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Business Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Celina Square Bookstore"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Category</label>
+                  <select
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                  >
+                    {CATEGORIES.filter(c => c !== 'All').map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="(972) 555-0100"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Claim Status</label>
+                  <select
+                    value={newIsUnclaimed ? 'unclaimed' : 'claimed'}
+                    onChange={(e) => setNewIsUnclaimed(e.target.value === 'unclaimed')}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                  >
+                    <option value="unclaimed">⚠️ Unclaimed Profile</option>
+                    <option value="claimed">✅ Claimed / Pre-Assigned</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Membership Tier</label>
+                  <select
+                    value={newTier}
+                    onChange={(e) => setNewTier(e.target.value as Tier)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                  >
+                    <option value="basic">Basic (Free)</option>
+                    <option value="pro">Pro Partner</option>
+                    <option value="premium">Premium Spotlight</option>
+                  </select>
+                </div>
+              </div>
+
+              {!newIsUnclaimed && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Owner Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="owner@celinasquarebookstore.com"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Physical Address</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 104 N Ohio St, Celina, TX 75009"
+                  value={newAddress}
+                  onChange={(e) => setNewAddress(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Website URL</label>
+                <input
+                  type="text"
+                  placeholder="e.g. https://celinabookstore.com"
+                  value={newWebsite}
+                  onChange={(e) => setNewWebsite(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Business Description</label>
+                <textarea
+                  required
+                  placeholder="Tell customers about your services and offerings..."
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  rows={2.5}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 font-semibold"
+                />
+              </div>
+
+              <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer"
+                >
+                  Save Profile Record
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT PROFILE OVERLAY MODAL */}
+      {editingBusiness && (
+        <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+          <div onClick={() => setEditingBusiness(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-2xl max-w-lg w-full z-10 space-y-5">
+            <button
+              onClick={() => setEditingBusiness(null)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer"
+            >
+              &times;
+            </button>
+
+            <div className="border-b border-slate-100 pb-3">
+              <h3 className="font-display text-xl font-extrabold text-slate-900">Edit Listing Profile</h3>
+              <p className="text-xs text-slate-500">Edit business details and membership permissions for active ID: {editingBusiness.id}</p>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 text-left">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Business Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Business Name"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Category</label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                  >
+                    {CATEGORIES.filter(c => c !== 'All').map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Phone"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Claim Status</label>
+                  <select
+                    value={editIsUnclaimed ? 'unclaimed' : 'claimed'}
+                    onChange={(e) => setEditIsUnclaimed(e.target.value === 'unclaimed')}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                  >
+                    <option value="unclaimed">⚠️ Unclaimed Profile</option>
+                    <option value="claimed">✅ Claimed Listing</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Membership Tier</label>
+                  <select
+                    value={editTier}
+                    onChange={(e) => setEditTier(e.target.value as Tier)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                  >
+                    <option value="basic">Basic (Free)</option>
+                    <option value="pro">Pro Partner</option>
+                    <option value="premium">Premium Spotlight</option>
+                  </select>
+                </div>
+              </div>
+
+              {!editIsUnclaimed && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Owner Contact Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="owner@email.com"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Physical Address</label>
+                <input
+                  type="text"
+                  placeholder="Address"
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Website URL</label>
+                <input
+                  type="text"
+                  placeholder="Website Link"
+                  value={editWebsite}
+                  onChange={(e) => setEditWebsite(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Business Description</label>
+                <textarea
+                  required
+                  placeholder="Description summary"
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  rows={2.5}
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 font-semibold"
+                />
+              </div>
+
+              <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingBusiness(null)}
+                  className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer"
+                >
+                  Save Profile Records
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SearchQueryIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      {...props}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+      />
+    </svg>
+  );
+}

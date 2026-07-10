@@ -1,0 +1,8 @@
+{
+  "name": "Celina Connection",
+  "description": "A welcoming local business directory for Celina, Texas, featuring membership tiers, dynamic dashboard navigation, and featured business highlights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
