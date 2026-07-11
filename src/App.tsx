@@ -272,8 +272,8 @@ export default function App() {
       website: busData.website || '',
       address: busData.address || '',
       hours: busData.hours || { monFri: "9:00 AM - 5:00 PM", sat: "10:00 AM - 4:00 PM", sun: "Closed" },
-      logoUrl: busData.logoUrl || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=150&h=150&q=80',
-      images: busData.images || ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80'],
+      logoUrl: busData.logoUrl || '',
+      images: busData.images || [],
       socialLinks: busData.socialLinks || {},
       featured: busData.featured || false,
       ctaText: busData.ctaText || 'Learn More',
@@ -490,7 +490,7 @@ export default function App() {
               </div>
               <div>
                 <h1 className="font-display font-black text-base tracking-tight leading-none text-slate-900">
-                  Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">Connect</span>
+                  Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">Connection</span>
                 </h1>
                 <p className="text-[9px] font-bold tracking-widest text-slate-400 uppercase mt-1">
                   Texas Business Hub
@@ -717,21 +717,7 @@ export default function App() {
             <p className="flex items-center gap-1">
               Made with <Heart className="w-3.5 h-3.5 text-orange-500 fill-orange-500" /> for the Celina, Texas Community.
             </p>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => {
-                  setDashboardPortalMode('admin');
-                  setActiveTab('dashboard');
-                  setTimeout(() => {
-                    document.getElementById('portal-form-container')?.scrollIntoView({ behavior: 'smooth' });
-                  }, 150);
-                }}
-                className="hover:text-slate-600 cursor-pointer font-bold flex items-center gap-1"
-              >
-                🔑 System Admin Login
-              </button>
-              <span>&copy; {new Date().getFullYear()} Celina Connection. All Rights Reserved.</span>
-            </div>
+            <span>&copy; {new Date().getFullYear()} Celina Connection. All Rights Reserved.</span>
           </div>
         </div>
       </footer>

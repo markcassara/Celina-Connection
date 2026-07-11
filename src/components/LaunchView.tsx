@@ -219,56 +219,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
           </p>
         </div>
 
-        {/* Administration Bypass Portal */}
-        {isGated && onBypassGating && (
-          <div className="w-full max-w-xs mx-auto pt-6 border-t border-slate-100 z-10" id="bypass-portal-container">
-            <form 
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (passcode === 'Alpha@2026!') {
-                  setPasscodeError(false);
-                  onBypassGating();
-                } else {
-                  setPasscodeError(true);
-                }
-              }}
-              className="space-y-2.5"
-            >
-              <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest text-center flex items-center justify-center gap-1.5">
-                <Lock className="w-3 h-3 text-amber-500" /> Administration Bypass Portal
-              </p>
-              <div className="flex gap-1.5">
-                <input
-                  type="password"
-                  placeholder="Enter Passcode"
-                  value={passcode}
-                  onChange={(e) => {
-                    setPasscode(e.target.value);
-                    if (passcodeError) setPasscodeError(false);
-                  }}
-                  className={`flex-grow px-3 py-1.5 bg-slate-50 border text-slate-900 rounded-lg text-[10px] font-semibold placeholder-slate-400 focus:outline-none transition-all ${
-                    passcodeError ? 'border-red-500 focus:ring-1 focus:ring-red-500' : 'border-slate-200 focus:ring-1 focus:ring-amber-500'
-                  }`}
-                />
-                <button
-                  type="submit"
-                  className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px] rounded-lg transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1 flex-shrink-0"
-                >
-                  <span>Enter</span>
-                  <ArrowRight className="w-2.5 h-2.5 text-white" />
-                </button>
-              </div>
-              {passcodeError && (
-                <p className="text-[9px] text-rose-500 font-bold text-center">
-                  ❌ Invalid passcode. Access denied.
-                </p>
-              )}
-              <p className="text-[8px] text-slate-400 text-center leading-relaxed">
-                Alpha testing bypass only. Private system.
-              </p>
-            </form>
-          </div>
-        )}
+
 
       </div>
     </div>

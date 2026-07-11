@@ -178,7 +178,7 @@ export default function DashboardView({
       id: guestBusId,
       name: guestBusName,
       category: "Dining",
-      description: "A cozy, welcoming guest bistro created on-the-fly for your sandbox test drive. Manage this listing, add custom media, post replies to reviews, and see simulated visitor metrics in action!",
+      description: "A cozy, welcoming guest bistro in Celina. Preview the business owner experience, manage your listing, add custom media, post replies to reviews, and see visitor metrics in action!",
       phone: "(972) 555-0111",
       email: guestEmail,
       website: "https://www.celinaguestbistro.com",
@@ -188,11 +188,8 @@ export default function DashboardView({
         sat: "8:00 AM - 11:00 PM",
         sun: "9:00 AM - 9:00 PM"
       },
-      logoUrl: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=150&h=150&q=80",
-      images: [
-        "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
-        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=80"
-      ],
+      logoUrl: '',
+      images: [],
       socialLinks: {
         facebook: "https://facebook.com/celinabistro",
         instagram: "https://instagram.com/celinabistro"
@@ -329,7 +326,7 @@ export default function DashboardView({
   const handleNewListingSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUser.id === 'owner-lucy') {
-      alert('This is a demo test drive account. Actions and modifications are disabled to preserve the demo environment.');
+      alert('This feature is available in preview mode. Actions and modifications are disabled to preserve the demo environment.');
       return;
     }
     if (currentUser.tier === 'basic') {
@@ -364,7 +361,7 @@ export default function DashboardView({
     if (!myBusiness) return;
 
     if (currentUser.id === 'owner-lucy') {
-      alert('This is a demo test drive account. Profile editing is disabled to preserve the demo environment.');
+      alert('This feature is available in preview mode. Profile editing is disabled to preserve the demo environment.');
       return;
     }
 
@@ -404,7 +401,7 @@ export default function DashboardView({
   const handleReplySubmit = (reviewId: string) => {
     if (!myBusiness) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This is a demo test drive account. Review replies are disabled to preserve the demo environment.');
+      alert('This feature is available in preview mode. Review replies are disabled to preserve the demo environment.');
       return;
     }
     const replyText = replyInputs[reviewId];
@@ -423,55 +420,91 @@ export default function DashboardView({
     setReplyInputs((prev) => ({ ...prev, [reviewId]: '' }));
   };
 
-  // Mock Photo Library (Unsplash Celina themed images)
-  const mockPhotoLibrary = [
-    { url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=600&q=80', label: 'Diner Storefront' },
-    { url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=600&q=80', label: 'Boutique Interior' },
-    { url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80', label: 'Artisanal Bakery' },
-    { url: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=600&q=80', label: 'Craft Studio Workshop' },
-    { url: 'https://images.unsplash.com/photo-1563245372-f21724e3856d?auto=format&fit=crop&w=600&q=80', label: 'Family Taproom' },
-    { url: 'https://images.unsplash.com/photo-1534710961216-75c9d402f03e?auto=format&fit=crop&w=600&q=80', label: 'Fresh Green Landscaping' },
-    { url: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=600&q=80', label: 'Dentistry Checkup' },
-    { url: 'https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?auto=format&fit=crop&w=600&q=80', label: 'Plumbing Tools' },
-  ];
+  const readFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => reject(new Error(`Unable to read ${file.name}.`));
+      reader.readAsDataURL(file);
+    });
 
-  const handleAddPhoto = (url: string) => {
+  const handleGalleryUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!myBusiness) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This is a demo test drive account. Uploading new images is disabled to preserve the demo environment.');
+      alert('This feature is available in preview mode. Uploading new images is disabled to preserve the demo environment.');
+      event.target.value = '';
       return;
     }
+
+    const selectedFiles = Array.from(event.target.files || []);
+    if (selectedFiles.length === 0) return;
+
     const currentImages = myBusiness.images || [];
-
-    // Check limits
     const max = myBusiness.tier === 'basic' ? 1 : myBusiness.tier === 'pro' ? 5 : 10;
-    if (currentImages.length >= max) {
-      alert(`Tier limit reached! Basic members get 1, Pro get 5, and Premium get 10. Upgrade to add more!`);
+    const remainingSlots = max - currentImages.length;
+
+    if (remainingSlots <= 0) {
+      alert('Tier limit reached! Basic members get 1, Pro get 5, and Premium get 10. Upgrade to add more!');
+      event.target.value = '';
       return;
     }
 
-    onUpdateBusiness(myBusiness.id, {
-      images: [...currentImages, url],
-    });
+    const filesToUse = selectedFiles.slice(0, remainingSlots);
+    if (selectedFiles.length > remainingSlots) {
+      alert(`Only ${remainingSlots} more image${remainingSlots === 1 ? '' : 's'} can be added on your current tier. Uploading the first ${filesToUse.length}.`);
+    }
+
+    try {
+      const uploadedImages = await Promise.all(filesToUse.map(readFileAsDataUrl));
+      onUpdateBusiness(myBusiness.id, {
+        images: [...currentImages, ...uploadedImages],
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to upload the selected images.');
+    } finally {
+      event.target.value = '';
+    }
   };
 
   const handleRemovePhoto = (index: number) => {
     if (!myBusiness || !myBusiness.images) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This is a demo test drive account. Modifying images is disabled to preserve the demo environment.');
+      alert('This feature is available in preview mode. Modifying images is disabled to preserve the demo environment.');
       return;
     }
     const filtered = myBusiness.images.filter((_, idx) => idx !== index);
     onUpdateBusiness(myBusiness.id, { images: filtered });
   };
 
-  const handleUpdateLogo = (url: string) => {
+  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!myBusiness) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This is a demo test drive account. Changing the business logo is disabled to preserve the demo environment.');
+      alert('This feature is available in preview mode. Changing the business logo is disabled to preserve the demo environment.');
+      event.target.value = '';
       return;
     }
-    onUpdateBusiness(myBusiness.id, { logoUrl: url });
+
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const logoDataUrl = await readFileAsDataUrl(file);
+      onUpdateBusiness(myBusiness.id, { logoUrl: logoDataUrl });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to upload the selected logo.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    if (!myBusiness) return;
+    if (currentUser.id === 'owner-lucy') {
+      alert('This feature is available in preview mode. Changing the business logo is disabled to preserve the demo environment.');
+      return;
+    }
+
+    onUpdateBusiness(myBusiness.id, { logoUrl: '' });
   };
 
   // If NOT logged in, show onboarding portal
@@ -496,7 +529,7 @@ export default function DashboardView({
           {/* Quick Demo Login Cards */}
           <div className="space-y-4 pt-4">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Quick Sandbox Test Drive</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Try the Demo</span>
               <span className="h-px bg-slate-200 flex-grow" />
             </div>
             
@@ -506,7 +539,7 @@ export default function DashboardView({
                 className="w-full py-4 px-4 bg-slate-950 text-amber-400 hover:bg-slate-900 hover:text-amber-300 rounded-2xl cursor-pointer text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border border-amber-400/20 shadow-lg shadow-slate-900/10 transition-all group"
               >
                 <Zap className="w-4 h-4 fill-amber-400 text-amber-400 group-hover:scale-110 transition-transform animate-pulse" />
-                <span>⚡ Instant Sandbox Test Drive (Anon Login)</span>
+                <span>⚡ Try Demo (Instant Access)</span>
               </button>
               <div className="p-3">
                 <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
@@ -1305,10 +1338,22 @@ export default function DashboardView({
                 </p>
               </div>
 
-              {/* Logo URL Picker */}
-              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Business Round Logo</h4>
-                <div className="flex items-center gap-4">
+              {/* Logo Upload */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Business Round Logo</h4>
+                  {myBusiness.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      className="text-[10px] font-bold text-red-600 hover:text-red-700 cursor-pointer"
+                    >
+                      Remove Logo
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                   <div className="h-16 w-16 rounded-full overflow-hidden bg-slate-200 border-2 border-orange-200 flex-shrink-0 flex items-center justify-center">
                     {myBusiness.logoUrl ? (
                       <img src={myBusiness.logoUrl} alt="Logo preview" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
@@ -1316,15 +1361,19 @@ export default function DashboardView({
                       <Building2 className="w-8 h-8 text-slate-400" />
                     )}
                   </div>
-                  <div className="flex-grow">
-                    <input
-                      type="text"
-                      placeholder="Paste your square logomark URL"
-                      value={myBusiness.logoUrl || ''}
-                      onChange={(e) => handleUpdateLogo(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-orange-500 focus:outline-none"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">Provide a web-address (https://) image link representing your shop logo.</p>
+
+                  <div className="flex-grow space-y-2">
+                    <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:border-orange-300 hover:text-orange-600 cursor-pointer transition-colors">
+                      <Upload className="w-4 h-4" />
+                      Upload Logo
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-400">Upload a square logo or profile image. PNG, JPG, WEBP, and GIF are supported.</p>
                   </div>
                 </div>
               </div>
@@ -1340,7 +1389,7 @@ export default function DashboardView({
 
                 {(!myBusiness.images || myBusiness.images.length === 0) ? (
                   <p className="text-slate-400 text-xs italic text-center py-6 border border-dashed rounded-2xl">
-                    No images added to gallery. Add some using the picker below!
+                    No images added to gallery yet. Upload your own photos below.
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1364,30 +1413,25 @@ export default function DashboardView({
                 )}
               </div>
 
-              {/* Upload Simulator Picker */}
+              {/* Real Uploads */}
               <div className="space-y-3 border-t border-slate-100 pt-5">
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Simulated Upload Library</h4>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Click any Celina-themed stock storefront below to instantly add it to your listing!</p>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Upload Your Own Gallery Images</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Add photos from your device. The first gallery image will be used as your cover image.</p>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {mockPhotoLibrary.map((item, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => handleAddPhoto(item.url)}
-                      className="relative h-20 rounded-xl overflow-hidden cursor-pointer group border border-slate-200"
-                    >
-                      <img src={item.url} alt={item.label} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Plus className="w-5 h-5 text-white" />
-                      </div>
-                      <span className="absolute bottom-1 left-1 right-1 text-center bg-slate-950/70 text-[8px] font-bold text-white py-0.5 rounded truncate">
-                        {item.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <label className="flex flex-col items-center justify-center gap-2 border border-dashed border-slate-300 rounded-2xl px-4 py-6 bg-white text-center cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors">
+                  <Upload className="w-5 h-5 text-slate-500" />
+                  <span className="text-xs font-semibold text-slate-700">Choose Gallery Images</span>
+                  <span className="text-[10px] text-slate-400">PNG, JPG, WEBP, or GIF. You can select multiple images up to your membership limit.</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                    multiple
+                    onChange={handleGalleryUpload}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </div>
           )}

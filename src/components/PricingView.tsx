@@ -94,7 +94,7 @@ export default function PricingView({
         'Review management & priority replies',
         'Social media integration links',
         'Detailed monthly view metrics & analytics',
-        'Priority live support support',
+        'Priority live support',
       ],
       notIncluded: [],
       isComingSoon: true,
