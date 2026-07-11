@@ -53,16 +53,31 @@ export default function App() {
   
   const [activeTab, setActiveTab] = useState<string>(() => {
     const path = location.pathname.replace('/', '');
+    if (path.startsWith('business/')) return 'directory';
     return path || 'directory';
   });
   
+  // Business slug from URL
+  const businessSlug = location.pathname.startsWith('/business/') 
+    ? location.pathname.replace('/business/', '')
+    : null;
+  
   // Sync URL when activeTab changes
   useEffect(() => {
+    if (businessSlug) return;
     const path = activeTab === 'directory' ? '/' : `/${activeTab}`;
     if (location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [activeTab, navigate, location.pathname]);
+  }, [activeTab, navigate, location.pathname, businessSlug]);
+  
+  // Handle business selection via URL
+  useEffect(() => {
+    if (businessSlug) {
+      const business = businesses.find(b => b.slug === businessSlug || b.id === businessSlug);
+      if (business) setSelectedBusinessId(business.id);
+    }
+  }, [businessSlug, businesses]);
   
   // ==========================================
   // INDEX/SPLASH PAGE CONFIGURATION:
@@ -620,11 +635,14 @@ export default function App() {
             onAddReview={handleAddReview}
             selectedBusiness={selectedBusiness}
             onSelectBusiness={(b) => {
-              // Increment views on profile click!
               handleUpdateBusiness(b.id, { viewsCount: b.viewsCount + 1 });
               setSelectedBusinessId(b.id);
+              navigate(`/business/${b.slug || b.id}`);
             }}
-            onCloseDetail={() => setSelectedBusinessId(null)}
+            onCloseDetail={() => {
+              setSelectedBusinessId(null);
+              navigate('/');
+            }}
             onUpgradePrompt={(tier) => {
               setSelectedBusinessId(null);
               setTargetTier(tier);
