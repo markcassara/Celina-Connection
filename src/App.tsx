@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Business, Review, Tier, UserProfile, ReportedBug } from './types';
 import { INITIAL_BUSINESSES } from './data/mockBusinesses';
 import Header from './components/Header';
@@ -47,7 +48,21 @@ const INITIAL_BUGS: ReportedBug[] = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('directory');
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const path = location.pathname.replace('/', '');
+    return path || 'directory';
+  });
+  
+  // Sync URL when activeTab changes
+  useEffect(() => {
+    const path = activeTab === 'directory' ? '/' : `/${activeTab}`;
+    if (location.pathname !== path) {
+      navigate(path, { replace: true });
+    }
+  }, [activeTab, navigate, location.pathname]);
   
   // ==========================================
   // INDEX/SPLASH PAGE CONFIGURATION:
