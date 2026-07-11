@@ -3,10 +3,9 @@ import { Business } from '../types';
 export const INITIAL_BUSINESSES: Business[] = [
   {
     id: 'lucys-on-the-square',
-    slug: 'lucys-on-the-square',
     name: "Lucy's on the Square",
     category: "Dining",
-    description: "An iconic comfort-food dining destination right in the heart of historic downtown Celina. Famous for our classic chicken fried steak, Southern hospitality, and warm homemade pies baked fresh daily. We represent the heart and soul of Celina's friendly gather-around culture!",
+    description: "An iconic comfort-food dining destination right in the heart of historic downtown Celina. Famous for our classic chicken fried steak, Southern hospitality, and warm homemade pies.",
     phone: "(972) 382-1212",
     email: "info@lucyscelina.com",
     website: "https://www.lucysonthesquare.com",
@@ -54,10 +53,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'annie-jack-boutique',
-    slug: 'annie-jack-boutique',
     name: "Annie Jack Boutique",
     category: "Shopping & Boutiques",
-    description: "A premier home and lifestyle boutique located on the historic Celina Square. We curate a beautiful mix of modern apparel, timeless home decor, artisanal gifts, and warm, friendly Texas design inspiration.",
+    description: "A premier home and lifestyle boutique located on the historic Celina Square. We curate a beautiful mix of modern apparel, timeless home decor, artisanal gifts, and warm, friendly service.",
     phone: "(972) 382-4663",
     email: "hello@anniejack.com",
     website: "https://www.anniejackcelina.com",
@@ -95,10 +93,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'little-wooden-penguin',
-    slug: 'little-wooden-penguin',
     name: "Little Wooden Penguin",
     category: "Activities & Community",
-    description: "Celina's favorite family-friendly destination for custom woodworking classes, interactive craft workshops, gourmet coffee, local craft beers, and curated fine wines. The perfect spot to gather with neighbors!",
+    description: "Celina's favorite family-friendly destination for custom woodworking classes, interactive craft workshops, gourmet coffee, local craft beers, and curated fine wines. The perfect spot for making memories.",
     phone: "(469) 202-3111",
     email: "info@littlewoodenpenguin.com",
     website: "https://www.littlewoodenpenguin.com",
@@ -123,10 +120,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-patisserie',
-    slug: 'celina-patisserie',
     name: "Celina Patisserie",
     category: "Dining",
-    description: "Charming local bakery offering handmade buttery croissants, organic sourdough boules, pain au chocolat, delicate macarons, and locally roasted espresso. Baked fresh from scratch in historic Celina daily.",
+    description: "Charming local bakery offering handmade buttery croissants, organic sourdough boules, pain au chocolat, delicate macarons, and locally roasted espresso. Baked fresh from scratch daily.",
     phone: "(972) 382-8822",
     email: "contact@celinapatisserie.com",
     address: "104 N Ohio St, Celina, TX 75009",
@@ -139,10 +135,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-vintage-barbershop',
-    slug: 'celina-vintage-barbershop',
     name: "Celina Vintage Barbershop",
     category: "Health & Beauty",
-    description: "A classic barber shop experience on the historic Downtown Celina Square. Hot towel shaves, precision beard trims, straight razor neck shaves, and great local sports conversation. Real Texas hospitality since day one.",
+    description: "A classic barber shop experience on the historic Downtown Celina Square. Hot towel shaves, precision beard trims, straight razor neck shaves, and great local sports conversation.",
     phone: "(972) 382-9988",
     email: "contact@celinabarber.com",
     address: "109 N Ohio St, Celina, TX 75009",
@@ -155,10 +150,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'willow-tree-dentistry',
-    slug: 'willow-tree-dentistry',
     name: "Willow Tree Family Dentistry",
     category: "Health & Beauty",
-    description: "Providing compassionate, state-of-the-art dental care for Celina patients of all ages. From regular checkups to advanced cosmetic restorations, we make smiles healthy and bright in our cozy Preston Road clinic.",
+    description: "Providing compassionate, state-of-the-art dental care for Celina patients of all ages. From regular checkups to advanced cosmetic restorations, we make smiles healthy and bright.",
     phone: "(972) 382-5500",
     email: "frontdesk@willowtreedentistry.com",
     address: "1050 N Preston Rd, Celina, TX 75009",
@@ -171,10 +165,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'preston-road-cleaners',
-    slug: 'preston-road-cleaners',
     name: "Preston Road Cleaners",
     category: "Home & Professional Services",
-    description: "Eco-friendly, modern dry cleaning, custom bridal dress alterations, and speedy same-day laundry services. Conveniently located on Preston Road next to the supermarket. Trusted by Celina families for generations.",
+    description: "Eco-friendly, modern dry cleaning, custom bridal dress alterations, and speedy same-day laundry services. Conveniently located on Preston Road next to the supermarket. Trusted by families.",
     phone: "(469) 555-0188",
     email: "info@prestoncleaners.com",
     address: "1310 S Preston Rd, Celina, TX 75009",
@@ -187,10 +180,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'texas-donut-co',
-    slug: 'texas-donut-co',
     name: "Texas Donut Co.",
     category: "Dining",
-    description: "Fluffy, golden sausage rolls, hand-glazed donuts, fresh apple fritters, and hot roasted breakfast coffee. Start your Celina morning off right with the friendliest drive-thru in the North Texas area!",
+    description: "Fluffy, golden sausage rolls, hand-glazed donuts, fresh apple fritters, and hot roasted breakfast coffee. Start your Celina morning off right with the friendliest drive-thru in town.",
     phone: "(972) 382-7744",
     email: "donuts@texasdonut.com",
     address: "702 Preston Rd, Celina, TX 75009",
@@ -203,10 +195,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-lawn-landscape',
-    slug: 'celina-lawn-landscape',
     name: "Celina Lawn & Landscape",
     category: "Home & Professional Services",
-    description: "Professional residential and commercial turf management, custom flowerbed design, seasonal cleanups, and irrigation repairs. Keep your Celina lawn pristine all year with our local experts.",
+    description: "Professional residential and commercial turf management, custom flowerbed design, seasonal cleanups, and irrigation repairs. Keep your Celina lawn pristine all year with our local expertise.",
     phone: "(972) 555-0120",
     email: "service@celinalawn.com",
     address: "Celina, TX 75009",
@@ -219,10 +210,9 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'bobcat-plumbing',
-    slug: 'bobcat-plumbing',
     name: "Bobcat Plumbing Solutions",
     category: "Home & Professional Services",
-    description: "Fast, reliable, and family-owned plumbing services. Specializing in water heaters, drain cleaning, slab leak repairs, and emergency residential plumbing throughout Celina and Prosper.",
+    description: "Fast, reliable, and family-owned plumbing services. Specializing in water heaters, drain cleaning, slab leak repairs, and emergency residential plumbing throughout Celina and surrounding areas.",
     phone: "(972) 555-4646",
     email: "bobcatplumbing@gmail.com",
     address: "Celina, TX 75009",
@@ -235,7 +225,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'rollertown-beer-co',
-    slug: 'rollertown-beer-co',
     name: "Rollertown Beer Co.",
     category: "Dining",
     description: "Local craft brewery and gathering place, celebrating great Texas beer and community events in downtown Celina.",
@@ -252,7 +241,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'tender-smokehouse-bbq',
-    slug: 'tender-smokehouse-bbq',
     name: "Tender Smokehouse BBQ",
     category: "Dining",
     description: "Highly acclaimed Texas craft barbecue featuring prime brisket, house-made sausage, and sweet peach cobbler.",
@@ -269,7 +257,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'toasted-walnut-market',
-    slug: 'toasted-walnut-market',
     name: "Toasted Walnut Table and Market",
     category: "Dining",
     description: "Freshly sourced farm-to-table lunch specials, gourmet deli sandwiches, and artisanal home goods on the square.",
@@ -286,7 +273,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-animal-hospital',
-    slug: 'celina-animal-hospital',
     name: "Celina Animal Hospital",
     category: "Health & Beauty",
     description: "Comprehensive veterinary care, pet boarding, and grooming services from dedicated local practitioners.",
@@ -303,7 +289,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'grannys-sweeties-bakery',
-    slug: 'grannys-sweeties-bakery',
     name: "Granny's Sweeties Bakery",
     category: "Dining",
     description: "Delicious custom-designed cakes, fresh sugar cookies, and local Southern-style bakery treats.",
@@ -320,7 +305,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'pecan-street-flooring',
-    slug: 'pecan-street-flooring',
     name: "Pecan Street Flooring & Design",
     category: "Home & Professional Services",
     description: "Local showroom featuring hardwood, luxury vinyl plank, tile, and complete custom home remodeling services.",
@@ -337,7 +321,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'crossroads-chiropractic',
-    slug: 'crossroads-chiropractic',
     name: "Crossroads Chiropractic Celina",
     category: "Health & Beauty",
     description: "Dedicated family chiropractic care, spinal adjustments, posture correction, and sports physical therapy.",
@@ -354,7 +337,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'two-29-on-the-square',
-    slug: 'two-29-on-the-square',
     name: "Two 29 On the Square",
     category: "Dining",
     description: "Elegant casual dining, craft cocktails, craft draft beers, and premium steaks overlooking the historic square.",
@@ -371,7 +353,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'brookshires-food-store',
-    slug: 'brookshires-food-store',
     name: "Brookshire's Food Store",
     category: "Shopping & Boutiques",
     description: "Your friendly neighborhood supermarket offering fresh Texas produce, full-service deli, bakery, and pharmacy.",
@@ -388,7 +369,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-insurance-agency',
-    slug: 'celina-insurance-agency',
     name: "Celina Insurance Agency",
     category: "Home & Professional Services",
     description: "Independent insurance brokers offering competitive auto, home, commercial, and life coverage in North Texas.",
@@ -405,7 +385,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'bobcat-auto-repair',
-    slug: 'bobcat-auto-repair',
     name: "Bobcat Auto & Diesel Repair",
     category: "Home & Professional Services",
     description: "Honest automotive maintenance, diesel repair, state inspections, and brake service from certified mechanics.",
@@ -422,7 +401,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-hardware-supply',
-    slug: 'celina-hardware-supply',
     name: "Celina Hardware & Supply",
     category: "Shopping & Boutiques",
     description: "Classic family-owned hardware store providing tools, paint, lawn care, plumbing supplies, and friendly advice.",
@@ -439,7 +417,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-family-fitness',
-    slug: 'celina-family-fitness',
     name: "Celina Family Fitness & Gym",
     category: "Health & Beauty",
     description: "Spacious community fitness center with group classes, free weights, personal trainers, and childcare services.",
@@ -456,7 +433,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'hooligans-hall',
-    slug: 'hooligans-hall',
     name: "Hooligans Hall",
     category: "Activities & Community",
     description: "Live music venue, sports bar, and patio lounge hosting local bands, trivia nights, and Celina community rallies.",
@@ -473,7 +449,6 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-public-library-friends',
-    slug: 'celina-public-library-friends',
     name: "Friends of the Celina Public Library",
     category: "Activities & Community",
     description: "Supporting local literacy programs, toddler story hours, teen coding camps, and historical book clubs in Celina.",
