@@ -30,12 +30,12 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface DirectoryViewProps {
   businesses: Business[];
-  onAddReview: (businessId: string, review: Omit<Review, 'id' | 'createdAt'>) => void;
+  onAddReview: (businessId: string, review: Omit<Review, 'id' | 'createdAt'>) => void | Promise<void>;
   onSelectBusiness: (business: Business) => void;
   selectedBusiness: Business | null;
   onCloseDetail: () => void;
   onUpgradePrompt: (tier: Tier) => void;
-  onClaimBusiness: (businessId: string, email: string) => void;
+  onClaimBusiness: (businessId: string, email: string) => void | Promise<void>;
   isAiEnabled: boolean;
   serverAiAvailable: boolean;
   setActiveTab?: (tab: string) => void;
@@ -181,7 +181,7 @@ export default function DirectoryView({
     }
   };
 
-  const handleReviewSubmit = (e: React.FormEvent) => {
+  const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewAuthor.trim() || !reviewText.trim()) {
       setReviewError('Please fill out both your name and review comment.');
@@ -189,7 +189,7 @@ export default function DirectoryView({
     }
     if (!selectedBusiness) return;
 
-    onAddReview(selectedBusiness.id, {
+    await onAddReview(selectedBusiness.id, {
       authorName: reviewAuthor,
       rating: reviewRating,
       text: reviewText,
@@ -221,8 +221,8 @@ export default function DirectoryView({
         </div>
         <div className="flex items-center gap-3.5 w-full md:w-auto justify-between md:justify-start flex-shrink-0">
           <div className="bg-white border border-orange-200/80 px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-sm">
-            <span className="text-orange-600 font-black text-sm tracking-tight">{claimedBasicCount}/100</span>
-            <span className="text-slate-400 font-semibold text-[9px] uppercase tracking-wider">Slots Claimed</span>
+            <span className="text-orange-700 font-black text-sm tracking-tight">{claimedBasicCount}/100</span>
+            <span className="text-slate-600 font-semibold text-[9px] uppercase tracking-wider">Slots Claimed</span>
           </div>
           {claimedBasicCount >= 100 ? (
             <span className="text-red-600 text-xs font-bold bg-red-50 border border-red-200 px-3 py-2 rounded-xl">ALL FREE SLOTS CLAIMEED</span>
@@ -248,10 +248,10 @@ export default function DirectoryView({
       {businesses.some((b) => b.tier === 'premium') && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-lg font-bold text-slate-900 flex items-center gap-1.5">
+            <h2 className="font-display text-lg font-bold text-slate-900 flex items-center gap-1.5">
               <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
               Featured Partners Spotlight
-            </h3>
+            </h2>
           </div>
           <FeaturedCarousel businesses={businesses} onSelectBusiness={onSelectBusiness} />
         </div>
@@ -408,7 +408,7 @@ export default function DirectoryView({
 
       {/* Category Selection Filter Pills */}
       <div className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Browse by Category</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">Browse by Category</h3>
         <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1" id="category-filter-pills">
           {CATEGORIES.map((cat) => {
             const isSelected = selectedCategory === cat;
@@ -477,11 +477,11 @@ export default function DirectoryView({
                   <div className="p-5 space-y-4">
                     {/* Header line: Category & Badge */}
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-orange-800 bg-orange-100 px-2 py-0.5 rounded-md">
                         {b.category}
                       </span>
                       {b.isUnclaimed ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-600 text-white uppercase tracking-wide shadow-sm border border-rose-500 animate-pulse">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-900 text-white uppercase tracking-wide shadow-sm border border-rose-950">
                           ⚠️ Unclaimed Listing
                         </span>
                       ) : (
@@ -509,7 +509,7 @@ export default function DirectoryView({
                             ))}
                           </div>
                           <span className="text-xs font-bold text-slate-700">{avgRating}</span>
-                          <span className="text-[10px] text-slate-400">({b.reviews.length})</span>
+                          <span className="text-[10px] text-slate-600">({b.reviews.length})</span>
                         </div>
                       )}
                     </div>
@@ -548,12 +548,12 @@ export default function DirectoryView({
                     <div className="space-y-1.5 text-slate-500 text-xs pt-2">
                       {b.address && (isPro || isPremium) ? (
                         <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                          <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                           <span className="truncate">{b.address}</span>
                         </div>
                       ) : b.address ? (
-                        <div className="flex items-center gap-1.5 text-slate-400">
-                          <MapPin className="w-3.5 h-3.5 flex-shrink-0 text-slate-300" />
+                        <div className="flex items-center gap-1.5 text-slate-600">
+                          <MapPin className="w-3.5 h-3.5 flex-shrink-0 text-slate-500" />
                           <span className="italic flex items-center gap-1">
                             Celina, TX <Lock className="w-2.5 h-2.5" />
                           </span>
@@ -561,14 +561,14 @@ export default function DirectoryView({
                       ) : null}
 
                       <div className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                        <Phone className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                         <span>{b.phone}</span>
                       </div>
 
                       {/* Display locked indicator on basic tier for Web and Hours */}
                       {!isPremium && !isPro && (
-                        <div className="flex items-center gap-1.5 text-slate-400/80 text-[11px] pt-1 border-t border-slate-50">
-                          <Lock className="w-3 h-3 text-slate-300" />
+                        <div className="flex items-center gap-1.5 text-slate-600 text-[11px] pt-1 border-t border-slate-100">
+                          <Lock className="w-3 h-3 text-slate-500" />
                           <span>Unlock address & website with Pro</span>
                         </div>
                       )}
@@ -583,7 +583,7 @@ export default function DirectoryView({
                           e.stopPropagation();
                           setClaimTarget(b);
                         }}
-                        className="text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-0.5 cursor-pointer font-bold"
+                        className="text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-0.5 cursor-pointer font-bold"
                       >
                         Claim This Listing Now <ChevronRight className="w-3 h-3" />
                       </button>
@@ -653,7 +653,7 @@ export default function DirectoryView({
                       e.stopPropagation();
                       setClaimTarget(b);
                     }}
-                    className="flex-shrink-0 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 font-bold text-[10px] rounded-lg border border-rose-100 hover:border-rose-200 transition-colors cursor-pointer"
+                    className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 hover:text-rose-950 font-bold text-[10px] rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer"
                   >
                     Claim Now
                   </button>
@@ -1155,10 +1155,10 @@ export default function DirectoryView({
               </div>
 
               <form
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
                   if (!claimEmail || !claimEmail.trim()) return;
-                  onClaimBusiness(claimTarget.id, claimEmail);
+                  await onClaimBusiness(claimTarget.id, claimEmail);
                   setClaimTarget(null);
                   setClaimEmail('');
                 }}

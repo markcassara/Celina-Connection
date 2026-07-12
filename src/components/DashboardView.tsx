@@ -38,17 +38,17 @@ interface DashboardViewProps {
   currentUser: UserProfile;
   setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile>>;
   businesses: Business[];
-  onAddBusiness: (business: any) => string;
+  onAddBusiness: (business: any) => string | Promise<string>;
   onUpdateBusiness: (
     businessIdOrIds: string | string[],
     updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
-  ) => void;
+  ) => void | Promise<void>;
   onUpgradePrompt: (tier: Tier) => void;
-  onDeleteBusiness?: (businessIdOrIds: string | string[]) => void;
-  onResetDatabase?: () => void;
+  onDeleteBusiness?: (businessIdOrIds: string | string[]) => void | Promise<void>;
+  onResetDatabase?: () => void | Promise<void>;
   reportedBugs?: ReportedBug[];
-  onUpdateBugStatus?: (bugId: string, status: ReportedBug['status']) => void;
-  onDeleteBugStatus?: (bugId: string) => void;
+  onUpdateBugStatus?: (bugId: string, status: ReportedBug['status']) => void | Promise<void>;
+  onDeleteBugStatus?: (bugId: string) => void | Promise<void>;
   portalMode: 'owner' | 'admin';
   setPortalMode: (mode: 'owner' | 'admin') => void;
 }
@@ -166,7 +166,7 @@ export default function DashboardView({
   }, [myBusiness?.id, activeSubTab]);
 
   // Instant Test Drive
-  const handleInstantTestDrive = () => {
+  const handleInstantTestDrive = async () => {
     const randomSuffix = Math.random().toString(36).substring(2, 7);
     const guestOwnerId = `guest-owner-${randomSuffix}`;
     const guestBusId = `guest-business-${randomSuffix}`;
@@ -211,7 +211,7 @@ export default function DashboardView({
       ]
     };
 
-    onAddBusiness(guestBus);
+    await onAddBusiness(guestBus);
 
     setCurrentUser({
       id: guestOwnerId,
@@ -281,7 +281,7 @@ export default function DashboardView({
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regEmail || !regBusinessName || !regPhone || !regDesc) {
       alert('Please fill out all onboarding fields.');
@@ -298,7 +298,7 @@ export default function DashboardView({
     const newOwnerId = `owner-${Math.random().toString(36).substring(2, 7)}`;
     
     // Add business to state via parent callback
-    const newBusId = onAddBusiness({
+    const newBusId = await onAddBusiness({
       name: regBusinessName,
       category: regCategory,
       description: regDesc,
@@ -323,7 +323,7 @@ export default function DashboardView({
     setActiveSubTab('profile');
   };
 
-  const handleNewListingSubmit = (e: React.FormEvent) => {
+  const handleNewListingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUser.id === 'owner-lucy') {
       alert('This feature is available in preview mode. Actions and modifications are disabled to preserve the demo environment.');
@@ -338,7 +338,7 @@ export default function DashboardView({
       return;
     }
 
-    const newBusId = onAddBusiness({
+    const newBusId = await onAddBusiness({
       name: newBusName,
       category: newBusCategory,
       description: newBusDesc,
@@ -1809,14 +1809,14 @@ interface AdminDashboardViewProps {
   onUpdateBusiness: (
     businessIdOrIds: string | string[],
     updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
-  ) => void;
-  onAddBusiness: (business: any) => string;
-  onDeleteBusiness?: (businessIdOrIds: string | string[]) => void;
-  onResetDatabase?: () => void;
+  ) => void | Promise<void>;
+  onAddBusiness: (business: any) => string | Promise<string>;
+  onDeleteBusiness?: (businessIdOrIds: string | string[]) => void | Promise<void>;
+  onResetDatabase?: () => void | Promise<void>;
   setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile>>;
-  reportedBugs?: ReportedBug[];
-  onUpdateBugStatus?: (bugId: string, status: ReportedBug['status']) => void;
-  onDeleteBugStatus?: (bugId: string) => void;
+  reportedBugs: ReportedBug[];
+  onUpdateBugStatus?: (bugId: string, status: ReportedBug['status']) => void | Promise<void>;
+  onDeleteBugStatus?: (bugId: string) => void | Promise<void>;
 }
 
 function AdminDashboardView({
@@ -1845,7 +1845,7 @@ function AdminDashboardView({
   const [csvImportSuccess, setCsvImportSuccess] = useState<string | null>(null);
   const [showCsvImporter, setShowCsvImporter] = useState(false);
 
-  const handleCsvImport = (textToParse: string) => {
+  const handleCsvImport = async (textToParse: string) => {
     if (!textToParse.trim()) {
       alert("Please paste some CSV data or select a valid file first.");
       return;
@@ -1888,10 +1888,10 @@ function AdminDashboardView({
     }
 
     let importCount = 0;
-    dataLines.forEach((line) => {
-      if (!line.trim()) return;
+    for (const line of dataLines) {
+      if (!line.trim()) continue;
       const values = parseCsvLine(line);
-      if (values.length === 0 || !values[0]) return;
+      if (values.length === 0 || !values[0]) continue;
 
       const record: Record<string, string> = {};
       headers.forEach((header, index) => {
@@ -1899,7 +1899,7 @@ function AdminDashboardView({
       });
 
       const bName = record['name'] || record['businessname'] || record['title'] || values[0] || '';
-      if (!bName) return;
+      if (!bName) continue;
 
       const bCategory = record['category'] || record['type'] || values[1] || 'Dining';
       const bDesc = record['description'] || record['summary'] || record['desc'] || values[2] || 'Local business listing in Celina, Texas.';
@@ -1924,7 +1924,7 @@ function AdminDashboardView({
         matchedCategory = 'Home & Professional Services';
       }
 
-      onAddBusiness({
+      await onAddBusiness({
         name: bName,
         category: matchedCategory,
         description: bDesc,
@@ -1937,7 +1937,7 @@ function AdminDashboardView({
         website: bWebsite,
       });
       importCount++;
-    });
+    }
 
     setCsvInput('');
     setCsvImportSuccess(`Successfully imported ${importCount} unclaimed listings into the directory!`);
@@ -2074,7 +2074,7 @@ function AdminDashboardView({
     }
   };
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newPhone.trim() || !newDesc.trim()) {
       alert('Please fill out all required fields.');
@@ -2082,7 +2082,7 @@ function AdminDashboardView({
     }
 
     const ownerId = newIsUnclaimed ? '' : `owner-${Math.random().toString(36).substring(2, 7)}`;
-    onAddBusiness({
+    await onAddBusiness({
       name: newName,
       category: newCategory,
       description: newDesc,

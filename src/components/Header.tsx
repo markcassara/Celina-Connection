@@ -77,8 +77,8 @@ export default function Header({
             <h1 className="font-display text-lg font-extrabold tracking-tight text-slate-900 flex items-center gap-1">
               Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">Connection</span>
             </h1>
-            <p className="text-[10px] font-medium tracking-wide text-slate-400 uppercase -mt-0.5 flex items-center gap-0.5">
-              <MapPin className="w-2.5 h-2.5 text-orange-500" /> Texas Business Directory
+            <p className="text-[10px] font-medium tracking-wide text-slate-600 uppercase -mt-0.5 flex items-center gap-0.5">
+              <MapPin className="w-2.5 h-2.5 text-orange-700" /> Texas Business Directory
             </p>
           </div>
         </div>
@@ -98,7 +98,7 @@ export default function Header({
                 onClick={() => setActiveTab(tab.id)}
                 className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                   isActive 
-                    ? 'text-orange-600 font-semibold' 
+                    ? 'text-orange-700 font-semibold' 
                     : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
@@ -195,7 +195,7 @@ export default function Header({
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`text-xs font-medium py-1 px-3 rounded-md transition-colors ${
-                isActive ? 'text-orange-600 bg-orange-50/50 font-semibold' : 'text-slate-500'
+                isActive ? 'text-orange-700 bg-orange-100 font-semibold' : 'text-slate-500'
               }`}
             >
               {tab.label}

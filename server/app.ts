@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import Stripe from "stripe";
 import { GoogleGenAI, Type } from "@google/genai";
+import { CelinaRepository } from "./database.js";
 
 dotenv.config();
 
@@ -88,8 +89,9 @@ async function generateContentWithFallback(ai: GoogleGenAI, params: {
   }
 }
 
-export function createApp() {
+export function createApp(options: { dbPath?: string } = {}) {
   const app = express();
+  const repository = new CelinaRepository(options.dbPath);
   app.use(express.json());
 
   app.get("/api/payment-config", (_req, res) => {
@@ -102,6 +104,91 @@ export function createApp() {
     res.json({
       aiEnabled: !!process.env.GEMINI_API_KEY,
     });
+  });
+
+  app.get("/api/bootstrap", (_req, res) => {
+    res.json({
+      businesses: repository.listBusinesses(),
+      reportedBugs: repository.listBugs(),
+    });
+  });
+
+  app.post("/api/businesses", (req, res) => {
+    const { name, category, description, phone, email, tier } = req.body || {};
+    if (!name || !category || !description || !phone || !email || !tier) {
+      return res.status(400).json({ error: "name, category, description, phone, email, and tier are required" });
+    }
+
+    const business = repository.createBusiness(req.body);
+    return res.status(201).json(business);
+  });
+
+  app.patch("/api/businesses/:id", (req, res) => {
+    const business = repository.updateBusiness(req.params.id, req.body || {});
+    if (!business) {
+      return res.status(404).json({ error: "Business not found" });
+    }
+    return res.json(business);
+  });
+
+  app.delete("/api/businesses/:id", (req, res) => {
+    const deleted = repository.deleteBusiness(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Business not found" });
+    }
+    return res.status(204).send();
+  });
+
+  app.post("/api/businesses/:id/claim", (req, res) => {
+    const { email } = req.body || {};
+    if (!email) {
+      return res.status(400).json({ error: "email is required" });
+    }
+    const claimed = repository.claimBusiness(req.params.id, email);
+    if (!claimed) {
+      return res.status(404).json({ error: "Business not found" });
+    }
+    return res.json(claimed);
+  });
+
+  app.post("/api/businesses/:id/reviews", (req, res) => {
+    const { authorName, rating, text, ownerReply } = req.body || {};
+    if (!authorName || !rating || !text) {
+      return res.status(400).json({ error: "authorName, rating, and text are required" });
+    }
+    const result = repository.addReview(req.params.id, { authorName, rating, text, ownerReply });
+    if (!result) {
+      return res.status(404).json({ error: "Business not found" });
+    }
+    return res.status(201).json(result);
+  });
+
+  app.post("/api/bugs", (req, res) => {
+    const { title, description, category, severity, email } = req.body || {};
+    if (!title || !description || !category || !severity || !email) {
+      return res.status(400).json({ error: "title, description, category, severity, and email are required" });
+    }
+    return res.status(201).json(repository.createBug(req.body));
+  });
+
+  app.patch("/api/bugs/:id", (req, res) => {
+    const updated = repository.updateBug(req.params.id, req.body || {});
+    if (!updated) {
+      return res.status(404).json({ error: "Bug not found" });
+    }
+    return res.json(updated);
+  });
+
+  app.delete("/api/bugs/:id", (req, res) => {
+    const deleted = repository.deleteBug(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "Bug not found" });
+    }
+    return res.status(204).send();
+  });
+
+  app.post("/api/admin/reset", (_req, res) => {
+    return res.json(repository.reset());
   });
 
   app.post("/api/ai/search", async (req, res) => {

@@ -11,6 +11,7 @@ import EventsView from './components/EventsView';
 import CheckoutModal from './components/CheckoutModal';
 import BugReportForm from './components/BugReportForm';
 import AiChatWidget from './components/AiChatWidget';
+import { api } from './lib/api';
 import { MapPin, Heart, ShieldAlert, Sparkles, Star, CheckCircle, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -50,6 +51,7 @@ const INITIAL_BUGS: ReportedBug[] = [
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   
   const [activeTab, setActiveTab] = useState<string>(() => {
     const path = location.pathname.replace('/', '');
@@ -104,8 +106,6 @@ export default function App() {
   const [isAiEnabled, setIsAiEnabled] = useState<boolean>(true);
   const [serverAiAvailable, setServerAiAvailable] = useState<boolean>(true);
   const [dashboardPortalMode, setDashboardPortalMode] = useState<'owner' | 'admin'>('owner');
-
-  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [currentUser, setCurrentUser] = useState<UserProfile>({
     id: '',
     email: '',
@@ -125,6 +125,8 @@ export default function App() {
 
   // Initialize data on mount
   useEffect(() => {
+    let isMounted = true;
+
     // Check AI server configuration status
     fetch('/api/ai-config')
       .then((res) => res.json())
@@ -146,117 +148,104 @@ export default function App() {
         setIsAiEnabled(false);
       });
 
-    let currentBusinesses = INITIAL_BUSINESSES;
-    const cachedBusinesses = localStorage.getItem('celina_businesses_v3');
-    if (cachedBusinesses) {
-      try {
-        const parsed = JSON.parse(cachedBusinesses);
-        if (Array.isArray(parsed)) {
-          currentBusinesses = parsed;
-        } else {
-          currentBusinesses = INITIAL_BUSINESSES;
-          localStorage.setItem('celina_businesses_v3', JSON.stringify(INITIAL_BUSINESSES));
-        }
-        setBusinesses(currentBusinesses);
-      } catch (e) {
-        setBusinesses(INITIAL_BUSINESSES);
-      }
-    } else {
-      setBusinesses(INITIAL_BUSINESSES);
-      localStorage.setItem('celina_businesses_v2', JSON.stringify(INITIAL_BUSINESSES));
-    }
-
-    let user: UserProfile = {
-      id: '',
-      email: '',
-      businessName: '',
-      tier: 'basic',
-      isLoggedIn: false,
-    };
-    const cachedUser = localStorage.getItem('celina_current_user');
-    if (cachedUser) {
-      try {
-        user = JSON.parse(cachedUser);
-        setCurrentUser(user);
-      } catch (e) {
-        // Fallback
-      }
-    }
-
-    let currentBugs = INITIAL_BUGS;
-    const cachedBugs = localStorage.getItem('celina_reported_bugs');
-    if (cachedBugs) {
-      try {
-        currentBugs = JSON.parse(cachedBugs);
-        setReportedBugs(currentBugs);
-      } catch (e) {
-        setReportedBugs(INITIAL_BUGS);
-      }
-    } else {
-      setReportedBugs(INITIAL_BUGS);
-      localStorage.setItem('celina_reported_bugs', JSON.stringify(INITIAL_BUGS));
-    }
-
-    // Process Stripe Redirect Parameters
-    const params = new URLSearchParams(window.location.search);
-    const paymentStatus = params.get('payment_status');
-    const redirectTier = params.get('tier') as Tier | null;
-    const redirectBusinessId = params.get('businessId');
-    const redirectAddonQty = parseInt(params.get('addon_qty') || '0', 10);
-
-    if (paymentStatus === 'success' && redirectTier) {
-      const targetBusId = redirectBusinessId || user.businessId;
-      const updatedBuses = currentBusinesses.map((b) => {
-        if (b.ownerId === user.id || b.id === targetBusId) {
-          return {
-            ...b,
-            tier: redirectTier,
-            featured: redirectTier === 'premium',
-            images: b.images && b.images.length > 0 
-              ? b.images 
-              : ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80'],
-          };
-        }
-        return b;
-      });
-
-      const updatedUser: UserProfile = {
-        ...user,
-        tier: redirectTier,
-        addonSlots: redirectAddonQty,
+    const load = async () => {
+      let user: UserProfile = {
+        id: '',
+        email: '',
+        businessName: '',
+        tier: 'basic',
+        isLoggedIn: false,
       };
 
-      setBusinesses(updatedBuses);
-      setCurrentUser(updatedUser);
-      localStorage.setItem('celina_businesses_v3', JSON.stringify(updatedBuses));
-      localStorage.setItem('celina_current_user', JSON.stringify(updatedUser));
+      const cachedUser = localStorage.getItem('celina_current_user');
+      if (cachedUser) {
+        try {
+          user = JSON.parse(cachedUser);
+          if (isMounted) setCurrentUser(user);
+        } catch {
+          // ignore malformed cached user payload
+        }
+      }
 
-      setPaymentNotification({
-        type: 'success',
-        message: `Stripe Billing Activated! Welcome to ${redirectTier === 'premium' ? 'Premium Partner' : 'Pro Partner'} Membership. Your partner dashboard features are now active!${
-          redirectAddonQty > 0 ? ` Included: ${redirectAddonQty} Additional Business Add-on listing slot(s).` : ''
-        }`,
-      });
+      let currentBusinesses = INITIAL_BUSINESSES;
+      let currentBugs = INITIAL_BUGS;
 
-      // Clear query params to clean up the URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, document.title, newUrl);
-    } else if (paymentStatus === 'cancel') {
-      setPaymentNotification({
-        type: 'cancel',
-        message: 'Stripe subscription setup was cancelled. No charges were made.',
-      });
-      // Clear URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, document.title, newUrl);
-    }
+      try {
+        const bootstrap = await api.bootstrap();
+        currentBusinesses = bootstrap.businesses;
+        currentBugs = bootstrap.reportedBugs;
+      } catch {
+        // fall back to bundled mock data when backend is unavailable
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const paymentStatus = params.get('payment_status');
+      const redirectTier = params.get('tier') as Tier | null;
+      const redirectBusinessId = params.get('businessId');
+      const redirectAddonQty = parseInt(params.get('addon_qty') || '0', 10);
+
+      if (paymentStatus === 'success' && redirectTier) {
+        const targetBusId = redirectBusinessId || user.businessId;
+        currentBusinesses = await Promise.all(currentBusinesses.map(async (business) => {
+          if (business.ownerId !== user.id && business.id !== targetBusId) {
+            return business;
+          }
+
+          const payload: Partial<Business> = {
+            tier: redirectTier,
+            featured: redirectTier === 'premium',
+            images: business.images && business.images.length > 0
+              ? business.images
+              : ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80'],
+          };
+
+          try {
+            return await api.updateBusiness(business.id, payload);
+          } catch {
+            return { ...business, ...payload };
+          }
+        }));
+
+        const updatedUser: UserProfile = {
+          ...user,
+          tier: redirectTier,
+          addonSlots: redirectAddonQty,
+        };
+
+        if (isMounted) {
+          setCurrentUser(updatedUser);
+          setPaymentNotification({
+            type: 'success',
+            message: `Stripe Billing Activated! Welcome to ${redirectTier === 'premium' ? 'Premium Partner' : 'Pro Partner'} Membership. Your partner dashboard features are now active!${
+              redirectAddonQty > 0 ? ` Included: ${redirectAddonQty} Additional Business Add-on listing slot(s).` : ''
+            }`,
+          });
+        }
+        localStorage.setItem('celina_current_user', JSON.stringify(updatedUser));
+
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      } else if (paymentStatus === 'cancel' && isMounted) {
+        setPaymentNotification({
+          type: 'cancel',
+          message: 'Stripe subscription setup was cancelled. No charges were made.',
+        });
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+
+      if (isMounted) {
+        setBusinesses(currentBusinesses);
+        setReportedBugs(currentBugs);
+      }
+    };
+
+    load();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
-  // Update storage on business modifications
-  const updateBusinessesState = (updatedList: Business[]) => {
-    setBusinesses(updatedList);
-    localStorage.setItem('celina_businesses_v3', JSON.stringify(updatedList));
-  };
 
   // Sync user state changes
   useEffect(() => {
@@ -264,112 +253,51 @@ export default function App() {
   }, [currentUser]);
 
   // Review System Handler
-  const handleAddReview = (businessId: string, reviewData: Omit<Review, 'id' | 'createdAt'>) => {
-    const newReview: Review = {
-      id: `rev-${Math.random().toString(36).substring(2, 7)}`,
-      authorName: reviewData.authorName,
-      rating: reviewData.rating,
-      text: reviewData.text,
-      createdAt: new Date().toISOString(),
-    };
-
-    const updated = businesses.map((b) => {
-      if (b.id === businessId) {
-        return {
-          ...b,
-          reviews: [newReview, ...b.reviews],
-        };
-      }
-      return b;
-    });
-
-    updateBusinessesState(updated);
+  const handleAddReview = async (businessId: string, reviewData: Omit<Review, 'id' | 'createdAt'>) => {
+    const result = await api.addReview(businessId, reviewData);
+    setBusinesses((prev) => prev.map((business) => (business.id === businessId ? result.business : business)));
   };
 
   // Directory Registration Handler
-  const handleAddBusiness = (
+  const handleAddBusiness = async (
     busData: Partial<Business> & { name: string; category: string; description: string; phone: string; email: string; tier: Tier }
-  ): string => {
-    const randomIdSuffix = Math.random().toString(36).substring(2, 5);
-    const safeId = busData.id || (busData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + randomIdSuffix);
-    const newBus: Business = {
-      id: safeId,
-      name: busData.name,
-      category: busData.category,
-      description: busData.description,
-      phone: busData.phone,
-      email: busData.email,
-      website: busData.website || '',
-      address: busData.address || '',
-      hours: busData.hours || { monFri: "9:00 AM - 5:00 PM", sat: "10:00 AM - 4:00 PM", sun: "Closed" },
-      logoUrl: busData.logoUrl || '',
-      images: busData.images || [],
-      socialLinks: busData.socialLinks || {},
-      featured: busData.featured || false,
-      ctaText: busData.ctaText || 'Learn More',
-      tier: busData.tier,
-      ownerId: busData.ownerId || '',
-      createdAt: busData.createdAt || new Date().toISOString(),
-      viewsCount: busData.viewsCount || 12,
-      reviews: busData.reviews || [],
-      isUnclaimed: busData.isUnclaimed || false,
-    };
-
-    const updated = [...businesses, newBus];
-    updateBusinessesState(updated);
-    return safeId;
+  ): Promise<string> => {
+    const newBusiness = await api.createBusiness(busData);
+    setBusinesses((prev) => [...prev, newBusiness]);
+    return newBusiness.id;
   };
 
   // Directory Editor Handler
-  const handleUpdateBusiness = (
+  const handleUpdateBusiness = async (
     businessIdOrIds: string | string[],
     updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
-  ) => {
+  ): Promise<void> => {
     const ids = Array.isArray(businessIdOrIds) ? businessIdOrIds : [businessIdOrIds];
-    const updated = businesses.map((b) => {
-      if (ids.includes(b.id)) {
-        const fields = typeof updatedFields === 'function' ? updatedFields(b) : updatedFields;
-        return {
-          ...b,
-          ...fields,
-        };
-      }
-      return b;
-    });
-    updateBusinessesState(updated);
+    const snapshot = businesses;
+
+    const updatedResults = await Promise.all(ids.map(async (id) => {
+      const existing = snapshot.find((business) => business.id === id);
+      if (!existing) return null;
+      const fields = typeof updatedFields === 'function' ? updatedFields(existing) : updatedFields;
+      return api.updateBusiness(id, fields);
+    }));
+
+    setBusinesses((prev) => prev.map((business) => {
+      const updated = updatedResults.find((item) => item?.id === business.id);
+      return updated || business;
+    }));
   };
 
   // Directory Claim Handler
-  const handleClaimBusiness = (businessId: string, email: string) => {
-    const newOwnerId = `owner-${Math.random().toString(36).substring(2, 7)}`;
+  const handleClaimBusiness = async (businessId: string, email: string) => {
     const targetBus = businesses.find((b) => b.id === businessId);
     if (!targetBus) return;
 
-    const updated = businesses.map((b) => {
-      if (b.id === businessId) {
-        return {
-          ...b,
-          ownerId: newOwnerId,
-          isUnclaimed: false,
-          isRegistryOnly: false,
-          email: email,
-        };
-      }
-      return b;
-    });
-    updateBusinessesState(updated);
+    const result = await api.claimBusiness(businessId, email);
+    setBusinesses((prev) => prev.map((business) => (business.id === businessId ? result.business : business)));
 
     // Sync session login as owner
-    setCurrentUser({
-      id: newOwnerId,
-      email: email,
-      businessName: targetBus.name,
-      businessId: businessId,
-      tier: targetBus.tier,
-      isLoggedIn: true,
-      addonSlots: 0,
-      role: 'owner',
-    });
+    setCurrentUser(result.currentUser);
 
     setSelectedBusinessId(null);
     setActiveTab('dashboard');
@@ -381,10 +309,11 @@ export default function App() {
   };
 
   // Directory Delete Handler (Admin Only)
-  const handleDeleteBusiness = (businessIdOrIds: string | string[]) => {
+  const handleDeleteBusiness = async (businessIdOrIds: string | string[]) => {
     const ids = Array.isArray(businessIdOrIds) ? businessIdOrIds : [businessIdOrIds];
+    await Promise.all(ids.map((id) => api.deleteBusiness(id)));
     const updated = businesses.filter((b) => !ids.includes(b.id));
-    updateBusinessesState(updated);
+    setBusinesses(updated);
     if (currentUser.businessId && ids.includes(currentUser.businessId)) {
       const nextBus = updated.find(b => b.ownerId === currentUser.id);
       setCurrentUser((prev) => ({
@@ -400,47 +329,38 @@ export default function App() {
   };
 
   // Bug Report Handlers
-  const handleAddBug = (bugData: Omit<ReportedBug, 'id' | 'createdAt' | 'status'>) => {
-    const newBug: ReportedBug = {
-      ...bugData,
-      id: `bug-${Math.random().toString(36).substring(2, 7)}`,
-      createdAt: new Date().toISOString(),
-      status: 'open',
-    };
-    const updated = [newBug, ...reportedBugs];
-    setReportedBugs(updated);
-    localStorage.setItem('celina_reported_bugs', JSON.stringify(updated));
+  const handleAddBug = async (bugData: Omit<ReportedBug, 'id' | 'createdAt' | 'status'>) => {
+    const newBug = await api.createBug(bugData);
+    setReportedBugs((prev) => [newBug, ...prev]);
     setPaymentNotification({
       type: 'success',
       message: 'Thank you! Your bug report has been submitted successfully and will be reviewed by the admin immediately.',
     });
   };
 
-  const handleUpdateBugStatus = (bugId: string, status: ReportedBug['status']) => {
-    const updated = reportedBugs.map(b => b.id === bugId ? { ...b, status } : b);
-    setReportedBugs(updated);
-    localStorage.setItem('celina_reported_bugs', JSON.stringify(updated));
+  const handleUpdateBugStatus = async (bugId: string, status: ReportedBug['status']) => {
+    const updated = await api.updateBug(bugId, { status });
+    setReportedBugs((prev) => prev.map((bug) => bug.id === bugId ? updated : bug));
   };
 
-  const handleDeleteBugStatus = (bugId: string) => {
-    const updated = reportedBugs.filter(b => b.id !== bugId);
-    setReportedBugs(updated);
-    localStorage.setItem('celina_reported_bugs', JSON.stringify(updated));
+  const handleDeleteBugStatus = async (bugId: string) => {
+    await api.deleteBug(bugId);
+    setReportedBugs((prev) => prev.filter((bug) => bug.id !== bugId));
   };
 
   // Database Reset Handler (Admin Only)
-  const handleResetDatabase = () => {
-    localStorage.removeItem('celina_businesses_v3');
-    setBusinesses(INITIAL_BUSINESSES);
-    localStorage.setItem('celina_businesses_v2', JSON.stringify(INITIAL_BUSINESSES));
+  const handleResetDatabase = async () => {
+    const resetState = await api.resetDatabase();
+    setBusinesses(resetState.businesses);
+    setReportedBugs(resetState.reportedBugs);
     setPaymentNotification({
       type: 'success',
-      message: 'Database successfully reset to initial Celina Connection mock businesses.',
+      message: 'Database successfully reset to the seeded Celina Connection backend state.',
     });
   };
 
   // Checkout Upgrade Handler
-  const handlePaymentSuccess = (tier: Tier, addonQty: number = 0) => {
+  const handlePaymentSuccess = async (tier: Tier, addonQty: number = 0) => {
     // Find all businesses owned by this user
     const myBuses = businesses.filter(
       (b) => b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase())
@@ -487,7 +407,20 @@ export default function App() {
       }
     });
 
-    updateBusinessesState(updated);
+    const changedBusinesses = updated.filter((business, index) => {
+      const original = businesses[index];
+      return original && (original.tier !== business.tier || original.featured !== business.featured || original.images !== business.images);
+    });
+
+    const persisted = await Promise.all(changedBusinesses.map((business) =>
+      api.updateBusiness(business.id, {
+        tier: business.tier,
+        featured: business.featured,
+        images: business.images,
+      })
+    ));
+
+    setBusinesses((prev) => prev.map((business) => persisted.find((item) => item.id === business.id) || business));
 
     // Upgrade active login session
     setCurrentUser((prev) => ({
@@ -736,17 +669,17 @@ export default function App() {
             </div>
 
             {/* Middle Nav Links */}
-            <div className="flex flex-wrap gap-4 text-[11px] font-medium text-slate-400">
-              <button onClick={() => setActiveTab('directory')} className="hover:text-slate-600">Browse Directory</button>
-              <button onClick={() => setActiveTab('pricing')} className="hover:text-slate-600">Membership Plans</button>
-              <button onClick={() => setActiveTab('dashboard')} className="hover:text-slate-600">Onboard Your Business</button>
+            <div className="flex flex-wrap gap-4 text-[11px] font-medium text-slate-600">
+              <button onClick={() => setActiveTab('directory')} className="hover:text-slate-900">Browse Directory</button>
+              <button onClick={() => setActiveTab('pricing')} className="hover:text-slate-900">Membership Plans</button>
+              <button onClick={() => setActiveTab('dashboard')} className="hover:text-slate-900">Onboard Your Business</button>
             </div>
           </div>
 
           <hr className="border-slate-150" />
 
           {/* Bottom Row */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-400">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-600">
             <p className="flex items-center gap-1">
               Made with <Heart className="w-3.5 h-3.5 text-orange-500 fill-orange-500" /> for the Celina, Texas Community.
             </p>
