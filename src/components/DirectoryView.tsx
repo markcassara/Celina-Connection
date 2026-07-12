@@ -631,7 +631,7 @@ export default function DirectoryView({
                 Celina Local Business Registry
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Active community profile placeholders awaiting owner verification. Claim yours to instantly manage and upgrade.
+                Active community profile placeholders awaiting secure owner verification. Instant claiming is paused until verified login is connected.
               </p>
             </div>
           </div>
@@ -655,7 +655,7 @@ export default function DirectoryView({
                     }}
                     className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 hover:text-rose-950 font-bold text-[10px] rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer"
                   >
-                    Claim Now
+                    Claim Review
                   </button>
                 </div>
               ))}
