@@ -11,6 +11,7 @@ import EventsView from './components/EventsView';
 import CheckoutModal from './components/CheckoutModal';
 import BugReportForm from './components/BugReportForm';
 import AiChatWidget from './components/AiChatWidget';
+import SeoHead from './components/SeoHead';
 import { api } from './lib/api';
 import { MapPin, Heart, ShieldAlert, Sparkles, Star, CheckCircle, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -441,6 +442,7 @@ export default function App() {
   if (isGated) {
     return (
       <div className="min-h-screen bg-slate-50/50 text-slate-900 flex flex-col font-sans selection:bg-orange-500 selection:text-white" id="celina-connect-gated-root">
+        <SeoHead activeTab="launch" businessCount={businesses.length} />
         {/* Top Banner Accent */}
         <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400" />
 
@@ -510,6 +512,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans selection:bg-orange-500 selection:text-white" id="celina-connection-root">
+      <SeoHead activeTab={activeTab} selectedBusiness={selectedBusiness} businessCount={businesses.length} />
       {/* Top Banner Accent */}
       <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400" />
 

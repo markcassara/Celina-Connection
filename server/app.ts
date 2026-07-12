@@ -94,6 +94,47 @@ export function createApp(options: { dbPath?: string } = {}) {
   const repository = createRepository(options);
   app.use(express.json());
 
+  const siteUrl = "https://www.celinaconnection.com";
+  const xmlEscape = (value: string) => value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+  app.get("/robots.txt", (_req, res) => {
+    res.type("text/plain").send([
+      "User-agent: *",
+      "Allow: /",
+      "Disallow: /api/",
+      `Sitemap: ${siteUrl}/sitemap.xml`,
+      "",
+    ].join("\n"));
+  });
+
+  app.get("/sitemap.xml", async (_req, res) => {
+    const businesses = await repository.listBusinesses();
+    type SitemapPage = { loc: string; priority: string; changefreq: string; lastmod?: string };
+    const staticPages: SitemapPage[] = [
+      { loc: siteUrl, priority: "1.0", changefreq: "daily" },
+      { loc: `${siteUrl}/pricing`, priority: "0.8", changefreq: "weekly" },
+      { loc: `${siteUrl}/dashboard`, priority: "0.7", changefreq: "weekly" },
+      { loc: `${siteUrl}/launch`, priority: "0.5", changefreq: "monthly" },
+    ];
+    const businessPages = businesses
+      .filter((business) => business.slug || business.id)
+      .map((business) => ({
+        loc: `${siteUrl}/business/${business.slug || business.id}`,
+        priority: business.featured || business.tier === "premium" ? "0.9" : "0.7",
+        changefreq: "weekly",
+        lastmod: business.createdAt,
+      }));
+
+    const urls = [...staticPages, ...businessPages].map((page) => `  <url>\n    <loc>${xmlEscape(page.loc)}</loc>\n    ${page.lastmod ? `<lastmod>${xmlEscape(new Date(page.lastmod).toISOString())}</lastmod>\n    ` : ""}<changefreq>${page.changefreq}</changefreq>\n    <priority>${page.priority}</priority>\n  </url>`).join("\n");
+
+    res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+  });
+
   app.get("/api/payment-config", (_req, res) => {
     res.json({
       stripeEnabled: !!process.env.STRIPE_SECRET_KEY,
