@@ -109,14 +109,15 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
       <div className="relative w-full max-w-4xl mx-auto rounded-3xl overflow-hidden border border-slate-200 bg-white/85 backdrop-blur-md p-6 sm:p-10 md:p-14 shadow-xl flex flex-col items-center justify-between text-center space-y-8 min-h-[620px]" id="launch-container">
         
         {/* Faded Background Image of the Famous Celina Water Tower */}
-        <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none select-none" id="water-tower-background">
-          <div className="absolute inset-0 bg-white/65 z-10" />
-          <div className="absolute inset-0 bg-radial-gradient from-transparent via-white/40 to-white/95 z-20" />
+        <div className="absolute -inset-x-16 -inset-y-12 sm:-inset-x-24 sm:-inset-y-16 md:-inset-x-32 md:-inset-y-20 z-0 overflow-hidden pointer-events-none select-none" id="water-tower-background">
           <img
             src="/celina-water-tower-bg.jpg"
             alt="Celina Water Tower Backdrop"
-            className="absolute inset-0 w-full h-full object-contain object-bottom opacity-30 saturate-75 contrast-125"
+            className="absolute inset-0 w-full h-full object-cover object-center opacity-[0.34] saturate-[0.8] contrast-[1.1] scale-110"
           />
+          <div className="absolute inset-0 bg-white/[0.58] z-10" />
+          <div className="absolute inset-0 bg-gradient-to-b from-white/[0.9] via-white/[0.35] to-white/[0.8] z-20" />
+          <div className="absolute inset-0 bg-radial-gradient from-transparent via-white/[0.2] to-white/[0.92] z-30" />
         </div>
 
         {/* Top: Welcome Badge & Header */}
