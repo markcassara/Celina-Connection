@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Business } from '../types';
 import { Star, Phone, MapPin, ExternalLink, ArrowRight, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { isClaimExpired } from '../utils/claimUtils';
 
 interface FeaturedCarouselProps {
   businesses: Business[];
@@ -13,7 +12,7 @@ export default function FeaturedCarousel({
   businesses,
   onSelectBusiness,
 }: FeaturedCarouselProps) {
-  const featuredList = businesses.filter((b) => (b.tier === 'premium' || b.tier === 'pro' || b.featured) && !isClaimExpired(b));
+  const featuredList = businesses.filter((b) => b.tier === 'premium' || b.tier === 'pro' || b.featured);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   if (featuredList.length === 0) {
