@@ -109,20 +109,14 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
       <div className="relative w-full max-w-4xl mx-auto rounded-3xl overflow-hidden border border-slate-200 bg-white/85 backdrop-blur-md p-6 sm:p-10 md:p-14 shadow-xl flex flex-col items-center justify-between text-center space-y-8 min-h-[620px]" id="launch-container">
         
         {/* Faded Background Image of the Famous Celina Water Tower */}
-        <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none select-none opacity-[0.09]" id="water-tower-background">
-          <div className="absolute inset-0 bg-radial-gradient from-transparent to-white/90 z-10" />
+        <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none select-none" id="water-tower-background">
+          <div className="absolute inset-0 bg-white/70 z-10" />
+          <div className="absolute inset-0 bg-radial-gradient from-transparent to-white/95 z-20" />
           <img
-            src="https://images.squarespace-cdn.com/content/v1/5c1a708212fcfe9a5c8df59f/1547493721345-IIGUFTZFF9R3C579K4X6/Celina-Water-Tower-Square-Center.jpg"
+            src="/celina-water-tower.jpg"
             alt="Celina Water Tower Backdrop"
-            className="w-full h-full object-cover object-center scale-110 saturate-75 contrast-125"
-            referrerPolicy="no-referrer"
+            className="w-full h-full object-cover object-center scale-110 opacity-35 saturate-75 contrast-125"
           />
-          {/* Subtle stylized vector illustration elements matching the actual Celina Water Tower wheat emblem */}
-          <div className="absolute top-[40%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center text-center opacity-30 select-none">
-            <span className="text-sm font-black tracking-widest text-slate-800 uppercase">CELINA</span>
-            <div className="flex gap-1 my-0.5 text-amber-500 text-xs">🌾🌾🌾</div>
-            <span className="text-[10px] font-extrabold tracking-widest text-slate-600 uppercase">TEXAS</span>
-          </div>
         </div>
 
         {/* Top: Welcome Badge & Header */}
