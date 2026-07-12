@@ -176,7 +176,7 @@ export default function Header({
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-slate-900 to-slate-800 text-white hover:from-orange-600 hover:to-amber-500 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
-              <span>Owner Sign In</span>
+              <span>Owners Login</span>
             </button>
           )}
         </div>

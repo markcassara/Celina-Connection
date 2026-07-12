@@ -51,6 +51,7 @@ interface DashboardViewProps {
   onDeleteBugStatus?: (bugId: string) => void | Promise<void>;
   portalMode: 'owner' | 'admin';
   setPortalMode: (mode: 'owner' | 'admin') => void;
+  defaultOwnerView?: 'register' | 'login';
 }
 
 export default function DashboardView({
@@ -67,8 +68,9 @@ export default function DashboardView({
   onDeleteBugStatus,
   portalMode,
   setPortalMode,
+  defaultOwnerView = 'register',
 }: DashboardViewProps) {
-  const [isSigningIn, setIsSigningIn] = useState(false); // Toggle Owner Register vs Owner Login
+  const [isSigningIn, setIsSigningIn] = useState(defaultOwnerView === 'login'); // Toggle Owner Register vs Owner Login
 
   // Owner Login State
   const [ownerLoginEmail, setOwnerLoginEmail] = useState('');
@@ -103,6 +105,12 @@ export default function DashboardView({
   
   // Tab control inside dashboard
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'media' | 'reviews' | 'billing' | 'metrics'>('profile');
+
+  React.useEffect(() => {
+    if (!currentUser.isLoggedIn && portalMode === 'owner') {
+      setIsSigningIn(defaultOwnerView === 'login');
+    }
+  }, [defaultOwnerView, portalMode, currentUser.isLoggedIn]);
 
   // Multi-business list and active selection
   const myBusinesses = businesses.filter(
@@ -234,8 +242,9 @@ export default function DashboardView({
       return;
     }
     const emailLower = ownerLoginEmail.trim().toLowerCase();
-    
-    // Find business owned by this email
+
+    // SECURITY: Email-only lookup is not real authentication. Do not open a
+    // claimed profile just because a visitor knows the business email address.
     const match = businesses.find(b => b.email.toLowerCase() === emailLower);
     if (!match) {
       setOwnerLoginError('We could not find a registered business under that email. Select "Register Free Spot" to get listed.');
@@ -247,20 +256,9 @@ export default function DashboardView({
       return;
     }
 
-    // Success login
-    const ownerId = match.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`;
-    setCurrentUser({
-      id: ownerId,
-      email: match.email,
-      businessName: match.name,
-      businessId: match.id,
-      tier: match.tier,
-      isLoggedIn: true,
-      addonSlots: 0,
-      role: 'owner',
-    });
-    setOwnerLoginError('');
-    setActiveSubTab('profile');
+    setOwnerLoginError(
+      `For your protection, email-only sign-in is disabled for ${match.name}. Owner access needs a verified login link, OTP, or password before this profile can be opened.`
+    );
   };
 
   const handleAdminLoginSubmit = (e: React.FormEvent) => {
@@ -673,7 +671,7 @@ export default function DashboardView({
                 {ownerLoginError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{ownerLoginError}</p>}
 
                 <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
-                  💡 <strong>Tip:</strong> Log back into your profile by typing the email registered to your listing (e.g. <code>lucy@celinaconnection.com</code> or <code>owner-registered</code>).
+                  🔒 <strong>Secure login required:</strong> Email-only access is disabled so nobody can open a profile just by knowing a business email. Add magic-link, OTP, or password authentication before enabling live owner sign-in.
                 </div>
 
                 <button

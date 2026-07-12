@@ -57,6 +57,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>(() => {
     const path = location.pathname.replace('/', '');
     if (path.startsWith('business/')) return 'directory';
+    if (path === 'owner-login' || path === 'admin-login') return path;
     return path || 'directory';
   });
   
@@ -95,6 +96,7 @@ export default function App() {
   const [isGated, setIsGated] = useState<boolean>(() => {
     if (!FORCE_SPLASH_LANDING) return false;
     if (location.pathname.startsWith('/business/')) return false;
+    if (location.pathname === '/owner-login' || location.pathname === '/admin-login') return false;
     const now = new Date().getTime();
     if (now >= launchCampaignTargetDate) return false;
     const savedBypass = sessionStorage.getItem('celina_connection_gated_bypass');
@@ -107,7 +109,9 @@ export default function App() {
   // Primary States with LocalStorage Persistence
   const [isAiEnabled, setIsAiEnabled] = useState<boolean>(true);
   const [serverAiAvailable, setServerAiAvailable] = useState<boolean>(true);
-  const [dashboardPortalMode, setDashboardPortalMode] = useState<'owner' | 'admin'>('owner');
+  const [dashboardPortalMode, setDashboardPortalMode] = useState<'owner' | 'admin'>(() => (
+    location.pathname === '/admin-login' ? 'admin' : 'owner'
+  ));
   const [currentUser, setCurrentUser] = useState<UserProfile>({
     id: '',
     email: '',
@@ -115,6 +119,20 @@ export default function App() {
     tier: 'basic',
     isLoggedIn: false,
   });
+
+  const openOwnerLogin = () => {
+    setIsGated(false);
+    sessionStorage.setItem('celina_connection_gated_bypass', 'true');
+    setDashboardPortalMode('owner');
+    setActiveTab('owner-login');
+  };
+
+  const openAdminLogin = () => {
+    setIsGated(false);
+    sessionStorage.setItem('celina_connection_gated_bypass', 'true');
+    setDashboardPortalMode('admin');
+    setActiveTab('admin-login');
+  };
 
   // UI state overlays
   const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
@@ -435,7 +453,7 @@ export default function App() {
   };
 
   const handleOpenLoginPrompt = () => {
-    setActiveTab('dashboard');
+    openOwnerLogin();
   };
 
   const selectedBusiness = businesses.find((b) => b.id === selectedBusinessId) || null;
@@ -502,9 +520,14 @@ export default function App() {
             <p className="text-slate-500 font-medium">
               © {new Date().getFullYear()} Celina Connection. All Rights Reserved. Launching July 12, 2026.
             </p>
-            <p className="text-[11px] text-slate-400 font-medium">
-              Made with ❤️ for Celina, Texas Community.
-            </p>
+            <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-right">
+              <button onClick={openAdminLogin} className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold underline-offset-4 hover:underline">
+                Admin Login
+              </button>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Made with ❤️ for Celina, Texas Community.
+              </p>
+            </div>
           </div>
         </footer>
       </div>
@@ -610,7 +633,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'dashboard' && (
+        {(activeTab === 'dashboard' || activeTab === 'owner-login' || activeTab === 'admin-login') && (
           <DashboardView
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
@@ -625,6 +648,7 @@ export default function App() {
             onDeleteBugStatus={handleDeleteBugStatus}
             portalMode={dashboardPortalMode}
             setPortalMode={setDashboardPortalMode}
+            defaultOwnerView={activeTab === 'owner-login' ? 'login' : 'register'}
           />
         )}
       </main>
@@ -676,7 +700,8 @@ export default function App() {
             <div className="flex flex-wrap gap-4 text-[11px] font-medium text-slate-600">
               <button onClick={() => setActiveTab('directory')} className="hover:text-slate-900">Browse Directory</button>
               <button onClick={() => setActiveTab('pricing')} className="hover:text-slate-900">Membership Plans</button>
-              <button onClick={() => setActiveTab('dashboard')} className="hover:text-slate-900">Onboard Your Business</button>
+              <button onClick={openOwnerLogin} className="hover:text-slate-900">Owner Login</button>
+              <button onClick={openAdminLogin} className="hover:text-slate-900">Admin Login</button>
             </div>
           </div>
 
