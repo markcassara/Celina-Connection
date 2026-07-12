@@ -552,17 +552,10 @@ export default function DirectoryView({
 
                     {/* Meta details */}
                     <div className="space-y-1.5 text-slate-500 text-xs pt-2">
-                      {b.address && (isPro || isPremium) ? (
+                      {b.address ? (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                           <span className="truncate">{b.address}</span>
-                        </div>
-                      ) : b.address ? (
-                        <div className="flex items-center gap-1.5 text-slate-600">
-                          <MapPin className="w-3.5 h-3.5 flex-shrink-0 text-slate-500" />
-                          <span className="italic flex items-center gap-1">
-                            Celina, TX <Lock className="w-2.5 h-2.5" />
-                          </span>
                         </div>
                       ) : null}
 
@@ -575,7 +568,7 @@ export default function DirectoryView({
                       {!isPremium && !isPro && (
                         <div className="flex items-center gap-1.5 text-slate-600 text-[11px] pt-1 border-t border-slate-100">
                           <Lock className="w-3 h-3 text-slate-500" />
-                          <span>Unlock address & website with Pro</span>
+                          <span>Unlock website & hours with Pro</span>
                         </div>
                       )}
                     </div>
@@ -853,7 +846,7 @@ export default function DirectoryView({
                           Contact Info
                         </h4>
                         <div className="space-y-2 text-slate-700 text-xs font-medium">
-                          {selectedBusiness.address && selectedBusiness.tier !== 'basic' ? (
+                          {selectedBusiness.address ? (
                             <div className="flex items-start gap-2.5">
                               <MapPin className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
                               <div className="flex flex-col">
@@ -872,9 +865,9 @@ export default function DirectoryView({
                             <div className="flex items-start gap-2.5 text-slate-400">
                               <MapPin className="w-4 h-4 text-slate-300 mt-0.5 flex-shrink-0" />
                               <div className="flex flex-col">
-                                <span>Celina, TX (Downtown Square)</span>
-                                <span className="text-[10px] text-orange-600 mt-0.5 flex items-center gap-0.5 font-bold">
-                                  <Lock className="w-2.5 h-2.5" /> Full Address requires Pro
+                                <span>Celina, TX</span>
+                                <span className="text-[10px] text-slate-500 mt-0.5">
+                                  No street address added yet
                                 </span>
                                 <button
                                   id="detail-view-approx-map-btn"

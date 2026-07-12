@@ -17,7 +17,7 @@ export interface Business {
   description: string;
   phone: string;
   email: string;
-  // Pro/Premium unlocked fields
+  // Basic tiers can show an address; website and hours remain Pro/Premium fields
   website?: string;
   address?: string;
   hours?: {

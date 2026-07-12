@@ -277,7 +277,7 @@ export default function PricingView({
               </tr>
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Contact Info & Address</td>
-                <td className="py-3.5 px-4">Basic (No Address)</td>
+                <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
                 <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
                 <td className="py-3.5 px-4 font-bold text-emerald-600">Full Address</td>
               </tr>

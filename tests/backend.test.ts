@@ -6,6 +6,7 @@ import path from 'node:path';
 import { AddressInfo } from 'node:net';
 
 import { createApp } from '../server/app.ts';
+import { buildOwnerProfilePatch } from '../src/lib/ownerProfilePatch.ts';
 
 const ADMIN_TOKEN = 'test-admin-token';
 
@@ -42,6 +43,64 @@ test('GET /api/bootstrap seeds businesses and bug collection', async () => {
     assert.equal(body.reportedBugs.length, 0);
     assert.equal(body.businesses[0].name, "Lucy's on the Square");
   });
+});
+
+test('basic owner profile patches include address but keep website and hours locked', () => {
+  const patch = buildOwnerProfilePatch('basic', {
+    name: 'Celina Bakery',
+    description: 'Fresh bread and pastries.',
+    phone: '(972) 555-2222',
+    email: 'owner@celinabakery.com',
+    category: 'Dining',
+    address: '127 N Ohio St, Celina, TX 75009',
+    website: 'https://celinabakery.com',
+    hours: {
+      monFri: '7:00 AM - 4:00 PM',
+      sat: '8:00 AM - 2:00 PM',
+      sun: 'Closed',
+    },
+    ctaText: 'Order Now',
+    socialLinks: {
+      facebook: 'https://facebook.com/celinabakery',
+    },
+  });
+
+  assert.equal(patch.address, '127 N Ohio St, Celina, TX 75009');
+  assert.equal(patch.website, undefined);
+  assert.equal(patch.hours, undefined);
+  assert.equal(patch.ctaText, undefined);
+  assert.equal(patch.socialLinks, undefined);
+});
+
+test('pro owner profile patches include address website and hours but keep premium fields locked', () => {
+  const patch = buildOwnerProfilePatch('pro', {
+    name: 'Celina Bakery',
+    description: 'Fresh bread and pastries.',
+    phone: '(972) 555-2222',
+    email: 'owner@celinabakery.com',
+    category: 'Dining',
+    address: '127 N Ohio St, Celina, TX 75009',
+    website: 'https://celinabakery.com',
+    hours: {
+      monFri: '7:00 AM - 4:00 PM',
+      sat: '8:00 AM - 2:00 PM',
+      sun: 'Closed',
+    },
+    ctaText: 'Order Now',
+    socialLinks: {
+      facebook: 'https://facebook.com/celinabakery',
+    },
+  });
+
+  assert.equal(patch.address, '127 N Ohio St, Celina, TX 75009');
+  assert.equal(patch.website, 'https://celinabakery.com');
+  assert.deepEqual(patch.hours, {
+    monFri: '7:00 AM - 4:00 PM',
+    sat: '8:00 AM - 2:00 PM',
+    sun: 'Closed',
+  });
+  assert.equal(patch.ctaText, undefined);
+  assert.equal(patch.socialLinks, undefined);
 });
 
 test('POST /api/businesses creates and persists a business', async () => {

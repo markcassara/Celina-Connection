@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { api } from '../lib/api';
+import { buildOwnerProfilePatch } from '../lib/ownerProfilePatch';
 
 interface DashboardViewProps {
   currentUser: UserProfile;
@@ -138,7 +139,7 @@ export default function DashboardView({
   const [editEmail, setEditEmail] = useState(myBusiness?.email || '');
   const [editCategory, setEditCategory] = useState(myBusiness?.category || 'Dining');
   
-  // Pro/Premium unlocked fields
+  // Address is included for Basic; website and hours remain paid-tier fields
   const [editWebsite, setEditWebsite] = useState(myBusiness?.website || '');
   const [editAddress, setEditAddress] = useState(myBusiness?.address || '');
   const [editMonFri, setEditMonFri] = useState(myBusiness?.hours?.monFri || '9:00 AM - 5:00 PM');
@@ -365,33 +366,26 @@ export default function DashboardView({
       return;
     }
 
-    // Build patch based on active tier locks
-    const patch: Partial<Business> = {
+    const patch = buildOwnerProfilePatch(myBusiness.tier, {
       name: editName,
       description: editDesc,
       phone: editPhone,
       email: editEmail,
       category: editCategory,
-    };
-
-    if (myBusiness.tier === 'pro' || myBusiness.tier === 'premium') {
-      patch.website = editWebsite;
-      patch.address = editAddress;
-      patch.hours = {
+      address: editAddress,
+      website: editWebsite,
+      hours: {
         monFri: editMonFri,
         sat: editSat,
         sun: editSun,
-      };
-    }
-
-    if (myBusiness.tier === 'premium') {
-      patch.ctaText = editCtaText;
-      patch.socialLinks = {
+      },
+      ctaText: editCtaText,
+      socialLinks: {
         facebook: editFacebook,
         instagram: editInstagram,
         twitter: editTwitter,
-      };
-    }
+      },
+    });
 
     onUpdateBusiness(myBusiness.id, patch);
     setSaveSuccess(true);
@@ -1153,6 +1147,39 @@ export default function DashboardView({
                 </div>
               </div>
 
+              {/* Location Field (Available for Basic) */}
+              <div className="space-y-4 border-t border-slate-100 pt-5">
+                <div className="flex items-center justify-between">
+                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">Business Location</span>
+                  {isBasic && (
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded flex items-center gap-0.5">
+                      <MapPin className="w-2.5 h-2.5" /> Included with Basic
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Street Address (Celina, TX)
+                  </label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="127 N Ohio St, Celina, TX 75009"
+                      value={editAddress}
+                      onChange={(e) => setEditAddress(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+                  {isBasic && (
+                    <p className="text-[10px] text-slate-500 mt-1.5">
+                      Your full address can show on your free listing so local customers can find you.
+                    </p>
+                  )}
+                </div>
+              </div>
+
               {/* Pro Fields (Locked for Basic) */}
               <div className="space-y-4 border-t border-slate-100 pt-5 relative">
                 <div className="flex items-center justify-between">
@@ -1180,23 +1207,6 @@ export default function DashboardView({
                         placeholder="https://www.yourbusiness.com"
                         value={editWebsite}
                         onChange={(e) => setEditWebsite(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                      Street Address (Celina, TX)
-                    </label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                      <input
-                        type="text"
-                        disabled={isBasic}
-                        placeholder="127 N Ohio St, Celina, TX 75009"
-                        value={editAddress}
-                        onChange={(e) => setEditAddress(e.target.value)}
                         className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
                       />
                     </div>
