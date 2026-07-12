@@ -36,12 +36,12 @@ export default function PricingView({
         'Standard search placement',
         'Basic contact info (Phone, Email)',
         'Business description',
+        'Full street address with Map view',
         '1 image upload',
         'Receive customer reviews',
       ],
       notIncluded: [
         'Hours of operation',
-        'Full street address (City/State only)',
         'Website link',
         'Social media integration',
         'Manage & reply to reviews',
