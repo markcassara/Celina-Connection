@@ -316,22 +316,27 @@ export default function App() {
   };
 
   // Directory Claim Handler
-  const handleClaimBusiness = async (businessId: string, email: string) => {
+  const handleClaimBusiness = async (
+    businessId: string,
+    email: string,
+    details: { requesterName: string; requesterPhone: string; role: string; notes?: string }
+  ) => {
     const targetBus = businesses.find((b) => b.id === businessId);
     if (!targetBus) return;
 
-    const result = await api.claimBusiness(businessId, email);
-    setBusinesses((prev) => prev.map((business) => (business.id === businessId ? result.business : business)));
-
-    // Sync session login as owner
-    setCurrentUser(result.currentUser);
+    await api.createClaimRequest({
+      businessId,
+      requesterEmail: email,
+      requesterName: details.requesterName,
+      requesterPhone: details.requesterPhone,
+      role: details.role,
+      notes: details.notes,
+    });
 
     setSelectedBusinessId(null);
-    setActiveTab('dashboard');
-
     setPaymentNotification({
       type: 'success',
-      message: `Congratulations! Listing for "${targetBus.name}" has been successfully claimed. Welcome to your Owner Dashboard!`,
+      message: `Claim request submitted for "${targetBus.name}". Admin approval is required before dashboard access is enabled.`,
     });
   };
 

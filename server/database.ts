@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { neon } from '@neondatabase/serverless';
 
 import { INITIAL_BUSINESSES } from '../src/data/mockBusinesses.js';
-import type { Business, ReportedBug, Review, Tier, UserProfile } from '../src/types.js';
+import type { Business, ClaimRequest, ReportedBug, Review, Tier, UserProfile } from '../src/types.js';
 
 export interface CreateBusinessInput {
   name: string;
@@ -39,6 +39,16 @@ export interface CreateBugInput {
   email: string;
 }
 
+export interface CreateClaimRequestInput {
+  businessId: string;
+  requesterName: string;
+  requesterEmail: string;
+  requesterPhone: string;
+  role: string;
+  proofUrl?: string;
+  notes?: string;
+}
+
 export interface CelinaDataStore {
   listBusinesses(): Business[] | Promise<Business[]>;
   getBusiness(id: string): Business | null | Promise<Business | null>;
@@ -51,6 +61,9 @@ export interface CelinaDataStore {
   createBug(input: CreateBugInput): ReportedBug | Promise<ReportedBug>;
   updateBug(id: string, updates: Partial<ReportedBug>): ReportedBug | null | Promise<ReportedBug | null>;
   deleteBug(id: string): boolean | Promise<boolean>;
+  createClaimRequest(input: CreateClaimRequestInput): ClaimRequest | null | Promise<ClaimRequest | null>;
+  listClaimRequests(): ClaimRequest[] | Promise<ClaimRequest[]>;
+  updateClaimRequest(id: string, updates: Partial<ClaimRequest>): ClaimRequest | null | Promise<ClaimRequest | null>;
   reset(): { businesses: Business[]; reportedBugs: ReportedBug[] } | Promise<{ businesses: Business[]; reportedBugs: ReportedBug[] }>;
 }
 
@@ -117,6 +130,40 @@ function rowToBug(row: any): ReportedBug {
     email: row.email,
     createdAt: row.created_at,
     status: row.status,
+  };
+}
+
+function rowToClaimRequest(row: any): ClaimRequest {
+  return {
+    id: row.id,
+    businessId: row.business_id,
+    businessName: row.business_name,
+    requesterName: row.requester_name,
+    requesterEmail: row.requester_email,
+    requesterPhone: row.requester_phone,
+    role: row.role,
+    proofUrl: row.proof_url || '',
+    notes: row.notes || '',
+    status: row.status,
+    createdAt: row.created_at,
+    reviewedAt: row.reviewed_at || '',
+  };
+}
+
+function toClaimParams(claim: ClaimRequest) {
+  return {
+    id: claim.id,
+    business_id: claim.businessId,
+    business_name: claim.businessName,
+    requester_name: claim.requesterName,
+    requester_email: claim.requesterEmail,
+    requester_phone: claim.requesterPhone,
+    role: claim.role,
+    proof_url: claim.proofUrl || '',
+    notes: claim.notes || '',
+    status: claim.status,
+    created_at: claim.createdAt,
+    reviewed_at: claim.reviewedAt || '',
   };
 }
 
@@ -203,6 +250,21 @@ export class CelinaRepository implements CelinaDataStore {
         created_at TEXT NOT NULL,
         status TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS claim_requests (
+        id TEXT PRIMARY KEY,
+        business_id TEXT NOT NULL,
+        business_name TEXT NOT NULL,
+        requester_name TEXT NOT NULL,
+        requester_email TEXT NOT NULL,
+        requester_phone TEXT NOT NULL,
+        role TEXT NOT NULL,
+        proof_url TEXT,
+        notes TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT
+      );
     `);
 
     const businessCount = Number((this.db.prepare('SELECT COUNT(*) as count FROM businesses').get() as any).count || 0);
@@ -212,7 +274,7 @@ export class CelinaRepository implements CelinaDataStore {
   }
 
   seedInitialData() {
-    this.db.exec('DELETE FROM businesses; DELETE FROM reported_bugs;');
+    this.db.exec('DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM claim_requests;');
     for (const business of INITIAL_BUSINESSES) {
       this.upsertBusiness(makeBusiness(business as CreateBusinessInput));
     }
@@ -329,6 +391,48 @@ export class CelinaRepository implements CelinaDataStore {
     return result.changes > 0;
   }
 
+  createClaimRequest(input: CreateClaimRequestInput) {
+    const business = this.getBusiness(input.businessId);
+    if (!business) return null;
+    const claim: ClaimRequest = {
+      id: randomId('claim'),
+      businessId: business.id,
+      businessName: business.name,
+      requesterName: input.requesterName,
+      requesterEmail: input.requesterEmail,
+      requesterPhone: input.requesterPhone,
+      role: input.role,
+      proofUrl: input.proofUrl || '',
+      notes: input.notes || '',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      reviewedAt: '',
+    };
+    this.db.prepare(`
+      INSERT INTO claim_requests (id, business_id, business_name, requester_name, requester_email, requester_phone, role, proof_url, notes, status, created_at, reviewed_at)
+      VALUES (@id, @business_id, @business_name, @requester_name, @requester_email, @requester_phone, @role, @proof_url, @notes, @status, @created_at, @reviewed_at)
+    `).run(toClaimParams(claim));
+    return claim;
+  }
+
+  listClaimRequests() {
+    return this.db.prepare('SELECT * FROM claim_requests ORDER BY created_at DESC').all().map(rowToClaimRequest);
+  }
+
+  updateClaimRequest(id: string, updates: Partial<ClaimRequest>) {
+    const current = this.db.prepare('SELECT * FROM claim_requests WHERE id = ?').get(id);
+    if (!current) return null;
+    const claim: ClaimRequest = { ...rowToClaimRequest(current), ...updates, id };
+    this.db.prepare(`
+      UPDATE claim_requests
+      SET business_id = @business_id, business_name = @business_name, requester_name = @requester_name,
+          requester_email = @requester_email, requester_phone = @requester_phone, role = @role,
+          proof_url = @proof_url, notes = @notes, status = @status, created_at = @created_at, reviewed_at = @reviewed_at
+      WHERE id = @id
+    `).run(toClaimParams(claim));
+    return claim;
+  }
+
   reset() {
     this.seedInitialData();
     return { businesses: this.listBusinesses(), reportedBugs: this.listBugs() };
@@ -389,6 +493,22 @@ class PostgresRepository implements CelinaDataStore {
         status TEXT NOT NULL
       )
     `;
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS claim_requests (
+        id TEXT PRIMARY KEY,
+        business_id TEXT NOT NULL,
+        business_name TEXT NOT NULL,
+        requester_name TEXT NOT NULL,
+        requester_email TEXT NOT NULL,
+        requester_phone TEXT NOT NULL,
+        role TEXT NOT NULL,
+        proof_url TEXT,
+        notes TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT
+      )
+    `;
     const rows = await this.sql`SELECT COUNT(*)::int AS count FROM businesses` as any[];
     if (Number(rows[0]?.count || 0) === 0) {
       await this.seedInitialData();
@@ -398,6 +518,7 @@ class PostgresRepository implements CelinaDataStore {
   private async seedInitialData() {
     await this.sql`DELETE FROM businesses`;
     await this.sql`DELETE FROM reported_bugs`;
+    await this.sql`DELETE FROM claim_requests`;
     for (const business of INITIAL_BUSINESSES) {
       await this.upsertBusiness(makeBusiness(business as CreateBusinessInput), false);
     }
@@ -526,6 +647,53 @@ class PostgresRepository implements CelinaDataStore {
     await this.ensureInitialized();
     const rows = await this.sql`DELETE FROM reported_bugs WHERE id = ${id} RETURNING id` as any[];
     return rows.length > 0;
+  }
+
+  async createClaimRequest(input: CreateClaimRequestInput) {
+    const business = await this.getBusiness(input.businessId);
+    if (!business) return null;
+    const claim: ClaimRequest = {
+      id: randomId('claim'),
+      businessId: business.id,
+      businessName: business.name,
+      requesterName: input.requesterName,
+      requesterEmail: input.requesterEmail,
+      requesterPhone: input.requesterPhone,
+      role: input.role,
+      proofUrl: input.proofUrl || '',
+      notes: input.notes || '',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      reviewedAt: '',
+    };
+    const values = toClaimParams(claim);
+    await this.sql`
+      INSERT INTO claim_requests (id, business_id, business_name, requester_name, requester_email, requester_phone, role, proof_url, notes, status, created_at, reviewed_at)
+      VALUES (${values.id}, ${values.business_id}, ${values.business_name}, ${values.requester_name}, ${values.requester_email}, ${values.requester_phone}, ${values.role}, ${values.proof_url}, ${values.notes}, ${values.status}, ${values.created_at}, ${values.reviewed_at})
+    `;
+    return claim;
+  }
+
+  async listClaimRequests() {
+    await this.ensureInitialized();
+    const rows = await this.sql`SELECT * FROM claim_requests ORDER BY created_at DESC` as any[];
+    return rows.map(rowToClaimRequest);
+  }
+
+  async updateClaimRequest(id: string, updates: Partial<ClaimRequest>) {
+    await this.ensureInitialized();
+    const rows = await this.sql`SELECT * FROM claim_requests WHERE id = ${id}` as any[];
+    if (!rows[0]) return null;
+    const claim: ClaimRequest = { ...rowToClaimRequest(rows[0]), ...updates, id };
+    const values = toClaimParams(claim);
+    await this.sql`
+      UPDATE claim_requests
+      SET business_id = ${values.business_id}, business_name = ${values.business_name}, requester_name = ${values.requester_name},
+          requester_email = ${values.requester_email}, requester_phone = ${values.requester_phone}, role = ${values.role},
+          proof_url = ${values.proof_url}, notes = ${values.notes}, status = ${values.status}, created_at = ${values.created_at}, reviewed_at = ${values.reviewed_at}
+      WHERE id = ${values.id}
+    `;
+    return claim;
   }
 
   async reset() {

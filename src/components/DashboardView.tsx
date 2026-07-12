@@ -33,6 +33,7 @@ import {
   Upload
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { api } from '../lib/api';
 
 interface DashboardViewProps {
   currentUser: UserProfile;
@@ -261,9 +262,23 @@ export default function DashboardView({
     );
   };
 
-  const handleAdminLoginSubmit = (e: React.FormEvent) => {
+  const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAdminError('Admin dashboard access is disabled until server-side authentication is connected. This prevents public visitors from accessing admin tools through client-side credentials.');
+    setAdminError('');
+    try {
+      await api.adminLogin(adminPassword);
+      setCurrentUser({
+        id: 'admin',
+        email: adminEmail || 'admin@celinaconnection.com',
+        businessName: 'Celina Connection Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        role: 'admin',
+      });
+      setActiveSubTab('overview');
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Admin login failed.');
+    }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -621,14 +636,14 @@ export default function DashboardView({
                 {adminError && <p className="text-rose-600 text-[11px] font-semibold">{adminError}</p>}
 
                 <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
-                  🔒 <strong>Admin locked:</strong> Client-side admin credentials are disabled for launch safety. Connect server-side authentication before enabling dashboard access.
+                  🔒 <strong>Secure admin:</strong> Admin access now uses a server session cookie. Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET in production.
                 </div>
 
                 <button
                   type="submit"
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
                 >
-                  Admin Access Disabled
+                  Sign In Securely
                 </button>
 
                 <button

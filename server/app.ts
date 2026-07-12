@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import express from "express";
 import dotenv from "dotenv";
 import Stripe from "stripe";
@@ -94,9 +95,40 @@ export function createApp(options: { dbPath?: string } = {}) {
   const repository = createRepository(options);
   app.use(express.json());
 
+  const adminCookieName = "celina_admin_session";
+  const getCookie = (req: express.Request, name: string) => {
+    const cookies = req.header("cookie") || "";
+    const pair = cookies.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
+    return pair ? decodeURIComponent(pair.slice(name.length + 1)) : "";
+  };
+  const makeAdminSession = () => {
+    const secret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_API_TOKEN || "";
+    if (!secret) return "";
+    const issuedAt = Date.now().toString();
+    const nonce = crypto.randomBytes(16).toString("hex");
+    const payload = `${issuedAt}.${nonce}`;
+    const signature = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+    return `${payload}.${signature}`;
+  };
+  const isValidAdminSession = (req: express.Request) => {
+    const secret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_API_TOKEN || "";
+    if (!secret) return false;
+    const session = getCookie(req, adminCookieName);
+    const [issuedAt, nonce, signature] = session.split(".");
+    if (!issuedAt || !nonce || !signature) return false;
+    const ageMs = Date.now() - Number(issuedAt);
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 1000 * 60 * 60 * 12) return false;
+    const expected = crypto.createHmac("sha256", secret).update(`${issuedAt}.${nonce}`).digest("hex");
+    return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  };
   const requireAdminToken: express.RequestHandler = (req, res, next) => {
     const expectedToken = process.env.ADMIN_API_TOKEN;
+    if (isValidAdminSession(req)) return next();
     if (!expectedToken) {
+      const loginConfigured = !!(process.env.ADMIN_PASSWORD && (process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_API_TOKEN));
+      if (loginConfigured) {
+        return res.status(401).json({ error: "Admin authentication is required." });
+      }
       return res.status(503).json({
         error: "Admin actions are disabled until server-side authentication is configured.",
       });
@@ -163,6 +195,32 @@ export function createApp(options: { dbPath?: string } = {}) {
     });
   });
 
+  app.post("/api/admin/login", (req, res) => {
+    const expectedPassword = process.env.ADMIN_PASSWORD;
+    const sessionSecret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_API_TOKEN;
+    if (!expectedPassword || !sessionSecret) {
+      return res.status(503).json({ error: "Admin login is not configured." });
+    }
+    if (req.body?.password !== expectedPassword) {
+      return res.status(401).json({ error: "Invalid admin credentials." });
+    }
+    const session = makeAdminSession();
+    res.setHeader("set-cookie", `${adminCookieName}=${encodeURIComponent(session)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=43200${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
+    return res.json({ authenticated: true });
+  });
+
+  app.post("/api/admin/logout", (_req, res) => {
+    res.setHeader("set-cookie", `${adminCookieName}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
+    return res.json({ authenticated: false });
+  });
+
+  app.get("/api/admin/session", (req, res) => {
+    if (!isValidAdminSession(req)) {
+      return res.status(401).json({ authenticated: false });
+    }
+    return res.json({ authenticated: true });
+  });
+
   app.get("/api/bootstrap", async (_req, res) => {
     res.json({
       businesses: await repository.listBusinesses(),
@@ -178,6 +236,44 @@ export function createApp(options: { dbPath?: string } = {}) {
 
     const business = await repository.createBusiness(req.body);
     return res.status(201).json(business);
+  });
+
+  app.post("/api/claims", async (req, res) => {
+    const { businessId, requesterName, requesterEmail, requesterPhone, role } = req.body || {};
+    if (!businessId || !requesterName || !requesterEmail || !requesterPhone || !role) {
+      return res.status(400).json({ error: "businessId, requesterName, requesterEmail, requesterPhone, and role are required" });
+    }
+    const claim = await repository.createClaimRequest(req.body);
+    if (!claim) {
+      return res.status(404).json({ error: "Business not found" });
+    }
+    return res.status(201).json(claim);
+  });
+
+  app.get("/api/admin/claims", requireAdminToken, async (_req, res) => {
+    return res.json(await repository.listClaimRequests());
+  });
+
+  app.post("/api/admin/claims/:id/approve", requireAdminToken, async (req, res) => {
+    const claims = await repository.listClaimRequests();
+    const claim = claims.find((item) => item.id === req.params.id);
+    if (!claim) {
+      return res.status(404).json({ error: "Claim request not found" });
+    }
+    const claimed = await repository.claimBusiness(claim.businessId, claim.requesterEmail);
+    if (!claimed) {
+      return res.status(404).json({ error: "Business not found" });
+    }
+    const updatedClaim = await repository.updateClaimRequest(claim.id, { status: "approved", reviewedAt: new Date().toISOString() });
+    return res.json({ claim: updatedClaim, business: claimed.business });
+  });
+
+  app.post("/api/admin/claims/:id/reject", requireAdminToken, async (req, res) => {
+    const claim = await repository.updateClaimRequest(req.params.id, { status: "rejected", reviewedAt: new Date().toISOString() });
+    if (!claim) {
+      return res.status(404).json({ error: "Claim request not found" });
+    }
+    return res.json({ claim });
   });
 
   app.patch("/api/businesses/:id", requireAdminToken, async (req, res) => {

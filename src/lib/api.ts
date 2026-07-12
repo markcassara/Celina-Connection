@@ -1,4 +1,4 @@
-import type { Business, ReportedBug, Review, UserProfile } from '../types';
+import type { Business, ClaimRequest, ReportedBug, Review, UserProfile } from '../types';
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -23,6 +23,7 @@ async function request<T>(url: string, init?: RequestInit) {
       'content-type': 'application/json',
       ...(init?.headers || {}),
     },
+    credentials: 'include',
     ...init,
   });
   return readJson<T>(response);
@@ -54,6 +55,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email }),
     });
+  },
+  createClaimRequest(payload: Pick<ClaimRequest, 'businessId' | 'requesterName' | 'requesterEmail' | 'requesterPhone' | 'role'> & Partial<Pick<ClaimRequest, 'proofUrl' | 'notes'>>) {
+    return request<ClaimRequest>('/api/claims', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  adminLogin(password: string) {
+    return request<{ authenticated: boolean }>('/api/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    });
+  },
+  adminSession() {
+    return request<{ authenticated: boolean }>('/api/admin/session');
   },
   addReview(id: string, payload: Omit<Review, 'id' | 'createdAt'>) {
     return request<{ business: Business; review: Review }>(`/api/businesses/${id}/reviews`, {

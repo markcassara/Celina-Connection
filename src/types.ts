@@ -66,3 +66,18 @@ export interface ReportedBug {
   createdAt: string;
   status: 'open' | 'in-progress' | 'resolved';
 }
+
+export interface ClaimRequest {
+  id: string;
+  businessId: string;
+  businessName: string;
+  requesterName: string;
+  requesterEmail: string;
+  requesterPhone: string;
+  role: string;
+  proofUrl?: string;
+  notes?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  reviewedAt?: string;
+}

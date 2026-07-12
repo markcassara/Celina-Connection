@@ -35,7 +35,7 @@ interface DirectoryViewProps {
   selectedBusiness: Business | null;
   onCloseDetail: () => void;
   onUpgradePrompt: (tier: Tier) => void;
-  onClaimBusiness: (businessId: string, email: string) => void | Promise<void>;
+  onClaimBusiness: (businessId: string, email: string, details: { requesterName: string; requesterPhone: string; role: string; notes?: string }) => void | Promise<void>;
   isAiEnabled: boolean;
   serverAiAvailable: boolean;
   setActiveTab?: (tab: string) => void;
@@ -68,6 +68,12 @@ export default function DirectoryView({
   // Claim Listing states
   const [claimTarget, setClaimTarget] = useState<Business | null>(null);
   const [claimEmail, setClaimEmail] = useState('');
+  const [claimName, setClaimName] = useState('');
+  const [claimPhone, setClaimPhone] = useState('');
+  const [claimRole, setClaimRole] = useState('Owner');
+  const [claimNotes, setClaimNotes] = useState('');
+  const [claimError, setClaimError] = useState('');
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
 
   // Calculate claimed basic count dynamically (starting at 92 to simulate high demand)
   const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'basic' && b.ownerId && !b.isUnclaimed).length);
@@ -1150,43 +1156,115 @@ export default function DirectoryView({
                   Claim "{claimTarget.name}"
                 </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  Secure claim verification is temporarily paused for launch safety. Instant email-only claiming was removed because anyone could claim a business by typing an email address.
+                  Submit a secure claim request. An admin will review it before owner access is enabled.
                 </p>
               </div>
 
               <form
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault();
+                  if (!claimTarget) return;
+                  if (!claimName || !claimEmail || !claimPhone || !claimRole) {
+                    setClaimError('Please fill out name, email, phone, and role.');
+                    return;
+                  }
+                  setClaimSubmitting(true);
+                  setClaimError('');
+                  try {
+                    await onClaimBusiness(claimTarget.id, claimEmail, {
+                      requesterName: claimName,
+                      requesterPhone: claimPhone,
+                      role: claimRole,
+                      notes: claimNotes,
+                    });
+                    setClaimTarget(null);
+                    setClaimEmail('');
+                    setClaimName('');
+                    setClaimPhone('');
+                    setClaimRole('Owner');
+                    setClaimNotes('');
+                  } catch (error) {
+                    setClaimError(error instanceof Error ? error.message : 'Claim request failed.');
+                  } finally {
+                    setClaimSubmitting(false);
+                  }
                 }}
                 className="space-y-4"
               >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Your Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Jane Owner"
+                      value={claimName}
+                      onChange={(e) => setClaimName(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Role</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Owner / Manager"
+                      value={claimRole}
+                      onChange={(e) => setClaimRole(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Your Owner Email Address
+                    Business Email Address
                   </label>
                   <input
                     type="email"
-                    disabled
+                    required
                     placeholder="owner@yourcelinabusiness.com"
                     value={claimEmail}
                     onChange={(e) => setClaimEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold text-slate-400 cursor-not-allowed"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
                   />
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="(972) 555-1234"
+                    value={claimPhone}
+                    onChange={(e) => setClaimPhone(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Notes</label>
+                  <textarea
+                    placeholder="Anything that helps verify ownership"
+                    value={claimNotes}
+                    onChange={(e) => setClaimNotes(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 min-h-20"
+                  />
+                </div>
+
+                {claimError && <p className="text-rose-600 text-[11px] font-bold">{claimError}</p>}
+
                 <div className="text-[10px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-150 rounded-xl p-3.5 space-y-1">
-                  <span className="font-bold text-slate-700 block">💡 Competitive Launch Note:</span>
-                  <p>
-                    Claim requests will reopen after magic-link, OTP, or password verification is connected. This keeps business dashboards private and prevents fraudulent claims.
-                  </p>
+                  <span className="font-bold text-slate-700 block">Secure Review:</span>
+                  <p>Submitting this does not grant dashboard access. Admin approval is required first.</p>
                 </div>
 
                 <button
-                  type="button"
-                  disabled
-                  className="w-full py-3 bg-slate-200 text-slate-500 font-bold text-xs rounded-xl cursor-not-allowed"
+                  type="submit"
+                  disabled={claimSubmitting}
+                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-slate-950 font-bold text-xs rounded-xl disabled:opacity-60"
                 >
-                  Secure Claiming Paused
+                  {claimSubmitting ? 'Submitting...' : 'Submit Claim Request'}
                 </button>
               </form>
             </motion.div>

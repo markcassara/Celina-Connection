@@ -75,6 +75,115 @@ test('POST /api/businesses creates and persists a business', async () => {
   });
 });
 
+test('admin login creates an http-only session that authorizes protected routes', async () => {
+  const dbPath = makeDbPath('admin-session');
+  process.env.ADMIN_PASSWORD = 'correct-password';
+  process.env.ADMIN_SESSION_SECRET = 'test-session-secret';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const deniedRes = await fetch(`${baseUrl}/api/admin/session`);
+      assert.equal(deniedRes.status, 401);
+
+      const badLoginRes = await fetch(`${baseUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'wrong-password' }),
+      });
+      assert.equal(badLoginRes.status, 401);
+
+      const loginRes = await fetch(`${baseUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'correct-password' }),
+      });
+      assert.equal(loginRes.status, 200);
+      const cookie = loginRes.headers.get('set-cookie');
+      assert.ok(cookie?.includes('celina_admin_session='));
+      assert.ok(cookie?.includes('HttpOnly'));
+
+      const sessionRes = await fetch(`${baseUrl}/api/admin/session`, {
+        headers: { cookie: cookie || '' },
+      });
+      assert.equal(sessionRes.status, 200);
+
+      const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const bootstrap = await bootstrapRes.json();
+      const target = bootstrap.businesses[0];
+
+      const updateRes = await fetch(`${baseUrl}/api/businesses/${target.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie: cookie || '' },
+        body: JSON.stringify({ featured: true }),
+      });
+      assert.equal(updateRes.status, 200);
+    });
+  } finally {
+    delete process.env.ADMIN_PASSWORD;
+    delete process.env.ADMIN_SESSION_SECRET;
+  }
+});
+
+test('public claim requests can be submitted and reviewed by admin session', async () => {
+  const dbPath = makeDbPath('claim-requests');
+  process.env.ADMIN_PASSWORD = 'correct-password';
+  process.env.ADMIN_SESSION_SECRET = 'test-session-secret';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const bootstrap = await bootstrapRes.json();
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      assert.ok(target);
+
+      const createClaimRes = await fetch(`${baseUrl}/api/claims`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          businessId: target.id,
+          requesterName: 'Owner Person',
+          requesterEmail: 'owner@example.com',
+          requesterPhone: '(972) 555-4444',
+          role: 'Owner',
+          notes: 'I own this business.',
+        }),
+      });
+      assert.equal(createClaimRes.status, 201);
+      const claim = await createClaimRes.json();
+      assert.equal(claim.status, 'pending');
+      assert.equal(claim.businessId, target.id);
+
+      const unauthorizedListRes = await fetch(`${baseUrl}/api/admin/claims`);
+      assert.equal(unauthorizedListRes.status, 401);
+
+      const loginRes = await fetch(`${baseUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'correct-password' }),
+      });
+      const cookie = loginRes.headers.get('set-cookie') || '';
+
+      const listRes = await fetch(`${baseUrl}/api/admin/claims`, { headers: { cookie } });
+      assert.equal(listRes.status, 200);
+      const claims = await listRes.json();
+      assert.equal(claims.length, 1);
+
+      const approveRes = await fetch(`${baseUrl}/api/admin/claims/${claim.id}/approve`, {
+        method: 'POST',
+        headers: { cookie },
+      });
+      assert.equal(approveRes.status, 200);
+      const approved = await approveRes.json();
+      assert.equal(approved.claim.status, 'approved');
+      assert.equal(approved.business.isUnclaimed, false);
+      assert.equal(approved.business.email, 'owner@example.com');
+    });
+  } finally {
+    delete process.env.ADMIN_PASSWORD;
+    delete process.env.ADMIN_SESSION_SECRET;
+  }
+});
+
 test('POST /api/businesses/:id/claim requires admin auth and works with a server token', async () => {
   const dbPath = makeDbPath('claim-business');
   process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
