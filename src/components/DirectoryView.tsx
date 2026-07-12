@@ -244,8 +244,8 @@ export default function DirectoryView({
         </div>
       </div>
 
-      {/* Featured Businesses Spotlight (Only premium show here) - Now at the very top as requested */}
-      {businesses.some((b) => b.tier === 'premium') && (
+      {/* Featured Businesses Spotlight */}
+      {businesses.some((b) => b.tier === 'premium' || b.tier === 'pro' || b.featured) && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-bold text-slate-900 flex items-center gap-1.5">

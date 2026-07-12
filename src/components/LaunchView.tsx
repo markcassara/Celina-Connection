@@ -110,12 +110,12 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
         
         {/* Faded Background Image of the Famous Celina Water Tower */}
         <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none select-none" id="water-tower-background">
-          <div className="absolute inset-0 bg-white/70 z-10" />
-          <div className="absolute inset-0 bg-radial-gradient from-transparent to-white/95 z-20" />
+          <div className="absolute inset-0 bg-white/65 z-10" />
+          <div className="absolute inset-0 bg-radial-gradient from-transparent via-white/40 to-white/95 z-20" />
           <img
-            src="/celina-water-tower.jpg"
+            src="/celina-water-tower-bg.jpg"
             alt="Celina Water Tower Backdrop"
-            className="w-full h-full object-cover object-center scale-110 opacity-35 saturate-75 contrast-125"
+            className="absolute inset-0 w-full h-full object-contain object-bottom opacity-30 saturate-75 contrast-125"
           />
         </div>
 
