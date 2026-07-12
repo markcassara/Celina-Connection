@@ -180,8 +180,15 @@ export default function App() {
       const cachedUser = localStorage.getItem('celina_current_user');
       if (cachedUser) {
         try {
-          user = JSON.parse(cachedUser);
-          if (isMounted) setCurrentUser(user);
+          const parsedUser = JSON.parse(cachedUser) as UserProfile;
+          // SECURITY: localStorage is user-controlled. Never restore an admin
+          // session from client storage; real admin auth must be server-issued.
+          if (parsedUser.role === 'admin') {
+            localStorage.removeItem('celina_current_user');
+          } else {
+            user = parsedUser;
+            if (isMounted) setCurrentUser(user);
+          }
         } catch {
           // ignore malformed cached user payload
         }

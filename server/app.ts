@@ -94,6 +94,22 @@ export function createApp(options: { dbPath?: string } = {}) {
   const repository = createRepository(options);
   app.use(express.json());
 
+  const requireAdminToken: express.RequestHandler = (req, res, next) => {
+    const expectedToken = process.env.ADMIN_API_TOKEN;
+    if (!expectedToken) {
+      return res.status(503).json({
+        error: "Admin actions are disabled until server-side authentication is configured.",
+      });
+    }
+
+    const providedToken = req.header("x-admin-token");
+    if (providedToken !== expectedToken) {
+      return res.status(401).json({ error: "Admin authentication is required." });
+    }
+
+    return next();
+  };
+
   const siteUrl = "https://www.celinaconnection.com";
   const xmlEscape = (value: string) => value
     .replace(/&/g, "&amp;")
@@ -164,7 +180,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     return res.status(201).json(business);
   });
 
-  app.patch("/api/businesses/:id", async (req, res) => {
+  app.patch("/api/businesses/:id", requireAdminToken, async (req, res) => {
     const business = await repository.updateBusiness(req.params.id, req.body || {});
     if (!business) {
       return res.status(404).json({ error: "Business not found" });
@@ -172,7 +188,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     return res.json(business);
   });
 
-  app.delete("/api/businesses/:id", async (req, res) => {
+  app.delete("/api/businesses/:id", requireAdminToken, async (req, res) => {
     const deleted = await repository.deleteBusiness(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: "Business not found" });
@@ -180,7 +196,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     return res.status(204).send();
   });
 
-  app.post("/api/businesses/:id/claim", async (req, res) => {
+  app.post("/api/businesses/:id/claim", requireAdminToken, async (req, res) => {
     const { email } = req.body || {};
     if (!email) {
       return res.status(400).json({ error: "email is required" });
@@ -212,7 +228,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     return res.status(201).json(await repository.createBug(req.body));
   });
 
-  app.patch("/api/bugs/:id", async (req, res) => {
+  app.patch("/api/bugs/:id", requireAdminToken, async (req, res) => {
     const updated = await repository.updateBug(req.params.id, req.body || {});
     if (!updated) {
       return res.status(404).json({ error: "Bug not found" });
@@ -220,7 +236,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     return res.json(updated);
   });
 
-  app.delete("/api/bugs/:id", async (req, res) => {
+  app.delete("/api/bugs/:id", requireAdminToken, async (req, res) => {
     const deleted = await repository.deleteBug(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: "Bug not found" });
@@ -228,7 +244,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     return res.status(204).send();
   });
 
-  app.post("/api/admin/reset", async (_req, res) => {
+  app.post("/api/admin/reset", requireAdminToken, async (_req, res) => {
     return res.json(await repository.reset());
   });
 

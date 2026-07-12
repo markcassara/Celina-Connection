@@ -263,20 +263,7 @@ export default function DashboardView({
 
   const handleAdminLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminEmail.trim().toLowerCase() === 'mark@legacywealthco.com' && adminPassword === 'Alpha@2026!') {
-      setCurrentUser({
-        id: 'admin-mark',
-        email: 'mark@legacywealthco.com',
-        businessName: 'Master Admin',
-        tier: 'premium',
-        isLoggedIn: true,
-        addonSlots: 0,
-        role: 'admin',
-      });
-      setAdminError('');
-    } else {
-      setAdminError('Invalid admin email or password. Please try again.');
-    }
+    setAdminError('Admin dashboard access is disabled until server-side authentication is connected. This prevents public visitors from accessing admin tools through client-side credentials.');
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -610,7 +597,7 @@ export default function DashboardView({
                   <input
                     type="email"
                     required
-                    placeholder="mark@legacywealthco.com"
+                    placeholder="admin email"
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
@@ -634,14 +621,14 @@ export default function DashboardView({
                 {adminError && <p className="text-rose-600 text-[11px] font-semibold">{adminError}</p>}
 
                 <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
-                  ⚠️ <strong>Note:</strong> Log in as system administrator using the credentials from the platform live specification config.
+                  🔒 <strong>Admin locked:</strong> Client-side admin credentials are disabled for launch safety. Connect server-side authentication before enabling dashboard access.
                 </div>
 
                 <button
                   type="submit"
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
                 >
-                  Authorize Admin Entry
+                  Admin Access Disabled
                 </button>
 
                 <button
@@ -2180,7 +2167,7 @@ function AdminDashboardView({
             Celina Connection Control Panel
           </h2>
           <p className="text-slate-400 text-xs font-semibold">
-            Logged in as <span className="text-white">mark@legacywealthco.com</span> • Operational Control Active
+            Admin tools require server-side authentication before operational control is enabled.
           </p>
         </div>
 

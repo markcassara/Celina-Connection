@@ -7,6 +7,8 @@ import { AddressInfo } from 'node:net';
 
 import { createApp } from '../server/app.ts';
 
+const ADMIN_TOKEN = 'test-admin-token';
+
 async function withServer(dbPath: string, run: (baseUrl: string) => Promise<void>) {
   const app = createApp({ dbPath });
   const server = app.listen(0);
@@ -73,29 +75,100 @@ test('POST /api/businesses creates and persists a business', async () => {
   });
 });
 
-test('POST /api/businesses/:id/claim returns updated business and owner session payload', async () => {
+test('POST /api/businesses/:id/claim requires admin auth and works with a server token', async () => {
   const dbPath = makeDbPath('claim-business');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const bootstrap = await bootstrapRes.json();
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      assert.ok(target);
+
+      const unauthenticatedClaimRes = await fetch(`${baseUrl}/api/businesses/${target.id}/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'attacker@example.com' }),
+      });
+      assert.equal(unauthenticatedClaimRes.status, 401);
+
+      const claimRes = await fetch(`${baseUrl}/api/businesses/${target.id}/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ email: 'owner@example.com' }),
+      });
+
+      assert.equal(claimRes.status, 200);
+      const claimed = await claimRes.json();
+      assert.equal(claimed.business.id, target.id);
+      assert.equal(claimed.business.isUnclaimed, false);
+      assert.equal(claimed.business.email, 'owner@example.com');
+      assert.equal(claimed.currentUser.email, 'owner@example.com');
+      assert.equal(claimed.currentUser.businessId, target.id);
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
+});
+
+test('destructive business and admin endpoints are disabled when admin auth is not configured', async () => {
+  const dbPath = makeDbPath('admin-auth-disabled');
+  delete process.env.ADMIN_API_TOKEN;
 
   await withServer(dbPath, async (baseUrl) => {
     const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
     const bootstrap = await bootstrapRes.json();
-    const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
-    assert.ok(target);
+    const target = bootstrap.businesses[0];
 
-    const claimRes = await fetch(`${baseUrl}/api/businesses/${target.id}/claim`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'owner@example.com' }),
-    });
+    const protectedCalls = [
+      fetch(`${baseUrl}/api/businesses/${target.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Tampered Name' }),
+      }),
+      fetch(`${baseUrl}/api/businesses/${target.id}`, { method: 'DELETE' }),
+      fetch(`${baseUrl}/api/businesses/${target.id}/claim`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'attacker@example.com' }),
+      }),
+      fetch(`${baseUrl}/api/admin/reset`, { method: 'POST' }),
+    ];
 
-    assert.equal(claimRes.status, 200);
-    const claimed = await claimRes.json();
-    assert.equal(claimed.business.id, target.id);
-    assert.equal(claimed.business.isUnclaimed, false);
-    assert.equal(claimed.business.email, 'owner@example.com');
-    assert.equal(claimed.currentUser.email, 'owner@example.com');
-    assert.equal(claimed.currentUser.businessId, target.id);
+    for (const res of await Promise.all(protectedCalls)) {
+      assert.equal(res.status, 503);
+    }
   });
+});
+
+test('destructive business and admin endpoints reject missing or wrong admin token', async () => {
+  const dbPath = makeDbPath('admin-auth-required');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const bootstrap = await bootstrapRes.json();
+      const target = bootstrap.businesses[0];
+
+      const protectedCalls = [
+        fetch(`${baseUrl}/api/businesses/${target.id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', 'x-admin-token': 'wrong-token' },
+          body: JSON.stringify({ name: 'Tampered Name' }),
+        }),
+        fetch(`${baseUrl}/api/businesses/${target.id}`, { method: 'DELETE' }),
+        fetch(`${baseUrl}/api/admin/reset`, { method: 'POST' }),
+      ];
+
+      for (const res of await Promise.all(protectedCalls)) {
+        assert.equal(res.status, 401);
+      }
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
 });
 
 test('POST /api/businesses/:id/reviews appends a persisted review', async () => {
@@ -129,60 +202,78 @@ test('POST /api/businesses/:id/reviews appends a persisted review', async () => 
   });
 });
 
-test('bug endpoints create, update, delete, and reset', async () => {
+test('bug endpoints create publicly, then update, delete, and reset with admin auth', async () => {
   const dbPath = makeDbPath('bugs-and-reset');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
 
-  await withServer(dbPath, async (baseUrl) => {
-    const createBugRes = await fetch(`${baseUrl}/api/bugs`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: 'Broken logo upload',
-        description: 'PNG upload fails in dashboard.',
-        category: 'functional',
-        severity: 'high',
-        email: 'owner@example.com',
-      }),
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const createBugRes = await fetch(`${baseUrl}/api/bugs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Broken logo upload',
+          description: 'PNG upload fails in dashboard.',
+          category: 'functional',
+          severity: 'high',
+          email: 'owner@example.com',
+        }),
+      });
+
+      assert.equal(createBugRes.status, 201);
+      const createdBug = await createBugRes.json();
+
+      const unauthorizedUpdateBugRes = await fetch(`${baseUrl}/api/bugs/${createdBug.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved' }),
+      });
+      assert.equal(unauthorizedUpdateBugRes.status, 401);
+
+      const updateBugRes = await fetch(`${baseUrl}/api/bugs/${createdBug.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ status: 'resolved' }),
+      });
+      assert.equal(updateBugRes.status, 200);
+
+      const bootstrapWithBugRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const withBug = await bootstrapWithBugRes.json();
+      assert.equal(withBug.reportedBugs.length, 1);
+      assert.equal(withBug.reportedBugs[0].status, 'resolved');
+
+      const deleteBugRes = await fetch(`${baseUrl}/api/bugs/${createdBug.id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-token': ADMIN_TOKEN },
+      });
+      assert.equal(deleteBugRes.status, 204);
+
+      const createBusinessRes = await fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Reset Target',
+          category: 'Dining',
+          description: 'Will be removed by reset.',
+          phone: '(972) 555-3333',
+          email: 'reset@example.com',
+          tier: 'basic',
+        }),
+      });
+      assert.equal(createBusinessRes.status, 201);
+
+      const resetRes = await fetch(`${baseUrl}/api/admin/reset`, {
+        method: 'POST',
+        headers: { 'x-admin-token': ADMIN_TOKEN },
+      });
+      assert.equal(resetRes.status, 200);
+      const resetBody = await resetRes.json();
+      assert.ok(Array.isArray(resetBody.businesses));
+      assert.ok(Array.isArray(resetBody.reportedBugs));
+      assert.equal(resetBody.reportedBugs.length, 0);
+      assert.equal(resetBody.businesses.some((business: any) => business.name === 'Reset Target'), false);
     });
-
-    assert.equal(createBugRes.status, 201);
-    const createdBug = await createBugRes.json();
-
-    const updateBugRes = await fetch(`${baseUrl}/api/bugs/${createdBug.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ status: 'resolved' }),
-    });
-    assert.equal(updateBugRes.status, 200);
-
-    const bootstrapWithBugRes = await fetch(`${baseUrl}/api/bootstrap`);
-    const withBug = await bootstrapWithBugRes.json();
-    assert.equal(withBug.reportedBugs.length, 1);
-    assert.equal(withBug.reportedBugs[0].status, 'resolved');
-
-    const deleteBugRes = await fetch(`${baseUrl}/api/bugs/${createdBug.id}`, { method: 'DELETE' });
-    assert.equal(deleteBugRes.status, 204);
-
-    const createBusinessRes = await fetch(`${baseUrl}/api/businesses`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Reset Target',
-        category: 'Dining',
-        description: 'Will be removed by reset.',
-        phone: '(972) 555-3333',
-        email: 'reset@example.com',
-        tier: 'basic',
-      }),
-    });
-    assert.equal(createBusinessRes.status, 201);
-
-    const resetRes = await fetch(`${baseUrl}/api/admin/reset`, { method: 'POST' });
-    assert.equal(resetRes.status, 200);
-    const resetBody = await resetRes.json();
-    assert.ok(Array.isArray(resetBody.businesses));
-    assert.ok(Array.isArray(resetBody.reportedBugs));
-    assert.equal(resetBody.reportedBugs.length, 0);
-    assert.equal(resetBody.businesses.some((business: any) => business.name === 'Reset Target'), false);
-  });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
 });
