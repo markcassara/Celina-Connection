@@ -94,6 +94,7 @@ export default function App() {
   const launchCampaignTargetDate = new Date("2026-07-12T09:00:00-05:00").getTime();
   const [isGated, setIsGated] = useState<boolean>(() => {
     if (!FORCE_SPLASH_LANDING) return false;
+    if (location.pathname.startsWith('/business/')) return false;
     const now = new Date().getTime();
     if (now >= launchCampaignTargetDate) return false;
     const savedBypass = sessionStorage.getItem('celina_connection_gated_bypass');
