@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Trophy, Flame, ShieldCheck, Zap, ArrowRight, Star, Heart, CheckCircle2, Lock } from 'lucide-react';
+import { Clock, Trophy, Flame, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Business } from '../types';
 
@@ -106,7 +106,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
         )}
       </AnimatePresence>
 
-      <div className="relative w-full max-w-4xl mx-auto rounded-3xl overflow-hidden border border-slate-200 bg-white/85 backdrop-blur-md p-6 sm:p-12 md:p-16 shadow-xl flex flex-col items-center justify-between text-center space-y-10 min-h-[750px]" id="launch-container">
+      <div className="relative w-full max-w-4xl mx-auto rounded-3xl overflow-hidden border border-slate-200 bg-white/85 backdrop-blur-md p-6 sm:p-10 md:p-14 shadow-xl flex flex-col items-center justify-between text-center space-y-8 min-h-[620px]" id="launch-container">
         
         {/* Faded Background Image of the Famous Celina Water Tower */}
         <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none select-none opacity-[0.09]" id="water-tower-background">
@@ -129,20 +129,15 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
         <div className="space-y-4 max-w-2xl mx-auto z-10">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-orange-500/10 border border-orange-500/20 text-orange-600 rounded-full text-[10px] font-extrabold uppercase tracking-widest shadow-xs">
             <Flame className="w-3.5 h-3.5 animate-pulse text-orange-500" />
-            Official Pre-Launch Portal
+            Pre-Launch
           </div>
-          
-          <p className="text-xs font-bold text-amber-600 uppercase tracking-widest">
-            Welcome to Celina Connection
-          </p>
 
           <h1 className="font-display text-4xl sm:text-6xl font-black text-slate-950 tracking-tight leading-none">
-            The Premier <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-amber-500 to-amber-600">Business Registry</span> Hub
+            Celina's <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-amber-500 to-amber-600">Local Business</span> Hub
           </h1>
           
           <p className="text-slate-500 font-medium text-xs sm:text-sm max-w-xl mx-auto leading-relaxed">
-            The countdown is ON for Celina's ultimate virtual commerce platform and business ecosystem. 
-            We are partnering with local entrepreneurs to showcase the absolute best of North Texas commerce.
+            Find local favorites. Support Celina businesses. Launching soon.
           </p>
         </div>
 
@@ -169,7 +164,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
 
           <div className="flex items-center justify-center gap-1.5 text-xs font-extrabold text-orange-600 animate-pulse tracking-wide uppercase">
             <Clock className="w-3.5 h-3.5" />
-            {timeLeft.isExpired ? "🎉 WE ARE LIVE! EXPLORE THE PLATFORM!" : "⏳ Launching Sunday, July 12, 2026 at 9:00 AM CST"}
+            {timeLeft.isExpired ? "🎉 We are live" : "Launch: Sunday, July 12 · 9 AM"}
           </div>
         </div>
 
@@ -179,10 +174,10 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
             <div className="text-left space-y-0.5">
               <h3 className="font-display text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
                 <Trophy className="w-4 h-4 text-amber-500 animate-bounce" />
-                Lifetime Free Spots Left
+                Free Listings Left
               </h3>
               <p className="text-[10px] text-slate-500 font-medium">
-                Capped at exactly 100 listings to incentivize early momentum!
+                First 100 Celina businesses.
               </p>
             </div>
             <span className="text-[10px] font-extrabold text-orange-600 bg-orange-100/60 border border-orange-200 px-2.5 py-1 rounded-lg">
@@ -200,8 +195,8 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
               />
             </div>
             <div className="flex justify-between text-[9px] font-extrabold text-slate-400 uppercase tracking-widest">
-              <span>{claimedBusinesses.length} Secured Spots</span>
-              <span className="text-orange-600 font-black">{spotsAvailable} slots available</span>
+              <span>{claimedBusinesses.length} claimed</span>
+              <span className="text-orange-600 font-black">{spotsAvailable} available</span>
             </div>
           </div>
 
@@ -210,12 +205,12 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
             onClick={() => setActiveTab('dashboard')}
             className="w-full py-3.5 bg-gradient-to-r from-orange-600 via-orange-500 to-amber-500 text-white hover:from-orange-700 hover:to-amber-600 font-black text-xs uppercase tracking-widest rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-2 transition-all hover:scale-[1.01] hover:shadow-lg active:scale-95"
           >
-            <span>Claim Your Free Listing Now</span>
+            <span>Claim Free Listing</span>
             <ArrowRight className="w-4 h-4 text-white" />
           </button>
           
           <p className="text-[9px] text-slate-400 font-medium">
-            No credit card required. Claiming takes less than 2 minutes. Secure your digital storefront today!
+            Free. No credit card. About 2 minutes.
           </p>
         </div>
 
