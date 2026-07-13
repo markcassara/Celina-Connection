@@ -2066,6 +2066,8 @@ function AdminDashboardView({
   const [editIsUnclaimed, setEditIsUnclaimed] = useState(true);
   const [editAddress, setEditAddress] = useState('');
   const [editWebsite, setEditWebsite] = useState('');
+  const [editLogoUrl, setEditLogoUrl] = useState('');
+  const [editImages, setEditImages] = useState<string[]>([]);
 
   // Handle opening the Edit modal
   const openEditModal = (bus: Business) => {
@@ -2079,6 +2081,34 @@ function AdminDashboardView({
     setEditIsUnclaimed(!!bus.isUnclaimed);
     setEditAddress(bus.address || '');
     setEditWebsite(bus.website || '');
+    setEditLogoUrl(bus.logoUrl || '');
+    setEditImages((bus.images || []).slice(0, maxImagesForTier(bus.tier)));
+  };
+
+  const readImageFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Image upload failed.'));
+    reader.readAsDataURL(file);
+  });
+
+  const maxImagesForTier = (tier: Tier) => tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
+
+  const handleAdminLogoUpload = async (file?: File | null) => {
+    if (!file) return;
+    setEditLogoUrl(await readImageFileAsDataUrl(file));
+  };
+
+  const handleAdminGalleryUpload = async (files?: FileList | null) => {
+    if (!files || !editingBusiness) return;
+    const limit = maxImagesForTier(editTier || editingBusiness.tier);
+    const remaining = Math.max(0, limit - editImages.length);
+    if (remaining === 0) {
+      alert(`This listing tier supports up to ${limit} gallery image${limit === 1 ? '' : 's'}.`);
+      return;
+    }
+    const nextImages = await Promise.all(Array.from(files).slice(0, remaining).map(readImageFileAsDataUrl));
+    setEditImages((current) => [...current, ...nextImages].slice(0, limit));
   };
 
   // Stats calculation
@@ -2205,6 +2235,8 @@ function AdminDashboardView({
       isUnclaimed: editIsUnclaimed,
       address: editAddress,
       website: editWebsite,
+      logoUrl: editLogoUrl,
+      images: editImages.slice(0, maxImagesForTier(editTier)),
       ownerId: editIsUnclaimed ? '' : editingBusiness.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`,
     });
 
@@ -3088,7 +3120,11 @@ function AdminDashboardView({
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Membership Tier</label>
                   <select
                     value={editTier}
-                    onChange={(e) => setEditTier(e.target.value as Tier)}
+                    onChange={(e) => {
+                      const nextTier = e.target.value as Tier;
+                      setEditTier(nextTier);
+                      setEditImages((current) => current.slice(0, maxImagesForTier(nextTier)));
+                    }}
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
                   >
                     <option value="basic">Basic (Free)</option>
@@ -3144,6 +3180,93 @@ function AdminDashboardView({
                   rows={2.5}
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 font-semibold"
                 />
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700">Admin Listing Media</h4>
+                    <p className="text-[10px] font-semibold text-slate-400">
+                      Upload a logo and gallery photos for this business. {maxImagesForTier(editTier)} gallery image{maxImagesForTier(editTier) === 1 ? '' : 's'} allowed on {editTier}.
+                    </p>
+                  </div>
+                  {editLogoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setEditLogoUrl('')}
+                      className="text-[10px] font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                    >
+                      Remove logo
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-[90px_1fr] gap-4 items-center">
+                  <div className="h-20 w-20 rounded-2xl overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
+                    {editLogoUrl ? (
+                      <img src={editLogoUrl} alt="Admin logo preview" className="h-full w-full object-cover" />
+                    ) : (
+                      <Building2 className="h-8 w-8 text-slate-300" />
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:border-orange-300 hover:text-orange-600 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Logo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleAdminLogoUpload(e.target.files?.[0])}
+                        className="hidden"
+                      />
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="Or paste a hosted logo image URL"
+                      value={editLogoUrl.startsWith('data:') ? '' : editLogoUrl}
+                      onChange={(e) => setEditLogoUrl(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gallery Images ({editImages.length}/{maxImagesForTier(editTier)})</span>
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 hover:border-orange-300 hover:text-orange-600 cursor-pointer">
+                      <Upload className="w-3 h-3" />
+                      <span>Upload Gallery Images</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => handleAdminGalleryUpload(e.target.files)}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  {editImages.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {editImages.map((image, index) => (
+                        <div key={`${image}-${index}`} className="relative group aspect-square rounded-xl overflow-hidden bg-white border border-slate-200">
+                          <img src={image} alt={`Gallery ${index + 1}`} className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setEditImages((current) => current.filter((_, idx) => idx !== index))}
+                            className="absolute right-1 top-1 rounded-full bg-white/90 p-1 text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            title="Remove gallery image"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-center text-[10px] font-semibold text-slate-400">
+                      No gallery images yet. Upload photos of the storefront, team, products, or services.
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">

@@ -269,10 +269,14 @@ export function createApp(options: { dbPath?: string } = {}) {
     isLoggedIn: true,
     role: 'owner',
   }) : null;
+  const imageLimitForTier = (tier: string) => tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
   const sanitizeOwnerBusinessUpdates = (tier: string, updates: any) => {
     const allowed: any = {};
-    for (const key of ['name', 'description', 'phone', 'email', 'category', 'address', 'logoUrl', 'images', 'reviews']) {
+    for (const key of ['name', 'description', 'phone', 'email', 'category', 'address', 'logoUrl', 'reviews']) {
       if (updates[key] !== undefined) allowed[key] = updates[key];
+    }
+    if (Array.isArray(updates.images)) {
+      allowed.images = updates.images.slice(0, imageLimitForTier(tier));
     }
     if (tier === 'pro' || tier === 'premium') {
       if (updates.website !== undefined) allowed.website = updates.website;

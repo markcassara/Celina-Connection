@@ -411,6 +411,8 @@ test('owner login supports password sign-in and owner-only safe profile updates'
         website: 'https://locked-on-basic.example',
         tier: 'premium',
         featured: true,
+        logoUrl: 'data:image/png;base64,logo',
+        images: ['data:image/png;base64,one', 'data:image/png;base64,two'],
       }),
     });
     assert.equal(updateRes.status, 200);
@@ -420,14 +422,28 @@ test('owner login supports password sign-in and owner-only safe profile updates'
     assert.equal(updated.website, '');
     assert.equal(updated.tier, 'basic');
     assert.equal(updated.featured, false);
+    assert.equal(updated.logoUrl, 'data:image/png;base64,logo');
+    assert.deepEqual(updated.images, ['data:image/png;base64,one']);
 
     const bootstrap = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
     const persisted = bootstrap.businesses.find((business: any) => business.id === registered.business.id);
     assert.equal(persisted.address, '123 Main St, Celina, TX 75009');
+    assert.equal(persisted.logoUrl, 'data:image/png;base64,logo');
+    assert.deepEqual(persisted.images, ['data:image/png;base64,one']);
     });
   } finally {
     delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
   }
+});
+
+test('admin listing edit modal exposes profile info plus logo and image management controls', () => {
+  const dashboardSource = fs.readFileSync(path.join(process.cwd(), 'src/components/DashboardView.tsx'), 'utf8');
+
+  assert.match(dashboardSource, /Admin Listing Media/);
+  assert.match(dashboardSource, /Upload Logo/);
+  assert.match(dashboardSource, /Upload Gallery Images/);
+  assert.match(dashboardSource, /Business Description/);
+  assert.match(dashboardSource, /Website URL/);
 });
 
 test('self registration rejects spam traps, too-fast submissions, duplicate emails, and weak passwords', async () => {
