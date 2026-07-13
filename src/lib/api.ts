@@ -45,6 +45,36 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  updateOwnBusiness(id: string, payload: Partial<Business>) {
+    return request<Business>(`/api/owner/businesses/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  ownerRegister(payload: Partial<Business> & { name: string; category: string; description: string; phone: string; email: string; password: string; startedAt: number; company?: string }) {
+    return request<{ business: Business; currentUser?: UserProfile; requiresEmailVerification?: boolean; message?: string; verificationUrl?: string }>('/api/owner/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  ownerResendVerification(email: string) {
+    return request<{ message: string; verificationUrl?: string }>('/api/owner/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+  ownerVerifyEmail(token: string) {
+    return request<{ business: Business; currentUser: UserProfile; verified: boolean }>(`/api/owner/verify-email?token=${encodeURIComponent(token)}`);
+  },
+  ownerLogin(email: string, password: string) {
+    return request<{ business: Business; currentUser: UserProfile }>('/api/owner/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  },
+  ownerSession() {
+    return request<{ authenticated: boolean; business: Business; currentUser: UserProfile }>('/api/owner/session');
+  },
   deleteBusiness(id: string) {
     return request<void>(`/api/businesses/${id}`, {
       method: 'DELETE',

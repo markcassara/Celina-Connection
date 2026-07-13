@@ -205,7 +205,50 @@ export default function App() {
         // fall back to bundled mock data when backend is unavailable
       }
 
+      try {
+        const ownerSession = await api.ownerSession();
+        if (ownerSession?.authenticated && ownerSession.currentUser) {
+          user = ownerSession.currentUser;
+          currentBusinesses = currentBusinesses.map((business) =>
+            business.id === ownerSession.business.id ? ownerSession.business : business
+          );
+          if (!currentBusinesses.some((business) => business.id === ownerSession.business.id)) {
+            currentBusinesses = [...currentBusinesses, ownerSession.business];
+          }
+          if (isMounted) setCurrentUser(user);
+        }
+      } catch {
+        // no active owner cookie
+      }
+
       const params = new URLSearchParams(window.location.search);
+      const emailVerificationToken = params.get('token');
+      if (location.pathname === '/verify-email' && emailVerificationToken) {
+        try {
+          const verified = await api.ownerVerifyEmail(emailVerificationToken);
+          user = verified.currentUser;
+          currentBusinesses = currentBusinesses.filter((business) => business.id !== verified.business.id);
+          currentBusinesses = [...currentBusinesses, verified.business];
+          if (isMounted) {
+            setCurrentUser(user);
+            localStorage.setItem('celina_current_user', JSON.stringify(user));
+            setPaymentNotification({
+              type: 'success',
+              message: 'Email verified — your owner dashboard is active.',
+            });
+            setActiveTab('dashboard');
+            navigate('/dashboard?verified=1', { replace: true });
+          }
+        } catch (error) {
+          if (isMounted) {
+            setPaymentNotification({
+              type: 'error',
+              message: error instanceof Error ? error.message : 'Verification link is invalid or expired.',
+            });
+            setActiveTab('owner-login');
+          }
+        }
+      }
       const paymentStatus = params.get('payment_status');
       const redirectTier = params.get('tier') as Tier | null;
       const redirectBusinessId = params.get('businessId');
@@ -294,7 +337,33 @@ export default function App() {
     return newBusiness.id;
   };
 
-  // Directory Editor Handler
+  const handleOwnerRegister = async (
+    payload: Partial<Business> & { name: string; category: string; description: string; phone: string; email: string; password: string; startedAt: number; company?: string }
+  ) => {
+    const result = await api.ownerRegister(payload);
+    if (!result.requiresEmailVerification) {
+      setBusinesses((prev) => [...prev.filter((business) => business.id !== result.business.id), result.business]);
+    }
+    if (result.currentUser) {
+      setCurrentUser(result.currentUser);
+    }
+    return result;
+  };
+
+  const handleOwnerLogin = async (email: string, password: string) => {
+    const result = await api.ownerLogin(email, password);
+    setBusinesses((prev) => [...prev.filter((business) => business.id !== result.business.id), result.business]);
+    setCurrentUser(result.currentUser);
+    return result;
+  };
+
+  const handleOwnerUpdateBusiness = async (id: string, fields: Partial<Business>) => {
+    const updated = await api.updateOwnBusiness(id, fields);
+    setBusinesses((prev) => prev.map((business) => business.id === updated.id ? updated : business));
+    return updated;
+  };
+
+  // Directory Update Handler
   const handleUpdateBusiness = async (
     businessIdOrIds: string | string[],
     updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
@@ -651,6 +720,9 @@ export default function App() {
             setCurrentUser={setCurrentUser}
             businesses={businesses}
             onAddBusiness={handleAddBusiness}
+            onOwnerRegister={handleOwnerRegister}
+            onOwnerLogin={handleOwnerLogin}
+            onOwnerUpdateBusiness={handleOwnerUpdateBusiness}
             onUpdateBusiness={handleUpdateBusiness}
             onUpgradePrompt={(tier) => setTargetTier(tier)}
             onDeleteBusiness={handleDeleteBusiness}

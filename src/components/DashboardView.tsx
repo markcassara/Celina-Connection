@@ -41,6 +41,9 @@ interface DashboardViewProps {
   setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile>>;
   businesses: Business[];
   onAddBusiness: (business: any) => string | Promise<string>;
+  onOwnerRegister: (payload: Partial<Business> & { name: string; category: string; description: string; phone: string; email: string; password: string; startedAt: number; company?: string }) => Promise<{ business: Business; currentUser?: UserProfile; requiresEmailVerification?: boolean; message?: string }>;
+  onOwnerLogin: (email: string, password: string) => Promise<{ business: Business; currentUser: UserProfile }>;
+  onOwnerUpdateBusiness: (businessId: string, updatedFields: Partial<Business>) => Promise<Business>;
   onUpdateBusiness: (
     businessIdOrIds: string | string[],
     updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
@@ -61,6 +64,9 @@ export default function DashboardView({
   setCurrentUser,
   businesses,
   onAddBusiness,
+  onOwnerRegister,
+  onOwnerLogin,
+  onOwnerUpdateBusiness,
   onUpdateBusiness,
   onUpgradePrompt,
   onDeleteBusiness,
@@ -76,6 +82,7 @@ export default function DashboardView({
 
   // Owner Login State
   const [ownerLoginEmail, setOwnerLoginEmail] = useState('');
+  const [ownerLoginPassword, setOwnerLoginPassword] = useState('');
   const [ownerLoginError, setOwnerLoginError] = useState('');
 
   // Admin Login State
@@ -104,6 +111,9 @@ export default function DashboardView({
   const [regCategory, setRegCategory] = useState('Dining');
   const [regPhone, setRegPhone] = useState('');
   const [regDesc, setRegDesc] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regCompany, setRegCompany] = useState('');
+  const [regFormStartedAt, setRegFormStartedAt] = useState(Date.now());
   
   // Tab control inside dashboard
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'media' | 'reviews' | 'billing' | 'metrics'>('profile');
@@ -111,6 +121,7 @@ export default function DashboardView({
   React.useEffect(() => {
     if (!currentUser.isLoggedIn && portalMode === 'owner') {
       setIsSigningIn(defaultOwnerView === 'login');
+      setRegFormStartedAt(Date.now());
     }
   }, [defaultOwnerView, portalMode, currentUser.isLoggedIn]);
 
@@ -131,6 +142,12 @@ export default function DashboardView({
 
   // Active business being edited
   const myBusiness = myBusinesses.find((b) => b.id === selectedListingId) || myBusinesses[0] || null;
+  const updateMyBusiness = (fields: Partial<Business>) => {
+    if (!myBusiness) return Promise.resolve();
+    return currentUser.role === 'owner'
+      ? onOwnerUpdateBusiness(myBusiness.id, fields).then(() => undefined)
+      : Promise.resolve(onUpdateBusiness(myBusiness.id, fields));
+  };
 
   // Form field bindings (pre-filled inside useEffect or conditionally)
   const [editName, setEditName] = useState(myBusiness?.name || '');
@@ -237,30 +254,22 @@ export default function DashboardView({
     setActiveSubTab('profile');
   };
 
-  const handleOwnerLoginSubmit = (e: React.FormEvent) => {
+  const handleOwnerLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ownerLoginEmail || !ownerLoginEmail.trim()) {
-      setOwnerLoginError('Please enter your email.');
-      return;
-    }
-    const emailLower = ownerLoginEmail.trim().toLowerCase();
-
-    // SECURITY: Email-only lookup is not real authentication. Do not open a
-    // claimed profile just because a visitor knows the business email address.
-    const match = businesses.find(b => b.email.toLowerCase() === emailLower);
-    if (!match) {
-      setOwnerLoginError('We could not find a registered business under that email. Select "Register Free Spot" to get listed.');
+    setOwnerLoginError('');
+    if (!ownerLoginEmail || !ownerLoginEmail.trim() || !ownerLoginPassword) {
+      setOwnerLoginError('Please enter your email and password.');
       return;
     }
 
-    if (match.isUnclaimed) {
-      setOwnerLoginError('This business is unclaimed. Please find and claim this profile on the home directory first.');
-      return;
+    try {
+      const result = await onOwnerLogin(ownerLoginEmail.trim(), ownerLoginPassword);
+      setCurrentUser(result.currentUser);
+      setSelectedListingId(result.business.id);
+      setActiveSubTab('profile');
+    } catch (error) {
+      setOwnerLoginError(error instanceof Error ? error.message : 'Owner login failed.');
     }
-
-    setOwnerLoginError(
-      `For your protection, email-only sign-in is disabled for ${match.name}. Owner access needs a verified login link, OTP, or password before this profile can be opened.`
-    );
   };
 
   const handleAdminLoginSubmit = async (e: React.FormEvent) => {
@@ -284,8 +293,12 @@ export default function DashboardView({
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regEmail || !regBusinessName || !regPhone || !regDesc) {
-      alert('Please fill out all onboarding fields.');
+    if (!regEmail || !regBusinessName || !regPhone || !regDesc || !regPassword) {
+      alert('Please fill out all onboarding fields, including your password.');
+      return;
+    }
+    if (regPassword.length < 10) {
+      alert('Please use a password of at least 10 characters.');
       return;
     }
 
@@ -296,32 +309,37 @@ export default function DashboardView({
       return;
     }
 
-    const newOwnerId = `owner-${Math.random().toString(36).substring(2, 7)}`;
-    
-    // Add business to state via parent callback
-    const newBusId = await onAddBusiness({
-      name: regBusinessName,
-      category: regCategory,
-      description: regDesc,
-      phone: regPhone,
-      email: regEmail,
-      tier: 'basic', // Starts free
-      ownerId: newOwnerId,
-    });
+    setIsRegistering(true);
+    try {
+      const result = await onOwnerRegister({
+        name: regBusinessName,
+        category: regCategory,
+        description: regDesc,
+        phone: regPhone,
+        email: regEmail,
+        password: regPassword,
+        tier: 'basic',
+        startedAt: regFormStartedAt,
+        company: regCompany,
+      });
 
-    // Log user in
-    setCurrentUser({
-      id: newOwnerId,
-      email: regEmail,
-      businessName: regBusinessName,
-      businessId: newBusId,
-      tier: 'basic',
-      isLoggedIn: true,
-      addonSlots: 0,
-      role: 'owner',
-    });
+      if (result.requiresEmailVerification || !result.currentUser) {
+        alert(result.message || 'Check your email to verify your listing before signing in.');
+        setIsSigningIn(true);
+        setOwnerLoginEmail(regEmail);
+        setRegPassword('');
+        return;
+      }
 
-    setActiveSubTab('profile');
+      setCurrentUser(result.currentUser);
+      setSelectedListingId(result.business.id);
+      setActiveSubTab('profile');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Registration failed. Please try again.');
+      setRegFormStartedAt(Date.now());
+    } finally {
+      setIsRegistering(false);
+    }
   };
 
   const handleNewListingSubmit = async (e: React.FormEvent) => {
@@ -387,7 +405,17 @@ export default function DashboardView({
       },
     });
 
-    onUpdateBusiness(myBusiness.id, patch);
+    if (currentUser.role === 'owner') {
+      onOwnerUpdateBusiness(myBusiness.id, patch)
+        .then(() => {
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
+        })
+        .catch((error) => alert(error instanceof Error ? error.message : 'Unable to save profile changes.'));
+      return;
+    }
+
+    updateMyBusiness(patch);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
@@ -409,7 +437,7 @@ export default function DashboardView({
       return rev;
     });
 
-    onUpdateBusiness(myBusiness.id, { reviews: updatedReviews });
+    updateMyBusiness({ reviews: updatedReviews });
     // Clear input
     setReplyInputs((prev) => ({ ...prev, [reviewId]: '' }));
   };
@@ -450,7 +478,7 @@ export default function DashboardView({
 
     try {
       const uploadedImages = await Promise.all(filesToUse.map(readFileAsDataUrl));
-      onUpdateBusiness(myBusiness.id, {
+      updateMyBusiness({
         images: [...currentImages, ...uploadedImages],
       });
     } catch (error) {
@@ -467,7 +495,7 @@ export default function DashboardView({
       return;
     }
     const filtered = myBusiness.images.filter((_, idx) => idx !== index);
-    onUpdateBusiness(myBusiness.id, { images: filtered });
+    updateMyBusiness({ images: filtered });
   };
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -483,7 +511,7 @@ export default function DashboardView({
 
     try {
       const logoDataUrl = await readFileAsDataUrl(file);
-      onUpdateBusiness(myBusiness.id, { logoUrl: logoDataUrl });
+      updateMyBusiness({ logoUrl: logoDataUrl });
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Unable to upload the selected logo.');
     } finally {
@@ -498,7 +526,7 @@ export default function DashboardView({
       return;
     }
 
-    onUpdateBusiness(myBusiness.id, { logoUrl: '' });
+    updateMyBusiness({ logoUrl: '' });
   };
 
   // If NOT logged in, show onboarding portal
@@ -574,7 +602,10 @@ export default function DashboardView({
               <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
                 <button
                   type="button"
-                  onClick={() => setIsSigningIn(false)}
+                  onClick={() => {
+                    setIsSigningIn(false);
+                    setRegFormStartedAt(Date.now());
+                  }}
                   className={`text-[11px] font-bold pb-1 cursor-pointer transition-all ${
                     !isSigningIn ? 'text-orange-600 border-b-2 border-orange-500' : 'text-slate-400 hover:text-slate-600'
                   }`}
@@ -664,10 +695,24 @@ export default function DashboardView({
                   />
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Enter your owner password"
+                    value={ownerLoginPassword}
+                    onChange={(e) => setOwnerLoginPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                </div>
+
                 {ownerLoginError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{ownerLoginError}</p>}
 
                 <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
-                  🔒 <strong>Secure login required:</strong> Email-only access is disabled so nobody can open a profile just by knowing a business email. Add magic-link, OTP, or password authentication before enabling live owner sign-in.
+                  🔒 <strong>Secure owner login:</strong> Password sign-in uses a server-issued HttpOnly session cookie, so owners can safely return and manage their own listing.
                 </div>
 
                 <button
@@ -752,11 +797,39 @@ export default function DashboardView({
                   />
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Create Owner Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={10}
+                    placeholder="At least 10 characters"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">You’ll use this to return and manage your free listing.</p>
+                </div>
+
+                <div className="hidden" aria-hidden="true">
+                  <label>Company website</label>
+                  <input
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={regCompany}
+                    onChange={(e) => setRegCompany(e.target.value)}
+                  />
+                </div>
+
                 <button
                   type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-100 transition-all cursor-pointer"
+                  disabled={isRegistering}
+                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-100 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Register Free Listing
+                  {isRegistering ? 'Creating Secure Listing…' : 'Register Free Listing'}
                 </button>
               </form>
             )}
@@ -1510,7 +1583,7 @@ export default function DashboardView({
                             <button
                               onClick={() => {
                                 setReplyInputs((prev) => ({ ...prev, [rev.id]: rev.ownerReply || '' }));
-                                onUpdateBusiness(myBusiness.id, {
+                                updateMyBusiness({
                                   reviews: myBusiness.reviews.map((r) => r.id === rev.id ? { ...r, ownerReply: undefined } : r)
                                 });
                               }}

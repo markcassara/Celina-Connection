@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AddressInfo } from 'node:net';
+import { AddressInfo, createServer } from 'node:net';
 
 import { createApp } from '../server/app.ts';
 import { buildOwnerProfilePatch } from '../src/lib/ownerProfilePatch.ts';
@@ -28,6 +28,95 @@ function makeDbPath(name: string) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'celina-backend-test-'));
   return path.join(dir, `${name}.sqlite`);
 }
+
+async function withFakeSmtp(run: (port: number, messages: string[]) => Promise<void>) {
+  const messages: string[] = [];
+  const server = createServer((socket) => {
+    socket.setEncoding('utf8');
+    let dataMode = false;
+    let message = '';
+    socket.write('220 fake-smtp.local ESMTP\r\n');
+    socket.on('data', (chunk) => {
+      for (const line of String(chunk).split(/\r?\n/)) {
+        if (!line && !dataMode) continue;
+        if (dataMode) {
+          if (line === '.') {
+            messages.push(message);
+            message = '';
+            dataMode = false;
+            socket.write('250 Message accepted\r\n');
+          } else {
+            message += `${line}\n`;
+          }
+          continue;
+        }
+        const upper = line.toUpperCase();
+        if (upper.startsWith('EHLO') || upper.startsWith('HELO')) socket.write('250-fake-smtp.local\r\n250 AUTH PLAIN LOGIN\r\n');
+        else if (upper.startsWith('AUTH')) socket.write('235 Authentication successful\r\n');
+        else if (upper.startsWith('MAIL FROM') || upper.startsWith('RCPT TO')) socket.write('250 OK\r\n');
+        else if (upper.startsWith('DATA')) {
+          dataMode = true;
+          socket.write('354 End data with <CR><LF>.<CR><LF>\r\n');
+        } else if (upper.startsWith('QUIT')) {
+          socket.write('221 Bye\r\n');
+          socket.end();
+        } else socket.write('250 OK\r\n');
+      }
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  const { port } = server.address() as AddressInfo;
+  try {
+    await run(port, messages);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+}
+
+test('owner verification email can be delivered through SMTP configuration', async () => {
+  const dbPath = makeDbPath('smtp-verification');
+
+  await withFakeSmtp(async (smtpPort, messages) => {
+    process.env.SMTP_HOST = '127.0.0.1';
+    process.env.SMTP_PORT = String(smtpPort);
+    process.env.SMTP_USER = 'hello@celinaconnection.com';
+    process.env.SMTP_PASS = 'workspace-app-password';
+    process.env.SMTP_SECURE = 'false';
+    process.env.SMTP_FROM = 'Celina Connection <hello@celinaconnection.com>';
+    process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+    delete process.env.RESEND_API_KEY;
+    delete process.env.BREVO_API_KEY;
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/api/owner/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Workspace Mail Test',
+            category: 'Home & Professional Services',
+            description: 'A test listing for SMTP delivery.',
+            phone: '(972) 555-0199',
+            email: 'owner@workspacemail.com',
+            password: 'StrongPass123!',
+            startedAt: Date.now() - 4000,
+            company: '',
+          }),
+        });
+        assert.equal(res.status, 201);
+        assert.equal(messages.length, 1);
+        assert.match(messages[0], /To: owner@workspacemail\.com/);
+        assert.match(messages[0], /Verify your Celina Connection listing/);
+        assert.match(messages[0], /verify-email\?token=/);
+      });
+    } finally {
+      for (const key of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_SECURE', 'SMTP_FROM', 'CELINA_EXPOSE_VERIFICATION_LINK']) {
+        delete process.env[key];
+      }
+    }
+  });
+});
 
 test('GET /api/bootstrap seeds businesses and bug collection', async () => {
   const dbPath = makeDbPath('bootstrap');
@@ -131,6 +220,175 @@ test('POST /api/businesses creates and persists a business', async () => {
     const found = body.businesses.find((business: any) => business.id === created.id);
     assert.ok(found);
     assert.equal(found.email, 'mark@legacywealthco.com');
+  });
+});
+
+test('self registration creates a basic listing but requires email verification before login or public listing', async () => {
+  const dbPath = makeDbPath('self-registration');
+  process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+  process.env.PUBLIC_SITE_URL = 'https://www.celinaconnection.com';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const registerRes = await fetch(`${baseUrl}/api/owner/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Self Serve Books',
+          category: 'Shopping & Retail',
+          description: 'Independent bookstore on the square.',
+          phone: '(972) 555-7711',
+          email: 'owner@selfservebooks.com',
+          password: 'Correct Horse Battery 42',
+          tier: 'premium',
+          website: 'https://should-not-be-free.example',
+          startedAt: Date.now() - 5000,
+          company: '',
+        }),
+      });
+
+      assert.equal(registerRes.status, 201);
+      assert.equal(registerRes.headers.get('set-cookie'), null);
+      const body = await registerRes.json();
+      assert.equal(body.requiresEmailVerification, true);
+      assert.equal(body.business.emailVerified, false);
+      assert.equal(body.business.tier, 'basic');
+      assert.equal(body.business.website, '');
+      assert.equal(body.business.isUnclaimed, false);
+      assert.ok(body.business.ownerId);
+      assert.match(body.verificationUrl, /^https:\/\/www\.celinaconnection\.com\/verify-email\?token=/);
+
+      const hiddenBootstrap = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
+      assert.equal(hiddenBootstrap.businesses.some((business: any) => business.id === body.business.id), false);
+
+      const unverifiedLoginRes = await fetch(`${baseUrl}/api/owner/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@selfservebooks.com', password: 'Correct Horse Battery 42' }),
+      });
+      assert.equal(unverifiedLoginRes.status, 403);
+
+      const token = new URL(body.verificationUrl).searchParams.get('token');
+      assert.ok(token);
+      const verifyRes = await fetch(`${baseUrl}/api/owner/verify-email?token=${token}`);
+      assert.equal(verifyRes.status, 200);
+      const cookie = verifyRes.headers.get('set-cookie') || '';
+      assert.ok(cookie.includes('celina_owner_session='));
+      assert.ok(cookie.includes('HttpOnly'));
+      const verified = await verifyRes.json();
+      assert.equal(verified.business.emailVerified, true);
+      assert.equal(verified.currentUser.email, 'owner@selfservebooks.com');
+
+      const visibleBootstrap = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
+      assert.equal(visibleBootstrap.businesses.some((business: any) => business.id === body.business.id), true);
+
+      const sessionRes = await fetch(`${baseUrl}/api/owner/session`, { headers: { cookie } });
+      assert.equal(sessionRes.status, 200);
+      const session = await sessionRes.json();
+      assert.equal(session.currentUser.businessId, body.business.id);
+
+      const replayRes = await fetch(`${baseUrl}/api/owner/verify-email?token=${token}`);
+      assert.equal(replayRes.status, 400);
+    });
+  } finally {
+    delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
+    delete process.env.PUBLIC_SITE_URL;
+  }
+});
+
+test('owner login supports password sign-in and owner-only safe profile updates', async () => {
+  const dbPath = makeDbPath('owner-login-update');
+  process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+    const registerRes = await fetch(`${baseUrl}/api/owner/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Safe Update HVAC',
+        category: 'Home & Professional Services',
+        description: 'HVAC support in Celina.',
+        phone: '(972) 555-8811',
+        email: 'owner@safehvac.com',
+        password: 'Correct Horse Battery 42',
+        startedAt: Date.now() - 5000,
+        company: '',
+      }),
+    });
+    const registered = await registerRes.json();
+    const verificationToken = new URL(registered.verificationUrl).searchParams.get('token');
+    assert.ok(verificationToken);
+    assert.equal((await fetch(`${baseUrl}/api/owner/verify-email?token=${verificationToken}`)).status, 200);
+
+    const badLoginRes = await fetch(`${baseUrl}/api/owner/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@safehvac.com', password: 'wrong' }),
+    });
+    assert.equal(badLoginRes.status, 401);
+
+    const loginRes = await fetch(`${baseUrl}/api/owner/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@safehvac.com', password: 'Correct Horse Battery 42' }),
+    });
+    assert.equal(loginRes.status, 200);
+    const cookie = loginRes.headers.get('set-cookie') || '';
+
+    const updateRes = await fetch(`${baseUrl}/api/owner/businesses/${registered.business.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({
+        name: 'Safe Update HVAC & Plumbing',
+        address: '123 Main St, Celina, TX 75009',
+        website: 'https://locked-on-basic.example',
+        tier: 'premium',
+        featured: true,
+      }),
+    });
+    assert.equal(updateRes.status, 200);
+    const updated = await updateRes.json();
+    assert.equal(updated.name, 'Safe Update HVAC & Plumbing');
+    assert.equal(updated.address, '123 Main St, Celina, TX 75009');
+    assert.equal(updated.website, '');
+    assert.equal(updated.tier, 'basic');
+    assert.equal(updated.featured, false);
+
+    const bootstrap = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
+    const persisted = bootstrap.businesses.find((business: any) => business.id === registered.business.id);
+    assert.equal(persisted.address, '123 Main St, Celina, TX 75009');
+    });
+  } finally {
+    delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
+  }
+});
+
+test('self registration rejects spam traps, too-fast submissions, duplicate emails, and weak passwords', async () => {
+  const dbPath = makeDbPath('registration-spam');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const submit = (overrides: Record<string, unknown>) => fetch(`${baseUrl}/api/owner/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Spam Guard Bakery',
+        category: 'Dining',
+        description: 'Fresh pastries and coffee in Celina.',
+        phone: '(972) 555-9911',
+        email: 'owner@spamguardbakery.com',
+        password: 'Correct Horse Battery 42',
+        startedAt: Date.now() - 5000,
+        company: '',
+        ...overrides,
+      }),
+    });
+
+    assert.equal((await submit({ company: 'bot-filled' })).status, 400);
+    assert.equal((await submit({ startedAt: Date.now() })).status, 429);
+    assert.equal((await submit({ password: 'short' })).status, 400);
+    assert.equal((await submit({})).status, 201);
+    assert.equal((await submit({ name: 'Duplicate Email LLC' })).status, 409);
   });
 });
 

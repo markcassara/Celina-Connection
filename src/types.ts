@@ -43,6 +43,8 @@ export interface Business {
   viewsCount: number;
   isUnclaimed?: boolean;
   isRegistryOnly?: boolean;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string;
 }
 
 export interface UserProfile {

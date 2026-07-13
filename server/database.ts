@@ -27,6 +27,8 @@ export interface CreateBusinessInput {
   reviews?: Review[];
   isUnclaimed?: boolean;
   isRegistryOnly?: boolean;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string;
   slug?: string;
   id?: string;
 }
@@ -53,6 +55,11 @@ export interface CelinaDataStore {
   listBusinesses(): Business[] | Promise<Business[]>;
   getBusiness(id: string): Business | null | Promise<Business | null>;
   createBusiness(input: CreateBusinessInput): Business | Promise<Business>;
+  createOwnedBusiness(input: CreateBusinessInput, passwordHash: string, verification: { tokenHash: string; expiresAt: string }): Business | Promise<Business>;
+  getOwnedBusinessByEmail(email: string): (Business & { ownerPasswordHash?: string }) | null | Promise<(Business & { ownerPasswordHash?: string }) | null>;
+  getOwnedBusinessByOwnerId(ownerId: string): (Business & { ownerPasswordHash?: string }) | null | Promise<(Business & { ownerPasswordHash?: string }) | null>;
+  verifyOwnerEmailByTokenHash(tokenHash: string): (Business & { ownerPasswordHash?: string }) | null | Promise<(Business & { ownerPasswordHash?: string }) | null>;
+  refreshOwnerEmailVerification(email: string, verification: { tokenHash: string; expiresAt: string }): Business | null | Promise<Business | null>;
   updateBusiness(id: string, updates: Partial<Business>): Business | null | Promise<Business | null>;
   deleteBusiness(id: string): boolean | Promise<boolean>;
   claimBusiness(id: string, email: string): { business: Business; currentUser: UserProfile } | null | Promise<{ business: Business; currentUser: UserProfile } | null>;
@@ -117,6 +124,15 @@ function rowToBusiness(row: any): Business {
     viewsCount: Number(row.views_count || 0),
     isUnclaimed: Boolean(row.is_unclaimed),
     isRegistryOnly: Boolean(row.is_registry_only),
+    emailVerified: Boolean(row.email_verified),
+    emailVerifiedAt: row.email_verified_at || '',
+  };
+}
+
+function rowToOwnedBusiness(row: any): Business & { ownerPasswordHash?: string } {
+  return {
+    ...rowToBusiness(row),
+    ownerPasswordHash: row.owner_password_hash || '',
   };
 }
 
@@ -192,6 +208,8 @@ function makeBusiness(input: CreateBusinessInput): Business {
     viewsCount: input.viewsCount ?? 12,
     isUnclaimed: input.isUnclaimed ?? false,
     isRegistryOnly: input.isRegistryOnly ?? false,
+    emailVerified: input.emailVerified ?? true,
+    emailVerifiedAt: input.emailVerifiedAt || '',
   };
 }
 
@@ -237,7 +255,12 @@ export class CelinaRepository implements CelinaDataStore {
         reviews_json TEXT NOT NULL,
         views_count INTEGER NOT NULL DEFAULT 0,
         is_unclaimed INTEGER NOT NULL DEFAULT 0,
-        is_registry_only INTEGER NOT NULL DEFAULT 0
+        is_registry_only INTEGER NOT NULL DEFAULT 0,
+        owner_password_hash TEXT,
+        email_verified INTEGER NOT NULL DEFAULT 1,
+        email_verified_at TEXT,
+        email_verification_token_hash TEXT,
+        email_verification_expires_at TEXT
       );
 
       CREATE TABLE IF NOT EXISTS reported_bugs (
@@ -266,6 +289,19 @@ export class CelinaRepository implements CelinaDataStore {
         reviewed_at TEXT
       );
     `);
+    for (const statement of [
+      'ALTER TABLE businesses ADD COLUMN owner_password_hash TEXT',
+      'ALTER TABLE businesses ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 1',
+      'ALTER TABLE businesses ADD COLUMN email_verified_at TEXT',
+      'ALTER TABLE businesses ADD COLUMN email_verification_token_hash TEXT',
+      'ALTER TABLE businesses ADD COLUMN email_verification_expires_at TEXT',
+    ]) {
+      try {
+        this.db.exec(statement);
+      } catch {
+        // Column already exists on databases created before owner email verification support.
+      }
+    }
 
     const businessCount = Number((this.db.prepare('SELECT COUNT(*) as count FROM businesses').get() as any).count || 0);
     if (businessCount === 0) {
@@ -281,7 +317,7 @@ export class CelinaRepository implements CelinaDataStore {
   }
 
   listBusinesses() {
-    return this.db.prepare('SELECT * FROM businesses ORDER BY featured DESC, views_count DESC, name ASC').all().map(rowToBusiness);
+    return this.db.prepare('SELECT * FROM businesses WHERE email_verified = 1 ORDER BY featured DESC, views_count DESC, name ASC').all().map(rowToBusiness);
   }
 
   getBusiness(id: string) {
@@ -295,16 +331,65 @@ export class CelinaRepository implements CelinaDataStore {
     return business;
   }
 
+  createOwnedBusiness(input: CreateBusinessInput, passwordHash: string, verification: { tokenHash: string; expiresAt: string }) {
+    const business = makeBusiness({
+      ...input,
+      tier: 'basic',
+      ownerId: input.ownerId || randomId('owner'),
+      featured: false,
+      website: '',
+      hours: undefined,
+      socialLinks: {},
+      ctaText: 'Learn More',
+      isUnclaimed: false,
+      emailVerified: false,
+      emailVerifiedAt: '',
+    });
+    this.upsertBusiness(business);
+    this.db.prepare('UPDATE businesses SET owner_password_hash = ?, email_verified = 0, email_verified_at = ?, email_verification_token_hash = ?, email_verification_expires_at = ? WHERE id = ?')
+      .run(passwordHash, '', verification.tokenHash, verification.expiresAt, business.id);
+    return business;
+  }
+
+  getOwnedBusinessByEmail(email: string) {
+    const row = this.db.prepare('SELECT * FROM businesses WHERE lower(email) = lower(?) AND owner_password_hash IS NOT NULL AND owner_password_hash != ? ORDER BY created_at DESC LIMIT 1').get(email, '');
+    return row ? rowToOwnedBusiness(row) : null;
+  }
+
+  getOwnedBusinessByOwnerId(ownerId: string) {
+    const row = this.db.prepare('SELECT * FROM businesses WHERE owner_id = ? AND owner_password_hash IS NOT NULL AND owner_password_hash != ? ORDER BY created_at DESC LIMIT 1').get(ownerId, '');
+    return row ? rowToOwnedBusiness(row) : null;
+  }
+
+  verifyOwnerEmailByTokenHash(tokenHash: string) {
+    const row = this.db.prepare('SELECT * FROM businesses WHERE email_verification_token_hash = ? AND email_verification_expires_at > ? LIMIT 1').get(tokenHash, new Date().toISOString());
+    if (!row) return null;
+    const verifiedAt = new Date().toISOString();
+    this.db.prepare('UPDATE businesses SET email_verified = 1, email_verified_at = ?, email_verification_token_hash = NULL, email_verification_expires_at = NULL WHERE id = ?')
+      .run(verifiedAt, (row as any).id);
+    return this.getOwnedBusinessByOwnerId((row as any).owner_id);
+  }
+
+  refreshOwnerEmailVerification(email: string, verification: { tokenHash: string; expiresAt: string }) {
+    const existing = this.getOwnedBusinessByEmail(email);
+    if (!existing || existing.emailVerified) return null;
+    this.db.prepare('UPDATE businesses SET email_verification_token_hash = ?, email_verification_expires_at = ? WHERE id = ?')
+      .run(verification.tokenHash, verification.expiresAt, existing.id);
+    return this.getBusiness(existing.id);
+  }
+
   upsertBusiness(business: Business) {
     this.db.prepare(`
       INSERT INTO businesses (
         id, slug, name, category, description, phone, email, website, address,
         hours_json, logo_url, images_json, social_links_json, featured, cta_text,
-        tier, owner_id, created_at, reviews_json, views_count, is_unclaimed, is_registry_only
+        tier, owner_id, created_at, reviews_json, views_count, is_unclaimed, is_registry_only,
+        email_verified, email_verified_at
       ) VALUES (
         @id, @slug, @name, @category, @description, @phone, @email, @website, @address,
         @hours_json, @logo_url, @images_json, @social_links_json, @featured, @cta_text,
-        @tier, @owner_id, @created_at, @reviews_json, @views_count, @is_unclaimed, @is_registry_only
+        @tier, @owner_id, @created_at, @reviews_json, @views_count, @is_unclaimed, @is_registry_only,
+        @email_verified, @email_verified_at
       )
       ON CONFLICT(id) DO UPDATE SET
         slug = excluded.slug,
@@ -327,7 +412,9 @@ export class CelinaRepository implements CelinaDataStore {
         reviews_json = excluded.reviews_json,
         views_count = excluded.views_count,
         is_unclaimed = excluded.is_unclaimed,
-        is_registry_only = excluded.is_registry_only
+        is_registry_only = excluded.is_registry_only,
+        email_verified = excluded.email_verified,
+        email_verified_at = excluded.email_verified_at
     `).run(toBusinessParams(business));
   }
 
@@ -478,9 +565,19 @@ class PostgresRepository implements CelinaDataStore {
         reviews_json JSONB NOT NULL,
         views_count INTEGER NOT NULL DEFAULT 0,
         is_unclaimed BOOLEAN NOT NULL DEFAULT FALSE,
-        is_registry_only BOOLEAN NOT NULL DEFAULT FALSE
+        is_registry_only BOOLEAN NOT NULL DEFAULT FALSE,
+        owner_password_hash TEXT,
+        email_verified BOOLEAN NOT NULL DEFAULT TRUE,
+        email_verified_at TEXT,
+        email_verification_token_hash TEXT,
+        email_verification_expires_at TEXT
       )
     `;
+    await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS owner_password_hash TEXT`;
+    await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE`;
+    await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS email_verified_at TEXT`;
+    await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS email_verification_token_hash TEXT`;
+    await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS email_verification_expires_at TEXT`;
     await this.sql`
       CREATE TABLE IF NOT EXISTS reported_bugs (
         id TEXT PRIMARY KEY,
@@ -526,7 +623,7 @@ class PostgresRepository implements CelinaDataStore {
 
   async listBusinesses() {
     await this.ensureInitialized();
-    const rows = await this.sql`SELECT * FROM businesses ORDER BY featured DESC, views_count DESC, name ASC` as any[];
+    const rows = await this.sql`SELECT * FROM businesses WHERE email_verified = TRUE ORDER BY featured DESC, views_count DESC, name ASC` as any[];
     return rows.map(rowToBusiness);
   }
 
@@ -543,6 +640,54 @@ class PostgresRepository implements CelinaDataStore {
     return business;
   }
 
+  async createOwnedBusiness(input: CreateBusinessInput, passwordHash: string, verification: { tokenHash: string; expiresAt: string }) {
+    await this.ensureInitialized();
+    const business = makeBusiness({
+      ...input,
+      tier: 'basic',
+      ownerId: input.ownerId || randomId('owner'),
+      featured: false,
+      website: '',
+      hours: undefined,
+      socialLinks: {},
+      ctaText: 'Learn More',
+      isUnclaimed: false,
+      emailVerified: false,
+      emailVerifiedAt: '',
+    });
+    await this.upsertBusiness(business, false);
+    await this.sql`UPDATE businesses SET owner_password_hash = ${passwordHash}, email_verified = FALSE, email_verified_at = '', email_verification_token_hash = ${verification.tokenHash}, email_verification_expires_at = ${verification.expiresAt} WHERE id = ${business.id}`;
+    return business;
+  }
+
+  async getOwnedBusinessByEmail(email: string) {
+    await this.ensureInitialized();
+    const rows = await this.sql`SELECT * FROM businesses WHERE lower(email) = lower(${email}) AND owner_password_hash IS NOT NULL AND owner_password_hash != '' ORDER BY created_at DESC LIMIT 1` as any[];
+    return rows[0] ? rowToOwnedBusiness(rows[0]) : null;
+  }
+
+  async getOwnedBusinessByOwnerId(ownerId: string) {
+    await this.ensureInitialized();
+    const rows = await this.sql`SELECT * FROM businesses WHERE owner_id = ${ownerId} AND owner_password_hash IS NOT NULL AND owner_password_hash != '' ORDER BY created_at DESC LIMIT 1` as any[];
+    return rows[0] ? rowToOwnedBusiness(rows[0]) : null;
+  }
+
+  async verifyOwnerEmailByTokenHash(tokenHash: string) {
+    await this.ensureInitialized();
+    const rows = await this.sql`SELECT * FROM businesses WHERE email_verification_token_hash = ${tokenHash} AND email_verification_expires_at > ${new Date().toISOString()} LIMIT 1` as any[];
+    if (!rows[0]) return null;
+    const verifiedAt = new Date().toISOString();
+    await this.sql`UPDATE businesses SET email_verified = TRUE, email_verified_at = ${verifiedAt}, email_verification_token_hash = NULL, email_verification_expires_at = NULL WHERE id = ${rows[0].id}`;
+    return this.getOwnedBusinessByOwnerId(rows[0].owner_id);
+  }
+
+  async refreshOwnerEmailVerification(email: string, verification: { tokenHash: string; expiresAt: string }) {
+    const existing = await this.getOwnedBusinessByEmail(email);
+    if (!existing || existing.emailVerified) return null;
+    await this.sql`UPDATE businesses SET email_verification_token_hash = ${verification.tokenHash}, email_verification_expires_at = ${verification.expiresAt} WHERE id = ${existing.id}`;
+    return this.getBusiness(existing.id);
+  }
+
   private async upsertBusiness(business: Business, initialize = true) {
     if (initialize) await this.ensureInitialized();
     const values = toBusinessParams(business);
@@ -550,11 +695,13 @@ class PostgresRepository implements CelinaDataStore {
       INSERT INTO businesses (
         id, slug, name, category, description, phone, email, website, address,
         hours_json, logo_url, images_json, social_links_json, featured, cta_text,
-        tier, owner_id, created_at, reviews_json, views_count, is_unclaimed, is_registry_only
+        tier, owner_id, created_at, reviews_json, views_count, is_unclaimed, is_registry_only,
+        email_verified, email_verified_at
       ) VALUES (
         ${values.id}, ${values.slug}, ${values.name}, ${values.category}, ${values.description}, ${values.phone}, ${values.email}, ${values.website}, ${values.address},
         ${values.hours_json}, ${values.logo_url}, ${values.images_json}, ${values.social_links_json}, ${Boolean(values.featured)}, ${values.cta_text},
-        ${values.tier}, ${values.owner_id}, ${values.created_at}, ${values.reviews_json}, ${values.views_count}, ${Boolean(values.is_unclaimed)}, ${Boolean(values.is_registry_only)}
+        ${values.tier}, ${values.owner_id}, ${values.created_at}, ${values.reviews_json}, ${values.views_count}, ${Boolean(values.is_unclaimed)}, ${Boolean(values.is_registry_only)},
+        ${Boolean(values.email_verified)}, ${values.email_verified_at}
       )
       ON CONFLICT(id) DO UPDATE SET
         slug = EXCLUDED.slug,
@@ -577,7 +724,9 @@ class PostgresRepository implements CelinaDataStore {
         reviews_json = EXCLUDED.reviews_json,
         views_count = EXCLUDED.views_count,
         is_unclaimed = EXCLUDED.is_unclaimed,
-        is_registry_only = EXCLUDED.is_registry_only
+        is_registry_only = EXCLUDED.is_registry_only,
+        email_verified = EXCLUDED.email_verified,
+        email_verified_at = EXCLUDED.email_verified_at
     `;
   }
 
@@ -727,6 +876,8 @@ function toBusinessParams(business: Business) {
     views_count: business.viewsCount || 0,
     is_unclaimed: business.isUnclaimed ? 1 : 0,
     is_registry_only: business.isRegistryOnly ? 1 : 0,
+    email_verified: business.emailVerified === false ? 0 : 1,
+    email_verified_at: business.emailVerifiedAt || '',
   };
 }
 

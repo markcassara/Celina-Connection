@@ -2,10 +2,11 @@ import crypto from "node:crypto";
 import express from "express";
 import dotenv from "dotenv";
 import Stripe from "stripe";
+import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createRepository } from "./database.js";
 
-dotenv.config();
+dotenv.config({ path: [".env.local", ".env"] });
 
 // Lazy-loaded Stripe instance to prevent crashes when STRIPE_SECRET_KEY is missing
 let stripeClient: Stripe | null = null;
@@ -96,6 +97,7 @@ export function createApp(options: { dbPath?: string } = {}) {
   app.use(express.json());
 
   const adminCookieName = "celina_admin_session";
+  const ownerCookieName = "celina_owner_session";
   const getCookie = (req: express.Request, name: string) => {
     const cookies = req.header("cookie") || "";
     const pair = cookies.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
@@ -120,6 +122,184 @@ export function createApp(options: { dbPath?: string } = {}) {
     if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 1000 * 60 * 60 * 12) return false;
     const expected = crypto.createHmac("sha256", secret).update(`${issuedAt}.${nonce}`).digest("hex");
     return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  };
+
+  const ownerSessionSecret = () => process.env.OWNER_SESSION_SECRET || process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_API_TOKEN || "celina-owner-dev-session-secret";
+  const hashPassword = (password: string) => {
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+    return `${salt}:${hash}`;
+  };
+  const verifyPassword = (password: string, stored = "") => {
+    const [salt, hash] = stored.split(":");
+    if (!salt || !hash) return false;
+    const candidate = crypto.scryptSync(password, salt, 64).toString("hex");
+    return hash.length === candidate.length && crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(candidate));
+  };
+  const createEmailVerification = () => {
+    const token = crypto.randomBytes(32).toString("hex");
+    return {
+      token,
+      tokenHash: crypto.createHash("sha256").update(token).digest("hex"),
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+    };
+  };
+  const verificationUrlFor = (token: string) => `${(process.env.PUBLIC_SITE_URL || "https://www.celinaconnection.com").replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
+  const ownerVerificationEmail = (businessName: string, verificationUrl: string) => ({
+    subject: "Verify your Celina Connection listing",
+    html: `<p>Thanks for registering ${businessName}.</p><p>Click below to verify your email and activate your owner login:</p><p><a href=\"${verificationUrl}\">Verify my email</a></p><p>This link expires in 24 hours.</p>`,
+    text: `Thanks for registering ${businessName}.\n\nVerify your email and activate your owner login: ${verificationUrl}\n\nThis link expires in 24 hours.`,
+  });
+  const sendOwnerVerificationEmail = async (email: string, businessName: string, verificationUrl: string) => {
+    const message = ownerVerificationEmail(businessName, verificationUrl);
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    const brevoSenderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || "mark@legacywealthco.com";
+    const brevoSenderName = process.env.BREVO_SENDER_NAME || "Celina Connection";
+    if (brevoApiKey) {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": brevoApiKey,
+          "content-type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: brevoSenderName, email: brevoSenderEmail },
+          to: [{ email }],
+          subject: message.subject,
+          htmlContent: message.html,
+          textContent: message.text,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`Unable to send Brevo verification email: ${response.status} ${body}`.trim());
+      }
+      return;
+    }
+
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    const smtpFrom = process.env.SMTP_FROM || process.env.EMAIL_FROM || smtpUser || "Celina Connection <hello@celinaconnection.com>";
+    if (smtpHost && smtpUser && smtpPass) {
+      const port = Number(process.env.SMTP_PORT || 587);
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port,
+        secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : port === 465,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
+      await transporter.sendMail({
+        from: smtpFrom,
+        to: email,
+        ...message,
+      });
+      return;
+    }
+
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.EMAIL_FROM || "Celina Connection <hello@celinaconnection.com>";
+    if (!apiKey) {
+      console.info(`[email-verification] ${email} (${businessName}): ${verificationUrl}`);
+      return;
+    }
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        ...message,
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Unable to send verification email: ${response.status} ${body}`.trim());
+    }
+  };
+  const ownerVerificationResponse = (business: any, verificationUrl: string) => {
+    const { ownerPasswordHash: _ownerPasswordHash, ...safeBusiness } = business;
+    return {
+      business: safeBusiness,
+      requiresEmailVerification: true,
+      message: "Check your email to verify your listing before signing in.",
+      ...(process.env.CELINA_EXPOSE_VERIFICATION_LINK === "true" ? { verificationUrl } : {}),
+    };
+  };
+  const verificationResends = new Map<string, number[]>();
+  const checkVerificationResendLimit = (req: express.Request, email: string) => {
+    const now = Date.now();
+    const key = `${req.ip}:${email.toLowerCase()}`;
+    const attempts = (verificationResends.get(key) || []).filter((ts) => now - ts < 1000 * 60 * 15);
+    attempts.push(now);
+    verificationResends.set(key, attempts);
+    return attempts.length <= 3;
+  };
+  const makeOwnerSession = (ownerId: string) => {
+    const issuedAt = Date.now().toString();
+    const nonce = crypto.randomBytes(16).toString("hex");
+    const payload = `${ownerId}.${issuedAt}.${nonce}`;
+    const signature = crypto.createHmac("sha256", ownerSessionSecret()).update(payload).digest("hex");
+    return `${payload}.${signature}`;
+  };
+  const readOwnerSession = (req: express.Request) => {
+    const session = getCookie(req, ownerCookieName);
+    const [ownerId, issuedAt, nonce, signature] = session.split(".");
+    if (!ownerId || !issuedAt || !nonce || !signature) return "";
+    const ageMs = Date.now() - Number(issuedAt);
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 1000 * 60 * 60 * 24 * 30) return "";
+    const expected = crypto.createHmac("sha256", ownerSessionSecret()).update(`${ownerId}.${issuedAt}.${nonce}`).digest("hex");
+    if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return "";
+    return ownerId;
+  };
+  const ownerCookie = (session: string) => `${ownerCookieName}=${encodeURIComponent(session)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
+  const makeCurrentUser = (business: Awaited<ReturnType<typeof repository.getBusiness>>): any => business ? ({
+    id: business.ownerId,
+    email: business.email,
+    businessName: business.name,
+    businessId: business.id,
+    tier: business.tier,
+    isLoggedIn: true,
+    role: 'owner',
+  }) : null;
+  const sanitizeOwnerBusinessUpdates = (tier: string, updates: any) => {
+    const allowed: any = {};
+    for (const key of ['name', 'description', 'phone', 'email', 'category', 'address', 'logoUrl', 'images', 'reviews']) {
+      if (updates[key] !== undefined) allowed[key] = updates[key];
+    }
+    if (tier === 'pro' || tier === 'premium') {
+      if (updates.website !== undefined) allowed.website = updates.website;
+      if (updates.hours !== undefined) allowed.hours = updates.hours;
+    }
+    if (tier === 'premium') {
+      if (updates.ctaText !== undefined) allowed.ctaText = updates.ctaText;
+      if (updates.socialLinks !== undefined) allowed.socialLinks = updates.socialLinks;
+    }
+    return allowed;
+  };
+  const recentRegistrationAttempts = new Map<string, number[]>();
+  const checkRegistrationRateLimit = (req: express.Request, email: string) => {
+    const now = Date.now();
+    const key = `${req.ip}:${email.toLowerCase()}`;
+    const attempts = (recentRegistrationAttempts.get(key) || []).filter((ts) => now - ts < 1000 * 60 * 15);
+    attempts.push(now);
+    recentRegistrationAttempts.set(key, attempts);
+    return attempts.length <= 5;
+  };
+  const requireOwnerSession: express.RequestHandler = async (req, res, next) => {
+    const ownerId = readOwnerSession(req);
+    if (!ownerId) return res.status(401).json({ error: "Owner authentication is required." });
+    const business = await repository.getOwnedBusinessByOwnerId(ownerId);
+    if (!business || !business.emailVerified) return res.status(401).json({ error: "Owner authentication is required." });
+    (req as any).ownerBusiness = business;
+    return next();
   };
   const requireAdminToken: express.RequestHandler = (req, res, next) => {
     const expectedToken = process.env.ADMIN_API_TOKEN;
@@ -226,6 +406,114 @@ export function createApp(options: { dbPath?: string } = {}) {
       businesses: await repository.listBusinesses(),
       reportedBugs: await repository.listBugs(),
     });
+  });
+
+  app.post("/api/owner/register", async (req, res) => {
+    const { name, category, description, phone, email, password, startedAt, company } = req.body || {};
+    if (company) return res.status(400).json({ error: "Registration failed spam validation." });
+    if (!startedAt || Date.now() - Number(startedAt) < 3000) {
+      return res.status(429).json({ error: "Please wait a few seconds before submitting the registration form." });
+    }
+    if (!name || !category || !description || !phone || !email || !password) {
+      return res.status(400).json({ error: "name, category, description, phone, email, and password are required" });
+    }
+    if (String(password).length < 10) {
+      return res.status(400).json({ error: "Password must be at least 10 characters." });
+    }
+    if (!checkRegistrationRateLimit(req, email)) {
+      return res.status(429).json({ error: "Too many registration attempts. Please try again later." });
+    }
+    const existingOwner = await repository.getOwnedBusinessByEmail(email);
+    if (existingOwner) {
+      return res.status(409).json({ error: "An owner account already exists for this email." });
+    }
+
+    const verification = createEmailVerification();
+    const verificationUrl = verificationUrlFor(verification.token);
+    const business = await repository.createOwnedBusiness({
+      name,
+      category,
+      description,
+      phone,
+      email,
+      tier: 'basic',
+      address: req.body.address || '',
+      logoUrl: req.body.logoUrl || '',
+      images: Array.isArray(req.body.images) ? req.body.images.slice(0, 1) : [],
+    }, hashPassword(password), { tokenHash: verification.tokenHash, expiresAt: verification.expiresAt });
+    await sendOwnerVerificationEmail(String(email), String(name), verificationUrl);
+    return res.status(201).json(ownerVerificationResponse(business, verificationUrl));
+  });
+
+  app.get("/api/owner/verify-email", async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token) return res.status(400).json({ error: "Verification token is required." });
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const business = await repository.verifyOwnerEmailByTokenHash(tokenHash);
+    if (!business) return res.status(400).json({ error: "Verification link is invalid or expired." });
+    const session = makeOwnerSession(business.ownerId);
+    res.setHeader("set-cookie", ownerCookie(session));
+    const { ownerPasswordHash: _ownerPasswordHash, ...safeBusiness } = business;
+    return res.json({ business: safeBusiness, currentUser: makeCurrentUser(safeBusiness), verified: true });
+  });
+
+  app.post("/api/owner/resend-verification", async (req, res) => {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: "email is required" });
+    if (!checkVerificationResendLimit(req, email)) {
+      return res.status(429).json({ error: "Too many verification email requests. Please try again later." });
+    }
+    const existingOwner = await repository.getOwnedBusinessByEmail(email);
+    if (!existingOwner || existingOwner.emailVerified) {
+      return res.json({ message: "If that email has an unverified owner account, a new verification link has been sent." });
+    }
+    const verification = createEmailVerification();
+    const verificationUrl = verificationUrlFor(verification.token);
+    const business = await repository.refreshOwnerEmailVerification(email, { tokenHash: verification.tokenHash, expiresAt: verification.expiresAt });
+    if (business) {
+      await sendOwnerVerificationEmail(String(email), business.name, verificationUrl);
+    }
+    return res.json({
+      message: "If that email has an unverified owner account, a new verification link has been sent.",
+      ...(process.env.CELINA_EXPOSE_VERIFICATION_LINK === "true" && business ? { verificationUrl } : {}),
+    });
+  });
+
+  app.post("/api/owner/login", async (req, res) => {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: "email and password are required" });
+    const business = await repository.getOwnedBusinessByEmail(email);
+    if (!business || !verifyPassword(password, business.ownerPasswordHash)) {
+      return res.status(401).json({ error: "Invalid owner email or password." });
+    }
+    if (!business.emailVerified) {
+      return res.status(403).json({ error: "Please verify your email before signing in. We can resend the link." });
+    }
+    const session = makeOwnerSession(business.ownerId);
+    res.setHeader("set-cookie", ownerCookie(session));
+    const { ownerPasswordHash: _ownerPasswordHash, ...safeBusiness } = business;
+    return res.json({ business: safeBusiness, currentUser: makeCurrentUser(safeBusiness) });
+  });
+
+  app.post("/api/owner/logout", (_req, res) => {
+    res.setHeader("set-cookie", `${ownerCookieName}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
+    return res.json({ authenticated: false });
+  });
+
+  app.get("/api/owner/session", requireOwnerSession, (req, res) => {
+    const { ownerPasswordHash: _ownerPasswordHash, ...business } = (req as any).ownerBusiness;
+    return res.json({ authenticated: true, business, currentUser: makeCurrentUser(business) });
+  });
+
+  app.patch("/api/owner/businesses/:id", requireOwnerSession, async (req, res) => {
+    const ownerBusiness = (req as any).ownerBusiness;
+    if (ownerBusiness.id !== req.params.id) {
+      return res.status(403).json({ error: "Owners can only update their own business listing." });
+    }
+    const updates = sanitizeOwnerBusinessUpdates(ownerBusiness.tier, req.body || {});
+    const business = await repository.updateBusiness(req.params.id, updates);
+    if (!business) return res.status(404).json({ error: "Business not found" });
+    return res.json(business);
   });
 
   app.post("/api/businesses", async (req, res) => {
