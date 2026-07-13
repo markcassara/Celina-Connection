@@ -187,6 +187,22 @@ export default function DirectoryView({
     }
   };
 
+  const removalRequestMailto = (business: Business) => {
+    const subject = `Request to remove listing: ${business.name}`;
+    const body = [
+      `Please review this request to remove ${business.name} from Celina Connection.`,
+      '',
+      `Listing ID: ${business.id}`,
+      `Listing email: ${business.email}`,
+      `Listing phone: ${business.phone}`,
+      '',
+      'Business owner/authorized contact name:',
+      'Reason for removal:',
+    ].join('\n');
+
+    return `mailto:mark@legacywealthco.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewAuthor.trim() || !reviewText.trim()) {
@@ -575,17 +591,26 @@ export default function DirectoryView({
                   </div>
 
                   {/* Card Actions Footer */}
-                  <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 text-xs font-semibold text-slate-700">
                     {b.isUnclaimed ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setClaimTarget(b);
-                        }}
-                        className="text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-0.5 cursor-pointer font-bold"
-                      >
-                        Secure Claim Review <ChevronRight className="w-3 h-3" />
-                      </button>
+                      <div className="flex flex-col gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setClaimTarget(b);
+                          }}
+                          className="text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-0.5 cursor-pointer font-bold text-left"
+                        >
+                          Claim this listing <ChevronRight className="w-3 h-3" />
+                        </button>
+                        <a
+                          href={removalRequestMailto(b)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
+                        >
+                          <Mail className="w-3 h-3" /> Request to remove this listing
+                        </a>
+                      </div>
                     ) : (
                       <span className="text-orange-600 group-hover:underline flex items-center gap-0.5">
                         View Profile <ChevronRight className="w-3 h-3" />
@@ -642,20 +667,29 @@ export default function DirectoryView({
                 <div
                   key={b.id}
                   onClick={() => onSelectBusiness(b)}
-                  className="group flex items-center justify-between p-3 bg-white border border-slate-150 hover:border-orange-300 rounded-xl transition-all duration-200 cursor-pointer shadow-xs hover:shadow-sm"
+                  className="group flex flex-col gap-3 p-3 bg-white border border-slate-150 hover:border-orange-300 rounded-xl transition-all duration-200 cursor-pointer shadow-xs hover:shadow-sm"
                 >
-                  <span className="font-bold text-slate-800 text-xs truncate pr-2 group-hover:text-orange-600 transition-colors">
-                    {b.name}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setClaimTarget(b);
-                    }}
-                    className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 hover:text-rose-950 font-bold text-[10px] rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer"
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-800 text-xs truncate pr-2 group-hover:text-orange-600 transition-colors">
+                      {b.name}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setClaimTarget(b);
+                      }}
+                      className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 hover:text-rose-950 font-bold text-[10px] rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer"
+                    >
+                      Claim this listing
+                    </button>
+                  </div>
+                  <a
+                    href={removalRequestMailto(b)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
                   >
-                    Claim Review
-                  </button>
+                    <Mail className="w-3 h-3" /> Request to remove this listing
+                  </a>
                 </div>
               ))}
           </div>
@@ -743,12 +777,20 @@ export default function DirectoryView({
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => setClaimTarget(selectedBusiness)}
-                        className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer self-start sm:self-center flex-shrink-0"
-                      >
-                        Claim This Listing
-                      </button>
+                      <div className="flex flex-col gap-2 self-start sm:self-center flex-shrink-0">
+                        <button
+                          onClick={() => setClaimTarget(selectedBusiness)}
+                          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer"
+                        >
+                          Claim this listing
+                        </button>
+                        <a
+                          href={removalRequestMailto(selectedBusiness)}
+                          className="text-[10px] text-rose-700 hover:text-rose-900 hover:underline font-bold flex items-center gap-1 justify-center"
+                        >
+                          <Mail className="w-3 h-3" /> Request to remove this listing
+                        </a>
+                      </div>
                     </div>
                   )}
 

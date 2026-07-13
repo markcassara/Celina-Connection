@@ -226,6 +226,16 @@ function makeClaimPayload(business: Business, email: string) {
   return { business, currentUser };
 }
 
+function getInitialBusinessByName(name: string) {
+  return INITIAL_BUSINESSES.find((business) => business.name === name) as CreateBusinessInput | undefined;
+}
+
+function makeFeaturedPlaceholderBusiness(name: string) {
+  const business = getInitialBusinessByName(name);
+  if (!business) throw new Error(`Missing initial featured placeholder business: ${name}`);
+  return makeBusiness(business);
+}
+
 export class CelinaRepository implements CelinaDataStore {
   private db: DatabaseSync;
 
@@ -307,12 +317,40 @@ export class CelinaRepository implements CelinaDataStore {
     if (businessCount === 0) {
       this.seedInitialData();
     }
+    this.ensureFeaturedPlaceholderBusinesses();
   }
 
   seedInitialData() {
     this.db.exec('DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM claim_requests;');
     for (const business of INITIAL_BUSINESSES) {
       this.upsertBusiness(makeBusiness(business as CreateBusinessInput));
+    }
+  }
+
+  ensureFeaturedPlaceholderBusinesses() {
+    const celinaBistro = makeFeaturedPlaceholderBusiness('Celina Bistro');
+    const existingBistro = this.db.prepare("SELECT id FROM businesses WHERE name LIKE 'Celina Bistro%' ORDER BY created_at DESC LIMIT 1").get() as { id?: string } | undefined;
+    if (existingBistro?.id) {
+      this.db.prepare(`
+        UPDATE businesses
+        SET name = ?, slug = ?, featured = 1, tier = ?, is_unclaimed = 0, email_verified = 1
+        WHERE id = ?
+      `).run(celinaBistro.name, celinaBistro.slug, celinaBistro.tier, existingBistro.id);
+    } else {
+      this.upsertBusiness(celinaBistro);
+    }
+
+    const legacyWealth = makeFeaturedPlaceholderBusiness('Legacy Wealth Academy LLC');
+    const existingLegacyRows = this.db.prepare("SELECT id FROM businesses WHERE lower(name) = lower(?) OR lower(email) = lower(?)").all(legacyWealth.name, legacyWealth.email) as { id: string }[];
+    if (existingLegacyRows.length) {
+      this.db.prepare(`
+        UPDATE businesses
+        SET featured = 1, tier = ?, is_unclaimed = 0, email_verified = 1,
+            owner_id = CASE WHEN owner_id IS NULL OR owner_id = '' THEN ? ELSE owner_id END
+        WHERE lower(name) = lower(?) OR lower(email) = lower(?)
+      `).run(legacyWealth.tier, legacyWealth.ownerId || 'admin', legacyWealth.name, legacyWealth.email);
+    } else {
+      this.upsertBusiness(legacyWealth);
     }
   }
 
@@ -610,6 +648,7 @@ class PostgresRepository implements CelinaDataStore {
     if (Number(rows[0]?.count || 0) === 0) {
       await this.seedInitialData();
     }
+    await this.ensureFeaturedPlaceholderBusinesses();
   }
 
   private async seedInitialData() {
@@ -618,6 +657,37 @@ class PostgresRepository implements CelinaDataStore {
     await this.sql`DELETE FROM claim_requests`;
     for (const business of INITIAL_BUSINESSES) {
       await this.upsertBusiness(makeBusiness(business as CreateBusinessInput), false);
+    }
+  }
+
+  private async ensureFeaturedPlaceholderBusinesses() {
+    const celinaBistro = makeFeaturedPlaceholderBusiness('Celina Bistro');
+    const existingBistro = await this.sql`
+      SELECT id FROM businesses WHERE name ILIKE 'Celina Bistro%' ORDER BY created_at DESC LIMIT 1
+    ` as any[];
+    if (existingBistro[0]?.id) {
+      await this.sql`
+        UPDATE businesses
+        SET name = ${celinaBistro.name}, slug = ${celinaBistro.slug}, featured = TRUE, tier = ${celinaBistro.tier}, is_unclaimed = FALSE, email_verified = TRUE
+        WHERE id = ${existingBistro[0].id}
+      `;
+    } else {
+      await this.upsertBusiness(celinaBistro, false);
+    }
+
+    const legacyWealth = makeFeaturedPlaceholderBusiness('Legacy Wealth Academy LLC');
+    const existingLegacyRows = await this.sql`
+      SELECT id FROM businesses WHERE lower(name) = lower(${legacyWealth.name}) OR lower(email) = lower(${legacyWealth.email})
+    ` as any[];
+    if (existingLegacyRows.length) {
+      await this.sql`
+        UPDATE businesses
+        SET featured = TRUE, tier = ${legacyWealth.tier}, is_unclaimed = FALSE, email_verified = TRUE,
+            owner_id = CASE WHEN owner_id IS NULL OR owner_id = '' THEN ${legacyWealth.ownerId || 'admin'} ELSE owner_id END
+        WHERE lower(name) = lower(${legacyWealth.name}) OR lower(email) = lower(${legacyWealth.email})
+      `;
+    } else {
+      await this.upsertBusiness(legacyWealth, false);
     }
   }
 

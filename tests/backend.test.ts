@@ -134,6 +134,72 @@ test('GET /api/bootstrap seeds businesses and bug collection', async () => {
   });
 });
 
+test('seed data includes demo featured listings for Celina Bistro and Legacy Wealth Academy', async () => {
+  const dbPath = makeDbPath('featured-demo-listings');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/bootstrap`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+
+    const celinaBistro = body.businesses.find((business: any) => business.name === 'Celina Bistro');
+    assert.ok(celinaBistro);
+    assert.equal(celinaBistro.featured, true);
+    assert.equal(celinaBistro.tier, 'premium');
+    assert.equal(celinaBistro.isUnclaimed, false);
+
+    const legacyWealth = body.businesses.find((business: any) => business.name === 'Legacy Wealth Academy LLC');
+    assert.ok(legacyWealth);
+    assert.equal(legacyWealth.featured, true);
+    assert.equal(legacyWealth.tier, 'premium');
+    assert.equal(legacyWealth.ownerId, 'admin');
+    assert.equal(legacyWealth.email, 'mark@legacywealthco.com');
+  });
+});
+
+test('existing databases promote demo placeholders without replacing owned Legacy account data', async () => {
+  const dbPath = makeDbPath('existing-featured-placeholders');
+
+  await withServer(dbPath, async (baseUrl) => {
+    await fetch(`${baseUrl}/api/businesses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: 'legacy-existing-owned',
+        name: 'Legacy Wealth Academy LLC',
+        category: 'Home & Professional Services',
+        description: 'Existing owned profile',
+        phone: '(972) 555-2222',
+        email: 'mark@legacywealthco.com',
+        tier: 'basic',
+        ownerId: 'owner-existing-admin',
+        featured: false,
+        isUnclaimed: false,
+      }),
+    });
+  });
+
+  await withServer(dbPath, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/bootstrap`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const legacyWealth = body.businesses.find((business: any) => business.id === 'legacy-existing-owned');
+
+    assert.ok(legacyWealth);
+    assert.equal(legacyWealth.featured, true);
+    assert.equal(legacyWealth.tier, 'premium');
+    assert.equal(legacyWealth.ownerId, 'owner-existing-admin');
+  });
+});
+
+test('directory copy uses friendly claim and removal request wording', () => {
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+
+  assert.match(directorySource, /Claim this listing/);
+  assert.match(directorySource, /Request to remove this listing/);
+  assert.doesNotMatch(directorySource, /Secure Claim Review/);
+});
+
 test('basic owner profile patches include address but keep website and hours locked', () => {
   const patch = buildOwnerProfilePatch('basic', {
     name: 'Celina Bakery',

@@ -52,6 +52,75 @@ export const INITIAL_BUSINESSES: Business[] = [
     ]
   },
   {
+    id: 'celina-bistro-demo',
+    name: "Celina Bistro",
+    category: "Dining",
+    description: "A polished demo restaurant profile showing local business owners how a premium Celina Connection listing can highlight dining, photos, hours, reviews, and calls to action.",
+    phone: "(972) 555-0200",
+    email: "demo@celinaconnection.com",
+    website: "https://www.celinaconnection.com",
+    address: "Celina, TX 75009",
+    hours: {
+      monFri: "11:00 AM - 9:00 PM",
+      sat: "10:00 AM - 10:00 PM",
+      sun: "10:00 AM - 3:00 PM"
+    },
+    logoUrl: "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=150&h=150&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80"
+    ],
+    socialLinks: {
+      facebook: "https://facebook.com/celinaconnection",
+      instagram: "https://instagram.com/celinaconnection"
+    },
+    featured: true,
+    ctaText: "View Demo",
+    tier: "premium",
+    ownerId: "demo-owner",
+    isUnclaimed: false,
+    createdAt: "2026-07-01T10:00:00Z",
+    viewsCount: 310,
+    reviews: [
+      {
+        id: 'rev-demo-bistro-1',
+        authorName: "Celina Connection",
+        rating: 5,
+        text: "Demo listing for showing premium placement, reviews, photos, and owner features.",
+        createdAt: "2026-07-01T10:30:00Z"
+      }
+    ]
+  },
+  {
+    id: 'legacy-wealth-academy-llc',
+    name: "Legacy Wealth Academy LLC",
+    category: "Home & Professional Services",
+    description: "Financial education, wealth-building guidance, and legacy planning resources for families and business owners who want clearer money decisions and a stronger future.",
+    phone: "(972) 555-1000",
+    email: "mark@legacywealthco.com",
+    website: "https://legacywealthco.com",
+    address: "Celina, TX 75009",
+    hours: {
+      monFri: "9:00 AM - 5:00 PM",
+      sat: "By Appointment",
+      sun: "Closed"
+    },
+    logoUrl: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=150&h=150&q=80",
+    images: [
+      "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=800&q=80"
+    ],
+    socialLinks: {},
+    featured: true,
+    ctaText: "Learn More",
+    tier: "premium",
+    ownerId: "admin",
+    isUnclaimed: false,
+    createdAt: "2026-07-01T11:00:00Z",
+    viewsCount: 305,
+    reviews: []
+  },
+  {
     id: 'annie-jack-boutique',
     name: "Annie Jack Boutique",
     category: "Shopping & Boutiques",
