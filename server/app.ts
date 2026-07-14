@@ -157,30 +157,38 @@ export function createApp(options: { dbPath?: string } = {}) {
   });
   const sendOwnerVerificationEmail = async (email: string, businessName: string, verificationUrl: string) => {
     const message = ownerVerificationEmail(businessName, verificationUrl);
+    const deliveryErrors: string[] = [];
+    let hasConfiguredProvider = false;
+
     const brevoApiKey = process.env.BREVO_API_KEY;
     const brevoSenderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || "mark@legacywealthco.com";
     const brevoSenderName = process.env.BREVO_SENDER_NAME || "Celina Connection";
     if (brevoApiKey) {
-      const response = await fetchWithEmailTimeout(process.env.BREVO_API_URL || "https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: {
-          "api-key": brevoApiKey,
-          "content-type": "application/json",
-          accept: "application/json",
-        },
-        body: JSON.stringify({
-          sender: { name: brevoSenderName, email: brevoSenderEmail },
-          to: [{ email }],
-          subject: message.subject,
-          htmlContent: message.html,
-          textContent: message.text,
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.text().catch(() => "");
-        throw new Error(`Unable to send Brevo verification email: ${response.status} ${body}`.trim());
+      hasConfiguredProvider = true;
+      try {
+        const response = await fetchWithEmailTimeout(process.env.BREVO_API_URL || "https://api.brevo.com/v3/smtp/email", {
+          method: "POST",
+          headers: {
+            "api-key": brevoApiKey,
+            "content-type": "application/json",
+            accept: "application/json",
+          },
+          body: JSON.stringify({
+            sender: { name: brevoSenderName, email: brevoSenderEmail },
+            to: [{ email }],
+            subject: message.subject,
+            htmlContent: message.html,
+            textContent: message.text,
+          }),
+        });
+        if (!response.ok) {
+          const body = await response.text().catch(() => "");
+          throw new Error(`${response.status} ${body}`.trim());
+        }
+        return;
+      } catch (error) {
+        deliveryErrors.push(`Brevo: ${error instanceof Error ? error.message : String(error)}`);
       }
-      return;
     }
 
     const smtpHost = process.env.SMTP_HOST;
@@ -188,49 +196,64 @@ export function createApp(options: { dbPath?: string } = {}) {
     const smtpPass = process.env.SMTP_PASS;
     const smtpFrom = process.env.SMTP_FROM || process.env.EMAIL_FROM || smtpUser || "Celina Connection <hello@celinaconnection.com>";
     if (smtpHost && smtpUser && smtpPass) {
-      const port = Number(process.env.SMTP_PORT || 587);
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port,
-        secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : port === 465,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-        connectionTimeout: emailDeliveryTimeoutMs(),
-        socketTimeout: emailDeliveryTimeoutMs(),
-        greetingTimeout: emailDeliveryTimeoutMs(),
-      });
-      await transporter.sendMail({
-        from: smtpFrom,
-        to: email,
-        ...message,
-      });
-      return;
+      hasConfiguredProvider = true;
+      try {
+        const port = Number(process.env.SMTP_PORT || 587);
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port,
+          secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : port === 465,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass,
+          },
+          connectionTimeout: emailDeliveryTimeoutMs(),
+          socketTimeout: emailDeliveryTimeoutMs(),
+          greetingTimeout: emailDeliveryTimeoutMs(),
+        });
+        await transporter.sendMail({
+          from: smtpFrom,
+          to: email,
+          ...message,
+        });
+        return;
+      } catch (error) {
+        deliveryErrors.push(`SMTP: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     const apiKey = process.env.RESEND_API_KEY;
     const from = process.env.EMAIL_FROM || "Celina Connection <hello@celinaconnection.com>";
-    if (!apiKey) {
-      console.info(`[email-verification] ${email} (${businessName}): ${verificationUrl}`);
-      return;
+    if (apiKey) {
+      hasConfiguredProvider = true;
+      try {
+        const response = await fetchWithEmailTimeout(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            from,
+            to: [email],
+            ...message,
+          }),
+        });
+        if (!response.ok) {
+          const body = await response.text().catch(() => "");
+          throw new Error(`${response.status} ${body}`.trim());
+        }
+        return;
+      } catch (error) {
+        deliveryErrors.push(`Resend: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    const response = await fetchWithEmailTimeout(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: [email],
-        ...message,
-      }),
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`Unable to send verification email: ${response.status} ${body}`.trim());
+
+    if (hasConfiguredProvider) {
+      throw new Error(`Unable to send verification email. ${deliveryErrors.join(" | ")}`.trim());
     }
+
+    console.info(`[email-verification] ${email} (${businessName}): ${verificationUrl}`);
   };
   const ownerVerificationResponse = (business: any, verificationUrl: string) => {
     const { ownerPasswordHash: _ownerPasswordHash, ...safeBusiness } = business;

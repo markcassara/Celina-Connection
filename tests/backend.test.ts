@@ -135,6 +135,52 @@ test('owner verification email can be delivered through SMTP configuration', asy
   });
 });
 
+test('owner verification falls back to SMTP when Brevo is configured but unavailable', async () => {
+  const dbPath = makeDbPath('brevo-fallback-smtp');
+
+  await withHangingTcpServer(async (brevoPort) => {
+    await withFakeSmtp(async (smtpPort, messages) => {
+      process.env.BREVO_API_KEY = 'test-brevo-key';
+      process.env.BREVO_API_URL = `http://127.0.0.1:${brevoPort}/v3/smtp/email`;
+      process.env.EMAIL_DELIVERY_TIMEOUT_MS = '500';
+      process.env.SMTP_HOST = '127.0.0.1';
+      process.env.SMTP_PORT = String(smtpPort);
+      process.env.SMTP_USER = 'hello@celinaconnection.com';
+      process.env.SMTP_PASS = 'workspace-app-password';
+      process.env.SMTP_SECURE = 'false';
+      process.env.SMTP_FROM = 'Celina Connection <hello@celinaconnection.com>';
+      process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+      delete process.env.RESEND_API_KEY;
+
+      try {
+        await withServer(dbPath, async (baseUrl) => {
+          const res = await fetch(`${baseUrl}/api/owner/register`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              name: 'Fallback Mail Test',
+              category: 'Home & Professional Services',
+              description: 'A test listing for email provider fallback.',
+              phone: '(972) 555-0197',
+              email: 'owner-fallback@example.com',
+              password: 'StrongPass123!',
+              startedAt: Date.now() - 4000,
+              company: '',
+            }),
+          });
+          assert.equal(res.status, 201);
+          assert.equal(messages.length, 1);
+          assert.match(messages[0], /To: owner-fallback@example\.com/);
+        });
+      } finally {
+        for (const key of ['BREVO_API_KEY', 'BREVO_API_URL', 'EMAIL_DELIVERY_TIMEOUT_MS', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_SECURE', 'SMTP_FROM', 'CELINA_EXPOSE_VERIFICATION_LINK']) {
+          delete process.env[key];
+        }
+      }
+    });
+  });
+});
+
 test('owner registration times out stalled email delivery and does not leave duplicate owner accounts', async () => {
   const dbPath = makeDbPath('email-timeout-registration');
 
