@@ -74,6 +74,23 @@ async function withFakeSmtp(run: (port: number, messages: string[]) => Promise<v
   }
 }
 
+async function withHangingTcpServer(run: (port: number) => Promise<void>) {
+  const sockets = new Set<any>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+  server.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  const { port } = server.address() as AddressInfo;
+  try {
+    await run(port);
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+}
+
 test('owner verification email can be delivered through SMTP configuration', async () => {
   const dbPath = makeDbPath('smtp-verification');
 
@@ -116,6 +133,69 @@ test('owner verification email can be delivered through SMTP configuration', asy
       }
     }
   });
+});
+
+test('owner registration times out stalled email delivery and does not leave duplicate owner accounts', async () => {
+  const dbPath = makeDbPath('email-timeout-registration');
+
+  await withHangingTcpServer(async (emailPort) => {
+    process.env.BREVO_API_KEY = 'test-brevo-key';
+    process.env.BREVO_API_URL = `http://127.0.0.1:${emailPort}/v3/smtp/email`;
+    process.env.EMAIL_DELIVERY_TIMEOUT_MS = '500';
+    delete process.env.SMTP_HOST;
+    delete process.env.RESEND_API_KEY;
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const started = Date.now();
+        const res = await fetch(`${baseUrl}/api/owner/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Timeout Mail Test',
+            category: 'Home & Professional Services',
+            description: 'A test listing for stalled email delivery.',
+            phone: '(972) 555-0198',
+            email: 'owner-timeout@example.com',
+            password: 'StrongPass123!',
+            startedAt: Date.now() - 4000,
+            company: '',
+          }),
+        });
+        assert.equal(res.status, 503);
+        assert.ok(Date.now() - started < 3000, 'registration should fail fast instead of hanging indefinitely');
+        const body = await res.json();
+        assert.match(body.error, /couldn't send the verification email/i);
+      });
+    } finally {
+      for (const key of ['BREVO_API_KEY', 'BREVO_API_URL', 'EMAIL_DELIVERY_TIMEOUT_MS']) {
+        delete process.env[key];
+      }
+    }
+  });
+
+  process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const retryRes = await fetch(`${baseUrl}/api/owner/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Timeout Mail Test',
+          category: 'Home & Professional Services',
+          description: 'A retry after stalled email delivery.',
+          phone: '(972) 555-0198',
+          email: 'owner-timeout@example.com',
+          password: 'StrongPass123!',
+          startedAt: Date.now() - 4000,
+          company: '',
+        }),
+      });
+      assert.equal(retryRes.status, 201);
+    });
+  } finally {
+    delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
+  }
 });
 
 test('GET /api/bootstrap seeds businesses and bug collection', async () => {

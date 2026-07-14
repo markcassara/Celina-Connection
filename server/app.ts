@@ -150,13 +150,18 @@ export function createApp(options: { dbPath?: string } = {}) {
     html: `<p>Thanks for registering ${businessName}.</p><p>Click below to verify your email and activate your owner login:</p><p><a href=\"${verificationUrl}\">Verify my email</a></p><p>This link expires in 24 hours.</p>`,
     text: `Thanks for registering ${businessName}.\n\nVerify your email and activate your owner login: ${verificationUrl}\n\nThis link expires in 24 hours.`,
   });
+  const emailDeliveryTimeoutMs = () => Math.max(500, Number(process.env.EMAIL_DELIVERY_TIMEOUT_MS || 8000));
+  const fetchWithEmailTimeout = (url: string, init: RequestInit) => fetch(url, {
+    ...init,
+    signal: AbortSignal.timeout(emailDeliveryTimeoutMs()),
+  });
   const sendOwnerVerificationEmail = async (email: string, businessName: string, verificationUrl: string) => {
     const message = ownerVerificationEmail(businessName, verificationUrl);
     const brevoApiKey = process.env.BREVO_API_KEY;
     const brevoSenderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || "mark@legacywealthco.com";
     const brevoSenderName = process.env.BREVO_SENDER_NAME || "Celina Connection";
     if (brevoApiKey) {
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      const response = await fetchWithEmailTimeout(process.env.BREVO_API_URL || "https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
           "api-key": brevoApiKey,
@@ -192,6 +197,9 @@ export function createApp(options: { dbPath?: string } = {}) {
           user: smtpUser,
           pass: smtpPass,
         },
+        connectionTimeout: emailDeliveryTimeoutMs(),
+        socketTimeout: emailDeliveryTimeoutMs(),
+        greetingTimeout: emailDeliveryTimeoutMs(),
       });
       await transporter.sendMail({
         from: smtpFrom,
@@ -207,7 +215,7 @@ export function createApp(options: { dbPath?: string } = {}) {
       console.info(`[email-verification] ${email} (${businessName}): ${verificationUrl}`);
       return;
     }
-    const response = await fetch("https://api.resend.com/emails", {
+    const response = await fetchWithEmailTimeout(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
       method: "POST",
       headers: {
         authorization: `Bearer ${apiKey}`,
@@ -445,7 +453,13 @@ export function createApp(options: { dbPath?: string } = {}) {
       logoUrl: req.body.logoUrl || '',
       images: Array.isArray(req.body.images) ? req.body.images.slice(0, 1) : [],
     }, hashPassword(password), { tokenHash: verification.tokenHash, expiresAt: verification.expiresAt });
-    await sendOwnerVerificationEmail(String(email), String(name), verificationUrl);
+    try {
+      await sendOwnerVerificationEmail(String(email), String(name), verificationUrl);
+    } catch (error) {
+      await repository.deleteBusiness(business.id);
+      console.error('Owner verification email delivery failed:', error);
+      return res.status(503).json({ error: "We couldn't send the verification email right now. Your listing was not saved, so please try again in a moment." });
+    }
     return res.status(201).json(ownerVerificationResponse(business, verificationUrl));
   });
 
@@ -475,7 +489,12 @@ export function createApp(options: { dbPath?: string } = {}) {
     const verificationUrl = verificationUrlFor(verification.token);
     const business = await repository.refreshOwnerEmailVerification(email, { tokenHash: verification.tokenHash, expiresAt: verification.expiresAt });
     if (business) {
-      await sendOwnerVerificationEmail(String(email), business.name, verificationUrl);
+      try {
+        await sendOwnerVerificationEmail(String(email), business.name, verificationUrl);
+      } catch (error) {
+        console.error('Owner verification resend failed:', error);
+        return res.status(503).json({ error: "We couldn't send the verification email right now. Please try again in a moment." });
+      }
     }
     return res.json({
       message: "If that email has an unverified owner account, a new verification link has been sent.",
