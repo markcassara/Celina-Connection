@@ -539,6 +539,8 @@ export const CATEGORIES = [
   "Dining",
   "Shopping & Boutiques",
   "Health & Beauty",
+  "Automotive",
+  "Real Estate",
   "Home & Professional Services",
   "Activities & Community"
 ];

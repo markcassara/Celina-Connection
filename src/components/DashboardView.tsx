@@ -1989,7 +1989,11 @@ function AdminDashboardView({
         matchedCategory = 'Shopping & Boutiques';
       } else if (lowerCategory.includes('health') || lowerCategory.includes('beauty') || lowerCategory.includes('spa') || lowerCategory.includes('hair') || lowerCategory.includes('barber') || lowerCategory.includes('salon') || lowerCategory.includes('dent')) {
         matchedCategory = 'Health & Beauty';
-      } else if (lowerCategory.includes('home') || lowerCategory.includes('service') || lowerCategory.includes('plumb') || lowerCategory.includes('lawn') || lowerCategory.includes('clean') || lowerCategory.includes('mechanic')) {
+      } else if (lowerCategory.includes('auto') || lowerCategory.includes('car') || lowerCategory.includes('truck') || lowerCategory.includes('mechanic') || lowerCategory.includes('tire') || lowerCategory.includes('oil')) {
+        matchedCategory = 'Automotive';
+      } else if (lowerCategory.includes('real estate') || lowerCategory.includes('realtor') || lowerCategory.includes('realty') || lowerCategory.includes('mortgage') || lowerCategory.includes('property')) {
+        matchedCategory = 'Real Estate';
+      } else if (lowerCategory.includes('home') || lowerCategory.includes('service') || lowerCategory.includes('plumb') || lowerCategory.includes('lawn') || lowerCategory.includes('clean')) {
         matchedCategory = 'Home & Professional Services';
       } else if (lowerCategory.includes('activit') || lowerCategory.includes('commun') || lowerCategory.includes('event') || lowerCategory.includes('art') || lowerCategory.includes('wood')) {
         matchedCategory = 'Activities & Community';
@@ -2439,7 +2443,7 @@ function AdminDashboardView({
             <div className="p-4 bg-slate-100/80 rounded-xl border border-slate-200 space-y-1">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">CSV Column Formatting Guide:</span>
               <p className="text-[10px] text-slate-500 leading-relaxed">
-                If your CSV includes a header line, we will auto-detect columns: <strong>name</strong>, <strong>category</strong>, <strong>description</strong>, <strong>phone</strong>, <strong>email</strong>, <strong>address</strong>, <strong>website</strong>. Otherwise, columns are parsed in that exact order. Categories are automatically normalized into existing directory categories (Dining, Shopping, Health, Services, Community).
+                If your CSV includes a header line, we will auto-detect columns: <strong>name</strong>, <strong>category</strong>, <strong>description</strong>, <strong>phone</strong>, <strong>email</strong>, <strong>address</strong>, <strong>website</strong>. Otherwise, columns are parsed in that exact order. Categories are automatically normalized into existing directory categories (Dining, Shopping, Health, Automotive, Real Estate, Services, Community).
               </p>
             </div>
           </div>
