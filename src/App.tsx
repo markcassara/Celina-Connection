@@ -785,7 +785,6 @@ export default function App() {
               <button onClick={() => setActiveTab('directory')} className="hover:text-slate-900">Browse Directory</button>
               <button onClick={() => setActiveTab('pricing')} className="hover:text-slate-900">Membership Plans</button>
               <button onClick={openOwnerLogin} className="hover:text-slate-900">Owner Login</button>
-              <button onClick={openAdminLogin} className="hover:text-slate-900">Admin Login</button>
             </div>
           </div>
 
@@ -796,7 +795,12 @@ export default function App() {
             <p className="flex items-center gap-1">
               Made with <Heart className="w-3.5 h-3.5 text-orange-500 fill-orange-500" /> for the Celina, Texas Community.
             </p>
-            <span>&copy; {new Date().getFullYear()} Celina Connection. All Rights Reserved.</span>
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <button onClick={openAdminLogin} className="text-slate-400 hover:text-slate-700 underline-offset-4 hover:underline">
+                Admin Login
+              </button>
+              <span>&copy; {new Date().getFullYear()} Celina Connection. All Rights Reserved.</span>
+            </div>
           </div>
         </div>
       </footer>

@@ -660,10 +660,6 @@ export default function DashboardView({
 
                 {adminError && <p className="text-rose-600 text-[11px] font-semibold">{adminError}</p>}
 
-                <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
-                  🔒 <strong>Secure admin:</strong> Admin access now uses a server session cookie. Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET in production.
-                </div>
-
                 <button
                   type="submit"
                   className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
@@ -710,10 +706,6 @@ export default function DashboardView({
                 </div>
 
                 {ownerLoginError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{ownerLoginError}</p>}
-
-                <div className="text-[10px] text-slate-400 bg-slate-50 rounded-xl p-3 leading-relaxed border border-slate-100">
-                  🔒 <strong>Secure owner login:</strong> Password sign-in uses a server-issued HttpOnly session cookie, so owners can safely return and manage their own listing.
-                </div>
 
                 <button
                   type="submit"
