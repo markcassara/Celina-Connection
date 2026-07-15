@@ -2288,9 +2288,6 @@ function AdminDashboardView({
           <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-white">
             Celina Connection Control Panel
           </h2>
-          <p className="text-slate-400 text-xs font-semibold">
-            Admin tools require server-side authentication before operational control is enabled.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
