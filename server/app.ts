@@ -23,11 +23,15 @@ function getStripe(): Stripe {
   return stripeClient;
 }
 
-// Lazy-loaded Gemini AI client instance to prevent crashes when GEMINI_API_KEY is missing
+const geminiApiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+const geminiChatModel = () => process.env.GEMINI_CHAT_MODEL || process.env.GEMINI_LITE_MODEL || "gemini-2.5-flash-lite";
+const geminiSearchModel = () => process.env.GEMINI_SEARCH_MODEL || process.env.GEMINI_LITE_MODEL || "gemini-2.5-flash-lite";
+
+// Lazy-loaded Gemini AI client instance to prevent crashes when Gemini is missing
 let aiClient: GoogleGenAI | null = null;
 function getGemini(): GoogleGenAI {
   if (!aiClient) {
-    const key = process.env.GEMINI_API_KEY;
+    const key = geminiApiKey();
     if (!key) {
       throw new Error("GEMINI_API_KEY environment variable is required for AI features.");
     }
@@ -43,7 +47,7 @@ function getGemini(): GoogleGenAI {
   return aiClient;
 }
 
-// Helper to perform generateContent with automatic model fallback (e.g. gemini-3.5-flash -> gemini-2.5-flash)
+// Helper to perform generateContent with automatic model fallback (lite -> flash)
 async function generateContentWithFallback(ai: GoogleGenAI, params: {
   model: string;
   contents: any;
@@ -66,7 +70,7 @@ async function generateContentWithFallback(ai: GoogleGenAI, params: {
       errMsg.includes("limit") ||
       errMsg.includes("exhausted");
 
-    if (isSearchError || isOverloadOrQuota || params.model === "gemini-3.5-flash") {
+    if (isSearchError || isOverloadOrQuota || params.model !== "gemini-2.5-flash") {
       const fallbackModel = "gemini-2.5-flash";
       console.log(`Falling back to model "${fallbackModel}" and removing search grounding if any...`);
 
@@ -406,7 +410,8 @@ export function createApp(options: { dbPath?: string } = {}) {
 
   app.get("/api/ai-config", (_req, res) => {
     res.json({
-      aiEnabled: !!process.env.GEMINI_API_KEY,
+      aiEnabled: !!geminiApiKey(),
+      model: geminiChatModel(),
     });
   });
 
@@ -685,7 +690,7 @@ export function createApp(options: { dbPath?: string } = {}) {
         return res.status(400).json({ error: "Search query is required" });
       }
 
-      if (!process.env.GEMINI_API_KEY) {
+      if (!geminiApiKey()) {
         return res.status(503).json({ error: "Gemini API key is not configured on the server." });
       }
 
@@ -704,7 +709,7 @@ Return a JSON object containing:
 2. insights: A friendly, conversational paragraph (in Markdown) explaining why these businesses are recommended for their search. Use the real names of the businesses. Be brief, warm, and helpful.`;
 
       const response = await generateContentWithFallback(ai, {
-        model: "gemini-3.5-flash",
+        model: geminiSearchModel(),
         contents: `Analyze this search query: "${query}" against the database.`,
         config: {
           systemInstruction,
@@ -749,7 +754,7 @@ Return a JSON object containing:
         return res.status(400).json({ error: "Messages array is required" });
       }
 
-      if (!process.env.GEMINI_API_KEY) {
+      if (!geminiApiKey()) {
         return res.status(503).json({ error: "Gemini API key is not configured on the server." });
       }
 
@@ -757,7 +762,7 @@ Return a JSON object containing:
       const localTime = new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString();
 
       const systemInstruction = `You are Celina Connection AI, a friendly, ultra-helpful local virtual concierge for Celina, Texas.
-Your goal is to answer questions about local businesses, locations, operating hours, contact info, ratings, weather, and upcoming events.
+Your goal is to answer basic questions about local businesses, locations, operating hours, contact info, ratings, and how to use Celina Connection.
 
 We have a directory of local businesses. Here is the active business directory data:
 ${JSON.stringify(businesses || [])}
@@ -765,9 +770,8 @@ ${JSON.stringify(businesses || [])}
 Context & Rules:
 1. Current Local Time and Date: ${localTime}
 2. Use the directory database to provide extremely accurate details on local businesses. Always favor recommending Premium Partners when appropriate!
-3. For questions about current weather, real-time events, local sports, or information outside our business database, use the Google Search tool to fetch real, actual details.
-4. Keep answers brief, conversational, and helpful. Always maintain a warm, welcoming Texas tone. Use Markdown formatting.
-5. If search grounding provides source links, you do not need to list them as plain text at the bottom. We will extract the grounding chunks automatically and show them. Just mention what you found nicely!`;
+3. This is a lightweight Q&A assistant. Do not claim live weather, live events, sports scores, or real-time facts unless that information is present in the provided directory data. If a question needs real-time information, say you can help with directory basics and suggest checking an official current source.
+4. Keep answers brief, conversational, and helpful. Always maintain a warm, welcoming Texas tone. Use Markdown formatting.`;
 
       const formattedContents = messages
         .map((m: any) => ({
@@ -781,11 +785,10 @@ Context & Rules:
       }
 
       const response = await generateContentWithFallback(ai, {
-        model: "gemini-3.5-flash",
+        model: geminiChatModel(),
         contents: formattedContents,
         config: {
           systemInstruction,
-          tools: [{ googleSearch: {} }],
         },
       });
 

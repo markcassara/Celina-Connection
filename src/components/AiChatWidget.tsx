@@ -17,9 +17,9 @@ interface AiChatWidgetProps {
 }
 
 const STARTER_PROMPTS = [
-  "⛅ What is the weather in Celina TX today?",
+  "📍 How do I find a local business in Celina?",
   "🥧 What is famous to eat on the Square?",
-  "🎭 Any fun community events or activities?",
+  "🛍️ Show me shopping and boutique options",
   "💼 Show me some Premium verified businesses"
 ];
 
@@ -29,7 +29,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
     {
       id: 'welcome',
       role: 'assistant',
-      text: "Howdy! I'm your **Celina Connection AI Assistant**. 🤠✨\n\nAsk me anything about local business listings, operating hours, current weather on the Square, or upcoming Celina community events!",
+      text: "Howdy! I'm your **Celina Connection AI Assistant**. 🤠✨\n\nAsk me basic questions about local business listings, categories, operating hours, contact info, and how Celina Connection works.",
       timestamp: new Date()
     }
   ]);
