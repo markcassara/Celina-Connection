@@ -24,8 +24,8 @@ function getStripe(): Stripe {
 }
 
 const geminiApiKey = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
-const geminiChatModel = () => process.env.GEMINI_CHAT_MODEL || process.env.GEMINI_LITE_MODEL || "gemini-2.5-flash-lite";
-const geminiSearchModel = () => process.env.GEMINI_SEARCH_MODEL || process.env.GEMINI_LITE_MODEL || "gemini-2.5-flash-lite";
+const geminiChatModel = () => process.env.GEMINI_CHAT_MODEL || process.env.GEMINI_LITE_MODEL || "gemini-3.1-flash-lite";
+const geminiSearchModel = () => process.env.GEMINI_SEARCH_MODEL || process.env.GEMINI_LITE_MODEL || "gemini-3.1-flash-lite";
 
 // Lazy-loaded Gemini AI client instance to prevent crashes when Gemini is missing
 let aiClient: GoogleGenAI | null = null;
@@ -70,8 +70,8 @@ async function generateContentWithFallback(ai: GoogleGenAI, params: {
       errMsg.includes("limit") ||
       errMsg.includes("exhausted");
 
-    if (isSearchError || isOverloadOrQuota || params.model !== "gemini-2.5-flash") {
-      const fallbackModel = "gemini-2.5-flash";
+    if (isSearchError || isOverloadOrQuota || params.model !== "gemini-3.5-flash") {
+      const fallbackModel = "gemini-3.5-flash";
       console.log(`Falling back to model "${fallbackModel}" and removing search grounding if any...`);
 
       const fallbackConfig = { ...params.config };
