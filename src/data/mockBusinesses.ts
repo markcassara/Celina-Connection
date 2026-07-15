@@ -25,9 +25,9 @@ export const INITIAL_BUSINESSES: Business[] = [
       facebook: "https://facebook.com/lucysonthesquare",
       instagram: "https://instagram.com/lucysonthesquare"
     },
-    featured: true,
+    featured: false,
     ctaText: "Book a Table",
-    tier: "premium",
+    tier: "basic",
     ownerId: "",
     isUnclaimed: true,
     createdAt: "2024-01-15T10:00:00Z",
@@ -53,7 +53,7 @@ export const INITIAL_BUSINESSES: Business[] = [
   },
   {
     id: 'celina-bistro-demo',
-    name: "Celina Bistro",
+    name: "CELINA Bistro",
     category: "Dining",
     description: "A polished demo restaurant profile showing local business owners how a premium Celina Connection listing can highlight dining, photos, hours, reviews, and calls to action.",
     phone: "(972) 555-0200",
@@ -65,9 +65,9 @@ export const INITIAL_BUSINESSES: Business[] = [
       sat: "10:00 AM - 10:00 PM",
       sun: "10:00 AM - 3:00 PM"
     },
-    logoUrl: "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=150&h=150&q=80",
+    logoUrl: "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=150&h=150&q=80",
     images: [
-      "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1514933651103-005eec06c04b?auto=format&fit=crop&w=1200&q=85",
       "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80"
     ],
     socialLinks: {

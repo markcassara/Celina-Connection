@@ -328,14 +328,22 @@ export class CelinaRepository implements CelinaDataStore {
   }
 
   ensureFeaturedPlaceholderBusinesses() {
-    const celinaBistro = makeFeaturedPlaceholderBusiness('Celina Bistro');
-    const existingBistro = this.db.prepare("SELECT id FROM businesses WHERE name LIKE 'Celina Bistro%' ORDER BY created_at DESC LIMIT 1").get() as { id?: string } | undefined;
+    const lucys = makeFeaturedPlaceholderBusiness("Lucy's on the Square");
+    this.db.prepare(`
+      UPDATE businesses
+      SET featured = 0, tier = 'basic'
+      WHERE id = ? OR lower(name) = lower(?)
+    `).run(lucys.id, lucys.name);
+
+    const celinaBistro = makeFeaturedPlaceholderBusiness('CELINA Bistro');
+    const existingBistro = this.db.prepare("SELECT id FROM businesses WHERE lower(name) LIKE 'celina bistro%' OR id = 'celina-bistro-demo' ORDER BY created_at DESC LIMIT 1").get() as { id?: string } | undefined;
     if (existingBistro?.id) {
       this.db.prepare(`
         UPDATE businesses
-        SET name = ?, slug = ?, featured = 1, tier = ?, is_unclaimed = 0, email_verified = 1
+        SET name = ?, slug = ?, featured = 1, tier = ?, is_unclaimed = 0, email_verified = 1,
+            logo_url = ?, images_json = ?, cta_text = ?
         WHERE id = ?
-      `).run(celinaBistro.name, celinaBistro.slug, celinaBistro.tier, existingBistro.id);
+      `).run(celinaBistro.name, celinaBistro.slug, celinaBistro.tier, celinaBistro.logoUrl, JSON.stringify(celinaBistro.images || []), celinaBistro.ctaText || 'View Demo', existingBistro.id);
     } else {
       this.upsertBusiness(celinaBistro);
     }
@@ -661,14 +669,22 @@ class PostgresRepository implements CelinaDataStore {
   }
 
   private async ensureFeaturedPlaceholderBusinesses() {
-    const celinaBistro = makeFeaturedPlaceholderBusiness('Celina Bistro');
+    const lucys = makeFeaturedPlaceholderBusiness("Lucy's on the Square");
+    await this.sql`
+      UPDATE businesses
+      SET featured = FALSE, tier = 'basic'
+      WHERE id = ${lucys.id} OR lower(name) = lower(${lucys.name})
+    `;
+
+    const celinaBistro = makeFeaturedPlaceholderBusiness('CELINA Bistro');
     const existingBistro = await this.sql`
-      SELECT id FROM businesses WHERE name ILIKE 'Celina Bistro%' ORDER BY created_at DESC LIMIT 1
+      SELECT id FROM businesses WHERE lower(name) LIKE 'celina bistro%' OR id = 'celina-bistro-demo' ORDER BY created_at DESC LIMIT 1
     ` as any[];
     if (existingBistro[0]?.id) {
       await this.sql`
         UPDATE businesses
-        SET name = ${celinaBistro.name}, slug = ${celinaBistro.slug}, featured = TRUE, tier = ${celinaBistro.tier}, is_unclaimed = FALSE, email_verified = TRUE
+        SET name = ${celinaBistro.name}, slug = ${celinaBistro.slug}, featured = TRUE, tier = ${celinaBistro.tier}, is_unclaimed = FALSE, email_verified = TRUE,
+            logo_url = ${celinaBistro.logoUrl}, images_json = ${JSON.stringify(celinaBistro.images || [])}, cta_text = ${celinaBistro.ctaText || 'View Demo'}
         WHERE id = ${existingBistro[0].id}
       `;
     } else {

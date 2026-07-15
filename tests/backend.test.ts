@@ -256,7 +256,10 @@ test('GET /api/bootstrap seeds businesses and bug collection', async () => {
     assert.ok(body.businesses.length >= 10);
     assert.ok(Array.isArray(body.reportedBugs));
     assert.equal(body.reportedBugs.length, 0);
-    assert.equal(body.businesses[0].name, "Lucy's on the Square");
+    const lucys = body.businesses.find((business: any) => business.name === "Lucy's on the Square");
+    assert.ok(lucys);
+    assert.equal(lucys.featured, false);
+    assert.equal(lucys.tier, 'basic');
   });
 });
 
@@ -268,11 +271,18 @@ test('seed data includes demo featured listings for Celina Bistro and Legacy Wea
     assert.equal(res.status, 200);
     const body = await res.json();
 
-    const celinaBistro = body.businesses.find((business: any) => business.name === 'Celina Bistro');
+    const celinaBistro = body.businesses.find((business: any) => business.name === 'CELINA Bistro');
     assert.ok(celinaBistro);
     assert.equal(celinaBistro.featured, true);
     assert.equal(celinaBistro.tier, 'premium');
     assert.equal(celinaBistro.isUnclaimed, false);
+    assert.ok(celinaBistro.images[0].includes('photo-1514933651103'));
+
+    const featuredNames = body.businesses
+      .filter((business: any) => business.featured || business.tier === 'premium' || business.tier === 'pro')
+      .map((business: any) => business.name);
+    assert.ok(featuredNames.includes('CELINA Bistro'));
+    assert.ok(!featuredNames.includes("Lucy's on the Square"));
 
     const legacyWealth = body.businesses.find((business: any) => business.name === 'Legacy Wealth Academy LLC');
     assert.ok(legacyWealth);
