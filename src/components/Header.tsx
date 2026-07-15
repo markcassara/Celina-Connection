@@ -12,6 +12,7 @@ interface HeaderProps {
   isAiEnabled: boolean;
   setIsAiEnabled: (val: boolean) => void;
   serverAiAvailable: boolean;
+  onServerAiAvailabilityChange: (val: boolean) => void;
 }
 
 export default function Header({
@@ -23,7 +24,19 @@ export default function Header({
   isAiEnabled,
   setIsAiEnabled,
   serverAiAvailable,
+  onServerAiAvailabilityChange,
 }: HeaderProps) {
+  const [isCheckingAiConfig, setIsCheckingAiConfig] = React.useState(false);
+
+  const refreshAiAvailability = async () => {
+    const response = await fetch('/api/ai-config', { cache: 'no-store' });
+    if (!response.ok) return false;
+    const data = await response.json();
+    const available = !!data.aiEnabled;
+    onServerAiAvailabilityChange(available);
+    return available;
+  };
+
   const getTierBadge = (tier: Tier) => {
     switch (tier) {
       case 'premium':
@@ -126,15 +139,24 @@ export default function Header({
               </div>
               <button
                 id="ai-toggle-btn"
-                onClick={() => {
-                  if (!serverAiAvailable) {
-                    alert("Celina AI features require a GEMINI_API_KEY. Set it up in Settings > Secrets to unlock!");
-                    return;
+                onClick={async () => {
+                  setIsCheckingAiConfig(true);
+                  try {
+                    const available = serverAiAvailable || await refreshAiAvailability();
+                    if (!available) {
+                      alert("Celina AI is not available yet. The server is not reporting a configured Gemini key.");
+                      return;
+                    }
+                    const newVal = !isAiEnabled;
+                    setIsAiEnabled(newVal);
+                    localStorage.setItem('celina_ai_enabled', String(newVal));
+                  } catch {
+                    alert("Celina AI could not verify the server configuration. Please refresh and try again.");
+                  } finally {
+                    setIsCheckingAiConfig(false);
                   }
-                  const newVal = !isAiEnabled;
-                  setIsAiEnabled(newVal);
-                  localStorage.setItem('celina_ai_enabled', String(newVal));
                 }}
+                disabled={isCheckingAiConfig}
                 className={`relative inline-flex h-4.5 w-8 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                   isAiEnabled ? 'bg-gradient-to-r from-orange-500 to-amber-500' : 'bg-slate-200'
                 }`}

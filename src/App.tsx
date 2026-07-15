@@ -148,7 +148,7 @@ export default function App() {
     let isMounted = true;
 
     // Check AI server configuration status
-    fetch('/api/ai-config')
+    fetch('/api/ai-config', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         setServerAiAvailable(!!data.aiEnabled);
@@ -631,6 +631,7 @@ export default function App() {
         isAiEnabled={isAiEnabled}
         setIsAiEnabled={setIsAiEnabled}
         serverAiAvailable={serverAiAvailable}
+        onServerAiAvailabilityChange={setServerAiAvailable}
       />
 
       {/* Stripe Payment Notification Banner */}
