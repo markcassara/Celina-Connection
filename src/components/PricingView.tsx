@@ -9,6 +9,8 @@ interface PricingViewProps {
   onOpenLogin: () => void;
 }
 
+type PricingCardId = Tier | 'free';
+
 export default function PricingView({
   currentUser,
   onSelectTier,
@@ -16,7 +18,12 @@ export default function PricingView({
 }: PricingViewProps) {
   const [billingCycle, setBillingCycle] = useState<'month' | 'year'>('year');
 
-  const handleTierClick = (tier: Tier) => {
+  const handleTierClick = (tier: PricingCardId) => {
+    if (tier === 'free') {
+      onOpenLogin();
+      return;
+    }
+
     if (!currentUser.isLoggedIn) {
       onOpenLogin();
     } else {
@@ -26,11 +33,36 @@ export default function PricingView({
 
   const pricingCards = [
     {
-      id: 'basic' as Tier,
-      name: 'Local Pioneer (Basic)',
+      id: 'free' as PricingCardId,
+      name: 'Free Launch Listing',
       price: 'Free',
-      period: 'for the first 100 listings',
-      description: 'Standard business card directory listing. Secure your local presence on the platform while launch spots remain.',
+      period: 'first 100 listings',
+      description: 'A no-card-required starter listing for launch. Perfect for claiming a spot before choosing a paid visibility plan.',
+      icon: <Star className="w-6 h-6 text-emerald-500" />,
+      features: [
+        'Standard search placement',
+        'Basic contact info (Phone, Email)',
+        'Business description',
+        'Full street address with Map view',
+        '1 image upload',
+      ],
+      notIncluded: [
+        'Website link',
+        'Hours of operation',
+        'Review replies',
+        'Featured front-page placement',
+        'Gallery upgrades',
+      ],
+      color: 'border-emerald-200 hover:border-emerald-300 bg-emerald-50/30 text-slate-900',
+      buttonStyle: 'bg-emerald-600 text-white hover:bg-emerald-700',
+      buttonText: 'Claim Free Listing',
+    },
+    {
+      id: 'basic' as PricingCardId,
+      name: 'Local Pioneer (Basic)',
+      price: billingCycle === 'year' ? '$60' : '$6',
+      period: billingCycle === 'year' ? 'per year' : 'per month',
+      description: 'Standard paid directory listing. Keep the affordable $6/month entry tier available for businesses that want a paid presence.',
       icon: <Info className="w-6 h-6 text-slate-500" />,
       features: [
         'Standard search placement',
@@ -50,10 +82,10 @@ export default function PricingView({
       ],
       color: 'border-slate-200 hover:border-slate-300 bg-white text-slate-900',
       buttonStyle: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-      buttonText: 'Claim Free Listing',
+      buttonText: 'Claim Basic Listing',
     },
     {
-      id: 'pro' as Tier,
+      id: 'pro' as PricingCardId,
       name: 'Celina Champion (Pro)',
       price: billingCycle === 'year' ? '$160' : '$16',
       period: billingCycle === 'year' ? 'per year' : 'per month',
@@ -79,7 +111,7 @@ export default function PricingView({
       buttonText: 'Upgrade to Pro',
     },
     {
-      id: 'premium' as Tier,
+      id: 'premium' as PricingCardId,
       name: 'Preston Elite (Premium)',
       price: billingCycle === 'year' ? '$290' : '$29',
       period: billingCycle === 'year' ? 'per year' : 'per month',
@@ -150,9 +182,9 @@ export default function PricingView({
       </div>
 
       {/* Pricing Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch" id="pricing-tiers-grid">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 items-stretch" id="pricing-tiers-grid">
         {pricingCards.map((card) => {
-          const isCurrentTier = currentUser.isLoggedIn && currentUser.tier === card.id;
+          const isCurrentTier = currentUser.isLoggedIn && card.id !== 'free' && currentUser.tier === card.id;
           return (
             <motion.div
               key={card.id}
@@ -251,7 +283,8 @@ export default function PricingView({
             <thead>
               <tr className="border-b border-slate-200 text-slate-400 uppercase tracking-wider font-bold">
                 <th className="py-3 px-4">Directory Feature</th>
-                <th className="py-3 px-4">Basic (Free)</th>
+                <th className="py-3 px-4">Free Launch</th>
+                <th className="py-3 px-4">Basic ({billingCycle === 'year' ? '$60/yr' : '$6/mo'})</th>
                 <th className="py-3 px-4">Pro ({billingCycle === 'year' ? '$160/yr' : '$16/mo'})</th>
                 <th className="py-3 px-4">Premium ({billingCycle === 'year' ? '$290/yr' : '$29/mo'})</th>
               </tr>
@@ -260,17 +293,20 @@ export default function PricingView({
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Celina Square Search Placement</td>
                 <td className="py-3.5 px-4">Standard</td>
+                <td className="py-3.5 px-4">Standard</td>
                 <td className="py-3.5 px-4 font-medium text-orange-600">Standard + Badge</td>
                 <td className="py-3.5 px-4 font-bold text-amber-600">Priority Spotlight</td>
               </tr>
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Featured Front-Page Access</td>
                 <td className="py-3.5 px-4 text-slate-400">No</td>
+                <td className="py-3.5 px-4 text-slate-400">No</td>
                 <td className="py-3.5 px-4 text-orange-600 font-semibold">Yes (Secondary Spotlight)</td>
                 <td className="py-3.5 px-4 text-emerald-600 font-bold">Yes (Top Slider Spotlight)</td>
               </tr>
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Image Upload Limits</td>
+                <td className="py-3.5 px-4">Max 1 Image</td>
                 <td className="py-3.5 px-4">Max 1 Image</td>
                 <td className="py-3.5 px-4 font-medium">Max 5 Images (Gallery)</td>
                 <td className="py-3.5 px-4 font-bold">Max 10 Images (Full Gallery)</td>
@@ -279,10 +315,12 @@ export default function PricingView({
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Contact Info & Address</td>
                 <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
                 <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
+                <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
                 <td className="py-3.5 px-4 font-bold text-emerald-600">Full Address</td>
               </tr>
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Website & Custom CTA Buttons</td>
+                <td className="py-3.5 px-4 text-slate-400">No Link</td>
                 <td className="py-3.5 px-4 text-slate-400">No Link</td>
                 <td className="py-3.5 px-4 font-medium text-emerald-600">Website Link</td>
                 <td className="py-3.5 px-4 font-bold text-emerald-600">Custom Styled Button</td>
@@ -290,11 +328,13 @@ export default function PricingView({
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Hours of Operation</td>
                 <td className="py-3.5 px-4 text-slate-400">Hidden</td>
+                <td className="py-3.5 px-4 text-slate-400">Hidden</td>
                 <td className="py-3.5 px-4 text-emerald-600">Visible</td>
                 <td className="py-3.5 px-4 text-emerald-600 font-bold">Visible</td>
               </tr>
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Review Responder Engine</td>
+                <td className="py-3.5 px-4 text-slate-400">Read-Only</td>
                 <td className="py-3.5 px-4 text-slate-400">Read-Only</td>
                 <td className="py-3.5 px-4 font-medium text-emerald-600">Write Replies</td>
                 <td className="py-3.5 px-4 font-bold text-emerald-600">Write Replies</td>
@@ -303,10 +343,12 @@ export default function PricingView({
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Social Media Integrations</td>
                 <td className="py-3.5 px-4 text-slate-400">None</td>
                 <td className="py-3.5 px-4 text-slate-400">None</td>
+                <td className="py-3.5 px-4 text-slate-400">None</td>
                 <td className="py-3.5 px-4 text-emerald-600 font-bold">Facebook, Insta, Twitter</td>
               </tr>
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Directory Metrics Analytics</td>
+                <td className="py-3.5 px-4 text-slate-400">No</td>
                 <td className="py-3.5 px-4 text-slate-400">Basic Clicks</td>
                 <td className="py-3.5 px-4 text-slate-400">No</td>
                 <td className="py-3.5 px-4 font-bold text-emerald-600">Yes (Full Analytics Graph)</td>

@@ -42,7 +42,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
       business: b.name,
       slot: `#${index + 1}`,
       time: `Claimed ${formattedDate}`,
-      note: b.tier === 'premium' ? '🏆 PREMIUM PARTNER' : b.tier === 'pro' ? '⚡ PRO PARTNER' : '🤠 BASIC LISTING'
+      note: b.tier === 'premium' ? '🏆 PREMIUM PARTNER' : b.tier === 'pro' ? '⚡ PRO PARTNER' : b.tier === 'basic' ? '🤠 BASIC LISTING' : '🎉 FREE LAUNCH LISTING'
     };
   }).reverse();
 

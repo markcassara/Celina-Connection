@@ -428,6 +428,18 @@ test('directory copy uses friendly claim and removal request wording', () => {
   assert.doesNotMatch(directorySource, /Secure Claim Review/);
 });
 
+test('pricing keeps paid Basic tier while adding separate free launch tier', () => {
+  const pricingSource = fs.readFileSync(path.join(process.cwd(), 'src/components/PricingView.tsx'), 'utf8');
+  const checkoutSource = fs.readFileSync(path.join(process.cwd(), 'src/components/CheckoutModal.tsx'), 'utf8');
+
+  assert.match(pricingSource, /Free Launch Listing/);
+  assert.match(pricingSource, /name: 'Local Pioneer \(Basic\)'/);
+  assert.match(pricingSource, /price: billingCycle === 'year' \? '\$60' : '\$6'/);
+  assert.match(checkoutSource, /case 'basic':/);
+  assert.match(checkoutSource, /price: targetInterval === 'year' \? '\$60\.00' : '\$6\.00'/);
+  assert.doesNotMatch(checkoutSource, /targetTier === 'basic'\) \{\n\s+onPaymentSuccess\('basic', 0\)/);
+});
+
 test('basic owner profile patches include address but keep website and hours locked', () => {
   const patch = buildOwnerProfilePatch('basic', {
     name: 'Celina Bakery',

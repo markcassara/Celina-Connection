@@ -76,7 +76,7 @@ export default function DirectoryView({
   const [claimSubmitting, setClaimSubmitting] = useState(false);
 
   // Calculate claimed basic count dynamically (starting at 92 to simulate high demand)
-  const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'basic' && b.ownerId && !b.isUnclaimed).length);
+  const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length);
 
   // Review Form state
   const [reviewAuthor, setReviewAuthor] = useState('');

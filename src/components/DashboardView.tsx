@@ -241,7 +241,7 @@ export default function DashboardView({
     }
 
     // Enforce 100 free listings competitive cap
-    const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'basic' && b.ownerId && !b.isUnclaimed).length);
+    const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length);
     if (claimedBasicCount >= 100) {
       alert("⚠️ We've reached our competitive cap of 100 free listings! If you have an unclaimed listing on the front page, please claim it, or choose one of our Premium/Pro packages to activate a premium presence immediately.");
       return;
@@ -256,7 +256,7 @@ export default function DashboardView({
         phone: regPhone,
         email: regEmail,
         password: regPassword,
-        tier: 'basic',
+        tier: 'free',
         startedAt: regFormStartedAt,
         company: regCompany,
       });
@@ -286,8 +286,8 @@ export default function DashboardView({
       alert('This feature is available in preview mode. Actions and modifications are disabled to preserve the demo environment.');
       return;
     }
-    if (currentUser.tier === 'basic') {
-      alert('Adding an additional business listing is a Paid Tier feature. Please upgrade your membership first!');
+    if (currentUser.tier === 'free' || currentUser.tier === 'basic') {
+      alert('Adding an additional business listing is a Pro or Premium feature. Please upgrade your membership first!');
       return;
     }
     if (!newBusName || !newBusPhone || !newBusDesc) {
@@ -301,7 +301,7 @@ export default function DashboardView({
       description: newBusDesc,
       phone: newBusPhone,
       email: newBusEmail || currentUser.email,
-      tier: 'basic', // Starts basic/free
+      tier: 'free', // Starts on the free launch tier
       ownerId: currentUser.id,
     });
 
@@ -400,7 +400,7 @@ export default function DashboardView({
     if (selectedFiles.length === 0) return;
 
     const currentImages = myBusiness.images || [];
-    const max = myBusiness.tier === 'basic' ? 1 : myBusiness.tier === 'pro' ? 5 : 10;
+    const max = myBusiness.tier === 'free' || myBusiness.tier === 'basic' ? 1 : myBusiness.tier === 'pro' ? 5 : 10;
     const remainingSlots = max - currentImages.length;
 
     if (remainingSlots <= 0) {
@@ -781,7 +781,7 @@ export default function DashboardView({
     );
   }
 
-  const isBasic = myBusiness.tier === 'basic';
+  const isBasic = myBusiness.tier === 'free' || myBusiness.tier === 'basic';
   const isPro = myBusiness.tier === 'pro';
   const isPremium = myBusiness.tier === 'premium';
 
@@ -812,7 +812,7 @@ export default function DashboardView({
         <div className="flex gap-2">
           {!isAddingListing && myBusiness && myBusiness.tier !== 'premium' && (
             <button
-              onClick={() => onUpgradePrompt(myBusiness.tier === 'basic' ? 'pro' : 'premium')}
+              onClick={() => onUpgradePrompt(myBusiness.tier === 'free' ? 'basic' : myBusiness.tier === 'basic' ? 'pro' : 'premium')}
               className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs rounded-xl flex items-center gap-1 cursor-pointer shadow-sm animate-pulse"
             >
               <Zap className="w-3.5 h-3.5" />
@@ -864,8 +864,8 @@ export default function DashboardView({
 
             <button
               onClick={() => {
-                if (currentUser.tier === 'basic') {
-                  alert("Adding an additional business listing is a Paid Tier feature (requires a Pro or Premium plan plus add-on listings slot). Please upgrade your membership under the Billing tab first!");
+                if (currentUser.tier === 'free' || currentUser.tier === 'basic') {
+                  alert("Adding an additional business listing is a Pro or Premium feature (requires a Pro or Premium plan plus add-on listings slot). Please upgrade your membership under the Billing tab first!");
                   setActiveSubTab('billing');
                   return;
                 }
@@ -874,12 +874,12 @@ export default function DashboardView({
               className={`w-full py-2 border rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all ${
                 isAddingListing
                   ? 'bg-orange-500 text-white border-orange-500'
-                  : currentUser.tier === 'basic'
+                  : currentUser.tier === 'free' || currentUser.tier === 'basic'
                     ? 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200/60'
                     : 'bg-orange-50/50 hover:bg-orange-100/50 text-orange-700 border-dashed border-orange-200'
               }`}
             >
-              {currentUser.tier === 'basic' ? (
+              {currentUser.tier === 'free' || currentUser.tier === 'basic' ? (
                 <Lock className="w-3.5 h-3.5" />
               ) : (
                 <Plus className="w-3.5 h-3.5" />
@@ -1010,7 +1010,7 @@ export default function DashboardView({
                 <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
                 <div>
                   <span className="font-bold block text-blue-900 mb-0.5">Listing Tier Notice:</span>
-                  Additional businesses start on the Free Basic plan. You can upgrade any of your listings to Pro or Premium by checking out with the "Additional Business Listing Add-on" under the Billing tab!
+                  Additional businesses start on the Free Launch plan. You can upgrade any of your listings to Basic, Pro, or Premium from the Billing tab.
                 </div>
               </div>
 
@@ -1549,7 +1549,7 @@ export default function DashboardView({
                       </>
                     ) : (
                       <>
-                        <Award className="w-5 h-5 text-slate-400" /> Free Basic Member
+                        <Award className="w-5 h-5 text-slate-400" /> {myBusiness.tier === 'free' ? 'Free Launch Member' : 'Basic Member'}
                       </>
                     )}
                   </h4>
@@ -1579,9 +1579,9 @@ export default function DashboardView({
                   {(isPro || isPremium) && (
                     <button
                       onClick={() => {
-                        if (confirm('Are you sure you want to cancel your paid plan and return to the Free Basic Tier? Your address, hours, extra photos, and social links will be hidden.')) {
-                          onUpdateBusiness(myBusiness.id, { tier: 'basic', featured: false });
-                          setCurrentUser(prev => ({ ...prev, tier: 'basic' }));
+                        if (confirm('Are you sure you want to cancel your paid plan and return to the Free Launch Tier? Your website, hours, extra photos, and social links will be hidden.')) {
+                          onUpdateBusiness(myBusiness.id, { tier: 'free', featured: false });
+                          setCurrentUser(prev => ({ ...prev, tier: 'free' }));
                         }
                       }}
                       className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-semibold text-xs rounded-xl cursor-pointer"
@@ -1828,7 +1828,7 @@ function AdminDashboardView({
   const [bugStatusFilter, setBugStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'resolved'>('all');
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [tierFilter, setTierFilter] = useState<'all' | 'premium' | 'pro' | 'basic' | 'unclaimed'>('all');
+  const [tierFilter, setTierFilter] = useState<'all' | 'free' | 'premium' | 'pro' | 'basic' | 'unclaimed'>('all');
   const [selectedBusIds, setSelectedBusIds] = useState<string[]>([]);
 
   // CSV Importer States & Handlers
@@ -2004,7 +2004,7 @@ function AdminDashboardView({
     reader.readAsDataURL(file);
   });
 
-  const maxImagesForTier = (tier: Tier) => tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
+  const maxImagesForTier = (tier: Tier) => tier === 'free' || tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
 
   const handleAdminLogoUpload = async (file?: File | null) => {
     if (!file) return;
@@ -2031,7 +2031,7 @@ function AdminDashboardView({
   // Free spots calculation (starting at 92 to simulate high competitive demand)
   const freeClaimedBasicCount = Math.min(
     100,
-    92 + businesses.filter((b) => b.tier === 'basic' && b.ownerId && !b.isUnclaimed).length
+    92 + businesses.filter((b) => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length
   );
 
   // Filter listings
@@ -2168,7 +2168,7 @@ function AdminDashboardView({
   };
 
   const handleFastCycleTier = (bus: Business) => {
-    const tiers: Tier[] = ['basic', 'pro', 'premium'];
+    const tiers: Tier[] = ['free', 'basic', 'pro', 'premium'];
     const currentIndex = tiers.indexOf(bus.tier);
     const nextTier = tiers[(currentIndex + 1) % tiers.length];
     onUpdateBusiness(bus.id, { tier: nextTier });
@@ -2385,7 +2385,7 @@ function AdminDashboardView({
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 flex-shrink-0">
               <Filter className="w-3.5 h-3.5" /> Filter:
             </span>
-            {(['all', 'basic', 'pro', 'premium', 'unclaimed'] as const).map((mode) => (
+            {(['all', 'free', 'basic', 'pro', 'premium', 'unclaimed'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setTierFilter(mode)}
@@ -2395,7 +2395,7 @@ function AdminDashboardView({
                     : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                {mode === 'unclaimed' ? '⚠️ Unclaimed' : mode}
+                {mode === 'unclaimed' ? '⚠️ Unclaimed' : mode === 'free' ? 'Free Launch' : mode}
               </button>
             ))}
           </div>
@@ -2417,6 +2417,12 @@ function AdminDashboardView({
               {/* Change Tier */}
               <div className="flex items-center gap-1 bg-white/20 p-1 rounded-xl border border-white/10">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 text-slate-900">Tier:</span>
+                <button
+                  onClick={() => handleMassChangeTier('free')}
+                  className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-[10px] font-bold rounded-lg shadow-sm text-emerald-700 cursor-pointer"
+                >
+                  Free
+                </button>
                 <button
                   onClick={() => handleMassChangeTier('basic')}
                   className="px-2.5 py-1 bg-white hover:bg-slate-50 text-[10px] font-bold rounded-lg shadow-sm text-slate-800 cursor-pointer"
@@ -2577,7 +2583,7 @@ function AdminDashboardView({
                             : 'bg-slate-100 text-slate-700 border-slate-200'
                         }`}
                       >
-                        {bus.tier === 'premium' ? '✨ Premium Spotlight' : bus.tier === 'pro' ? '⭐ Pro Partner' : '💼 Basic (Free)'}
+                        {bus.tier === 'premium' ? '✨ Premium Spotlight' : bus.tier === 'pro' ? '⭐ Pro Partner' : bus.tier === 'basic' ? '💼 Basic Paid' : '🎉 Free Launch'}
                         <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black block ml-1 hover:underline">Cycle</span>
                       </button>
                     </td>
@@ -2880,7 +2886,8 @@ function AdminDashboardView({
                     onChange={(e) => setNewTier(e.target.value as Tier)}
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
                   >
-                    <option value="basic">Basic (Free)</option>
+                    <option value="free">Free Launch</option>
+                    <option value="basic">Basic ($6/mo)</option>
                     <option value="pro">Pro Partner</option>
                     <option value="premium">Premium Spotlight</option>
                   </select>
@@ -3036,7 +3043,8 @@ function AdminDashboardView({
                     }}
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
                   >
-                    <option value="basic">Basic (Free)</option>
+                    <option value="free">Free Launch</option>
+                    <option value="basic">Basic ($6/mo)</option>
                     <option value="pro">Pro Partner</option>
                     <option value="premium">Premium Spotlight</option>
                   </select>

@@ -46,7 +46,7 @@ export default function CheckoutModal({
   const defaultAddonQty = Math.max(0, userOwnedCount - 1);
 
   useEffect(() => {
-    if (targetTier && targetTier !== 'basic' && currentUser?.isLoggedIn && businesses.length > 0) {
+    if (targetTier && targetTier !== 'free' && currentUser?.isLoggedIn && businesses.length > 0) {
       setAddonQuantity(defaultAddonQty);
     } else {
       setAddonQuantity(0);
@@ -55,7 +55,7 @@ export default function CheckoutModal({
 
   // Check config on load
   useEffect(() => {
-    if (targetTier && targetTier !== 'basic') {
+    if (targetTier && targetTier !== 'free') {
       setIsLoadingConfig(true);
       fetch('/api/payment-config')
         .then((res) => res.json())
@@ -80,7 +80,7 @@ export default function CheckoutModal({
       case 'premium':
         return {
           name: 'Premium Partner',
-          price: targetInterval === 'year' ? '$120.00' : '$12.00',
+          price: targetInterval === 'year' ? '$290.00' : '$29.00',
           frequency: targetInterval === 'year' ? 'billed annually' : 'billed monthly',
           accent: 'from-amber-400 to-amber-500 text-slate-950',
           benefits: [
@@ -94,7 +94,7 @@ export default function CheckoutModal({
       case 'pro':
         return {
           name: 'Pro Partner',
-          price: targetInterval === 'year' ? '$60.00' : '$6.00',
+          price: targetInterval === 'year' ? '$160.00' : '$16.00',
           frequency: targetInterval === 'year' ? 'billed annually' : 'billed monthly',
           accent: 'from-orange-500 to-orange-600 text-white',
           benefits: [
@@ -104,12 +104,20 @@ export default function CheckoutModal({
             'Basic monthly page views counter',
           ],
         };
-      default:
+      case 'basic':
         return {
           name: 'Basic Listing',
-          price: '$0.00',
-          frequency: 'free forever',
+          price: targetInterval === 'year' ? '$60.00' : '$6.00',
+          frequency: targetInterval === 'year' ? 'billed annually' : 'billed monthly',
           accent: 'from-slate-500 to-slate-600 text-white',
+          benefits: ['Standard paid directory listing', 'Basic monthly page views counter'],
+        };
+      default:
+        return {
+          name: 'Free Launch Listing',
+          price: '$0.00',
+          frequency: 'free for first 100 listings',
+          accent: 'from-emerald-500 to-emerald-600 text-white',
           benefits: ['Standard search directory listing'],
         };
     }
@@ -117,8 +125,12 @@ export default function CheckoutModal({
 
   const details = getTierDetails(targetTier);
   const planPriceAmount = targetTier === 'premium' 
-    ? (targetInterval === 'year' ? 120 : 12) 
-    : (targetTier === 'pro' ? (targetInterval === 'year' ? 60 : 6) : 0);
+    ? (targetInterval === 'year' ? 290 : 29) 
+    : targetTier === 'pro'
+      ? (targetInterval === 'year' ? 160 : 16)
+      : targetTier === 'basic'
+        ? (targetInterval === 'year' ? 60 : 6)
+        : 0;
 
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/\D/g, '').slice(0, 16);
@@ -142,8 +154,8 @@ export default function CheckoutModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (targetTier === 'basic') {
-      onPaymentSuccess('basic', 0);
+    if (targetTier === 'free') {
+      onPaymentSuccess('free', 0);
       return;
     }
 
@@ -260,7 +272,7 @@ export default function CheckoutModal({
                 key="stripe-screen"
               >
                 {/* Billing Interval Toggle */}
-                {targetTier !== 'basic' && (
+                {targetTier !== 'free' && (
                   <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
                     <span className="text-xs font-bold text-slate-800">Billing Interval</span>
                     <div className="flex bg-slate-200 p-0.5 rounded-xl">
@@ -424,7 +436,7 @@ export default function CheckoutModal({
                 key="form-screen"
               >
                 {/* Billing Interval Toggle */}
-                {targetTier !== 'basic' && (
+                {targetTier !== 'free' && (
                   <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-2xl border border-slate-150">
                     <span className="text-xs font-bold text-slate-800">Billing Interval</span>
                     <div className="flex bg-slate-200 p-0.5 rounded-xl">

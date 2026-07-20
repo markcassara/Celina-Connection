@@ -499,10 +499,10 @@ export default function App() {
             : ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80'],
         };
       } else {
-        // Return to basic if not upgraded
+        // Return to free if not covered by add-on slots
         return {
           ...b,
-          tier: 'basic' as Tier,
+          tier: 'free' as Tier,
           featured: false,
         };
       }

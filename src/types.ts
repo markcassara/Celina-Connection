@@ -1,4 +1,4 @@
-export type Tier = 'basic' | 'pro' | 'premium';
+export type Tier = 'free' | 'basic' | 'pro' | 'premium';
 
 export interface Review {
   id: string;
