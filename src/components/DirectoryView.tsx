@@ -250,14 +250,7 @@ export default function DirectoryView({
             <span className="text-red-600 text-xs font-bold bg-red-50 border border-red-200 px-3 py-2 rounded-xl">ALL FREE SLOTS CLAIMEED</span>
           ) : (
             <button
-              onClick={() => {
-                const el = document.getElementById('unclaimed-listings-registry');
-                if (el) {
-                  el.scrollIntoView({ behavior: 'smooth' });
-                } else if (setActiveTab) {
-                  setActiveTab('dashboard');
-                }
-              }}
+              onClick={() => setActiveTab?.('dashboard')}
               className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer shadow-sm shadow-orange-100"
             >
               Claim Your Free Spot

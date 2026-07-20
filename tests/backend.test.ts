@@ -428,6 +428,14 @@ test('directory copy uses friendly claim and removal request wording', () => {
   assert.doesNotMatch(directorySource, /Secure Claim Review/);
 });
 
+test('Claim Your Free Spot routes to registration instead of scrolling to the registry', () => {
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+
+  assert.match(directorySource, /Claim Your Free Spot/);
+  assert.match(directorySource, /setActiveTab\?\.\('dashboard'\)/);
+  assert.doesNotMatch(directorySource, /scrollIntoView\(\{ behavior: 'smooth' \}\)/);
+});
+
 test('pricing keeps paid Basic tier while adding separate free launch tier', () => {
   const pricingSource = fs.readFileSync(path.join(process.cwd(), 'src/components/PricingView.tsx'), 'utf8');
   const checkoutSource = fs.readFileSync(path.join(process.cwd(), 'src/components/CheckoutModal.tsx'), 'utf8');
