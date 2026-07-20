@@ -102,6 +102,8 @@ export function createApp(options: { dbPath?: string } = {}) {
 
   const adminCookieName = "celina_admin_session";
   const ownerCookieName = "celina_owner_session";
+  const sessionMaxAgeSeconds = 60 * 60 * 24 * 7;
+  const sessionMaxAgeMs = sessionMaxAgeSeconds * 1000;
   const getCookie = (req: express.Request, name: string) => {
     const cookies = req.header("cookie") || "";
     const pair = cookies.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
@@ -123,7 +125,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     const [issuedAt, nonce, signature] = session.split(".");
     if (!issuedAt || !nonce || !signature) return false;
     const ageMs = Date.now() - Number(issuedAt);
-    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 1000 * 60 * 60 * 12) return false;
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > sessionMaxAgeMs) return false;
     const expected = crypto.createHmac("sha256", secret).update(`${issuedAt}.${nonce}`).digest("hex");
     return signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
   };
@@ -358,12 +360,12 @@ export function createApp(options: { dbPath?: string } = {}) {
     const [ownerId, issuedAt, nonce, signature] = session.split(".");
     if (!ownerId || !issuedAt || !nonce || !signature) return "";
     const ageMs = Date.now() - Number(issuedAt);
-    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 1000 * 60 * 60 * 24 * 30) return "";
+    if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > sessionMaxAgeMs) return "";
     const expected = crypto.createHmac("sha256", ownerSessionSecret()).update(`${ownerId}.${issuedAt}.${nonce}`).digest("hex");
     if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return "";
     return ownerId;
   };
-  const ownerCookie = (session: string) => `${ownerCookieName}=${encodeURIComponent(session)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
+  const ownerCookie = (session: string) => `${ownerCookieName}=${encodeURIComponent(session)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${sessionMaxAgeSeconds}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`;
   const makeCurrentUser = (business: Awaited<ReturnType<typeof repository.getBusiness>>): any => business ? ({
     id: business.ownerId,
     email: business.email,
@@ -494,7 +496,7 @@ export function createApp(options: { dbPath?: string } = {}) {
       return res.status(401).json({ error: "Invalid admin credentials." });
     }
     const session = makeAdminSession();
-    res.setHeader("set-cookie", `${adminCookieName}=${encodeURIComponent(session)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=43200${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
+    res.setHeader("set-cookie", `${adminCookieName}=${encodeURIComponent(session)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${sessionMaxAgeSeconds}${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
     return res.json({ authenticated: true });
   });
 

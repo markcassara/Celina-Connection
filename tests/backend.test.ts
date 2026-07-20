@@ -789,6 +789,87 @@ test('admin login creates an http-only session that authorizes protected routes'
   }
 });
 
+test('admin session remains valid across refreshes for a few days but expires after a week', async () => {
+  const dbPath = makeDbPath('admin-session-days');
+  process.env.ADMIN_PASSWORD = 'correct-password';
+  process.env.ADMIN_SESSION_SECRET = 'test-session-secret';
+  const realDateNow = Date.now;
+  const issuedAt = realDateNow();
+
+  try {
+    Date.now = () => issuedAt;
+    await withServer(dbPath, async (baseUrl) => {
+      const loginRes = await fetch(`${baseUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'correct-password' }),
+      });
+      assert.equal(loginRes.status, 200);
+      const cookie = loginRes.headers.get('set-cookie') || '';
+      assert.match(cookie, /Max-Age=604800/);
+
+      Date.now = () => issuedAt + 1000 * 60 * 60 * 24 * 3;
+      const refreshedSessionRes = await fetch(`${baseUrl}/api/admin/session`, { headers: { cookie } });
+      assert.equal(refreshedSessionRes.status, 200);
+
+      Date.now = () => issuedAt + 1000 * 60 * 60 * 24 * 8;
+      const expiredSessionRes = await fetch(`${baseUrl}/api/admin/session`, { headers: { cookie } });
+      assert.equal(expiredSessionRes.status, 401);
+    });
+  } finally {
+    Date.now = realDateNow;
+    delete process.env.ADMIN_PASSWORD;
+    delete process.env.ADMIN_SESSION_SECRET;
+  }
+});
+
+test('owner session remains valid across refreshes for a few days but expires after a week', async () => {
+  const dbPath = makeDbPath('owner-session-days');
+  process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+  const realDateNow = Date.now;
+  const issuedAt = realDateNow();
+
+  try {
+    Date.now = () => issuedAt;
+    await withServer(dbPath, async (baseUrl) => {
+      const registerRes = await fetch(`${baseUrl}/api/owner/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Refresh Session Flowers',
+          category: 'Shopping & Retail',
+          description: 'Florist serving Celina families.',
+          phone: '(972) 555-4422',
+          email: 'owner@refreshflowers.com',
+          password: 'Correct Horse Battery 42',
+          startedAt: issuedAt - 5000,
+          company: '',
+        }),
+      });
+      assert.equal(registerRes.status, 201);
+      const registered = await registerRes.json();
+      const verificationToken = new URL(registered.verificationUrl).searchParams.get('token');
+      assert.ok(verificationToken);
+
+      const verifyRes = await fetch(`${baseUrl}/api/owner/verify-email?token=${verificationToken}`);
+      assert.equal(verifyRes.status, 200);
+      const cookie = verifyRes.headers.get('set-cookie') || '';
+      assert.match(cookie, /Max-Age=604800/);
+
+      Date.now = () => issuedAt + 1000 * 60 * 60 * 24 * 3;
+      const refreshedSessionRes = await fetch(`${baseUrl}/api/owner/session`, { headers: { cookie } });
+      assert.equal(refreshedSessionRes.status, 200);
+
+      Date.now = () => issuedAt + 1000 * 60 * 60 * 24 * 8;
+      const expiredSessionRes = await fetch(`${baseUrl}/api/owner/session`, { headers: { cookie } });
+      assert.equal(expiredSessionRes.status, 401);
+    });
+  } finally {
+    Date.now = realDateNow;
+    delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
+  }
+});
+
 test('public claim requests can be submitted and reviewed by admin session', async () => {
   const dbPath = makeDbPath('claim-requests');
   process.env.ADMIN_PASSWORD = 'correct-password';

@@ -221,6 +221,28 @@ export default function App() {
         // no active owner cookie
       }
 
+      if (!user.isLoggedIn) {
+        try {
+          const adminSession = await api.adminSession();
+          if (adminSession?.authenticated) {
+            user = {
+              id: 'admin',
+              email: 'admin@celinaconnection.com',
+              businessName: 'Celina Connection Admin',
+              tier: 'premium',
+              isLoggedIn: true,
+              role: 'admin',
+            };
+            if (isMounted) {
+              setDashboardPortalMode('admin');
+              setCurrentUser(user);
+            }
+          }
+        } catch {
+          // no active admin cookie
+        }
+      }
+
       const params = new URLSearchParams(window.location.search);
       const emailVerificationToken = params.get('token');
       if (location.pathname === '/verify-email' && emailVerificationToken) {
