@@ -541,6 +541,13 @@ export const CATEGORIES = [
   "Health & Beauty",
   "Automotive",
   "Real Estate",
+  "Insurance",
+  "Estate Planning",
+  "Financial Services",
+  "Legal Services",
+  "Mortgage & Lending",
+  "Home Services",
+  "Professional Services",
   "Home & Professional Services",
   "Activities & Community"
 ];

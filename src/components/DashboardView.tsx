@@ -115,8 +115,23 @@ export default function DashboardView({
   const [regCompany, setRegCompany] = useState('');
   const [regFormStartedAt, setRegFormStartedAt] = useState(Date.now());
   
-  // Tab control inside dashboard
-  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'media' | 'reviews' | 'billing' | 'metrics'>('profile');
+  type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics';
+  const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics'];
+  const getDashboardSectionFromHash = (): DashboardSubTab => {
+    if (typeof window === 'undefined') return 'profile';
+    const hashSection = window.location.hash.replace('#dashboard-', '');
+    return dashboardSubTabs.includes(hashSection as DashboardSubTab) ? (hashSection as DashboardSubTab) : 'profile';
+  };
+  const [activeSubTab, setActiveSubTab] = useState<DashboardSubTab>(getDashboardSectionFromHash);
+
+  React.useEffect(() => {
+    const syncDashboardHash = () => {
+      setActiveSubTab(getDashboardSectionFromHash());
+    };
+    window.addEventListener('hashchange', syncDashboardHash);
+    syncDashboardHash();
+    return () => window.removeEventListener('hashchange', syncDashboardHash);
+  }, []);
 
   React.useEffect(() => {
     if (!currentUser.isLoggedIn && portalMode === 'owner') {
@@ -223,7 +238,7 @@ export default function DashboardView({
         isLoggedIn: true,
         role: 'admin',
       });
-      setActiveSubTab('overview');
+      setActiveSubTab('metrics');
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : 'Admin login failed.');
     }
@@ -1903,10 +1918,22 @@ function AdminDashboardView({
         matchedCategory = 'Health & Beauty';
       } else if (lowerCategory.includes('auto') || lowerCategory.includes('car') || lowerCategory.includes('truck') || lowerCategory.includes('mechanic') || lowerCategory.includes('tire') || lowerCategory.includes('oil')) {
         matchedCategory = 'Automotive';
-      } else if (lowerCategory.includes('real estate') || lowerCategory.includes('realtor') || lowerCategory.includes('realty') || lowerCategory.includes('mortgage') || lowerCategory.includes('property')) {
+      } else if (lowerCategory.includes('insurance')) {
+        matchedCategory = 'Insurance';
+      } else if (lowerCategory.includes('estate planning') || lowerCategory.includes('trust') || lowerCategory.includes('will') || lowerCategory.includes('probate')) {
+        matchedCategory = 'Estate Planning';
+      } else if (lowerCategory.includes('mortgage') || lowerCategory.includes('lending') || lowerCategory.includes('loan')) {
+        matchedCategory = 'Mortgage & Lending';
+      } else if (lowerCategory.includes('financial') || lowerCategory.includes('finance') || lowerCategory.includes('wealth') || lowerCategory.includes('advisor')) {
+        matchedCategory = 'Financial Services';
+      } else if (lowerCategory.includes('legal') || lowerCategory.includes('law') || lowerCategory.includes('attorney')) {
+        matchedCategory = 'Legal Services';
+      } else if (lowerCategory.includes('real estate') || lowerCategory.includes('realtor') || lowerCategory.includes('realty') || lowerCategory.includes('property')) {
         matchedCategory = 'Real Estate';
-      } else if (lowerCategory.includes('home') || lowerCategory.includes('service') || lowerCategory.includes('plumb') || lowerCategory.includes('lawn') || lowerCategory.includes('clean')) {
-        matchedCategory = 'Home & Professional Services';
+      } else if (lowerCategory.includes('plumb') || lowerCategory.includes('lawn') || lowerCategory.includes('clean') || lowerCategory.includes('roof') || lowerCategory.includes('hvac') || lowerCategory.includes('electric')) {
+        matchedCategory = 'Home Services';
+      } else if (lowerCategory.includes('home') || lowerCategory.includes('service')) {
+        matchedCategory = 'Professional Services';
       } else if (lowerCategory.includes('activit') || lowerCategory.includes('commun') || lowerCategory.includes('event') || lowerCategory.includes('art') || lowerCategory.includes('wood')) {
         matchedCategory = 'Activities & Community';
       } else if (lowerCategory.includes('dine') || lowerCategory.includes('food') || lowerCategory.includes('restaurant') || lowerCategory.includes('cafe') || lowerCategory.includes('baker') || lowerCategory.includes('donut')) {
@@ -2359,7 +2386,7 @@ function AdminDashboardView({
             <div className="p-4 bg-slate-100/80 rounded-xl border border-slate-200 space-y-1">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">CSV Column Formatting Guide:</span>
               <p className="text-[10px] text-slate-500 leading-relaxed">
-                If your CSV includes a header line, we will auto-detect columns: <strong>name</strong>, <strong>category</strong>, <strong>description</strong>, <strong>phone</strong>, <strong>email</strong>, <strong>address</strong>, <strong>website</strong>. Otherwise, columns are parsed in that exact order. Categories are automatically normalized into existing directory categories (Dining, Shopping, Health, Automotive, Real Estate, Services, Community).
+                If your CSV includes a header line, we will auto-detect columns: <strong>name</strong>, <strong>category</strong>, <strong>description</strong>, <strong>phone</strong>, <strong>email</strong>, <strong>address</strong>, <strong>website</strong>. Otherwise, columns are parsed in that exact order. Categories are automatically normalized into existing directory categories, including Dining, Shopping, Health, Automotive, Real Estate, Insurance, Estate Planning, Financial Services, Legal Services, Mortgage & Lending, Home Services, Professional Services, and Community.
               </p>
             </div>
           </div>

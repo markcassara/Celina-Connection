@@ -15,6 +15,65 @@ interface HeaderProps {
   onServerAiAvailabilityChange: (val: boolean) => void;
 }
 
+export interface HeaderTab {
+  id: string;
+  label: string;
+  targetTab: string;
+  dashboardSection?: 'profile' | 'reviews' | 'billing' | 'metrics' | 'media';
+}
+
+export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserProfile['role'] }): HeaderTab[] {
+  if (!user.isLoggedIn) {
+    return [
+      { id: 'directory', label: 'Explore Directory', targetTab: 'directory' },
+      { id: 'events', label: 'Local Events', targetTab: 'events' },
+      { id: 'pricing', label: 'Membership Tiers', targetTab: 'pricing' },
+    ];
+  }
+
+  if (user.role === 'admin') {
+    return [
+      { id: 'admin-dashboard', label: 'Admin Dashboard', targetTab: 'dashboard' },
+      { id: 'admin-listings', label: 'Manage Listings', targetTab: 'dashboard', dashboardSection: 'profile' },
+      { id: 'admin-metrics', label: 'Site Metrics', targetTab: 'dashboard', dashboardSection: 'metrics' },
+      { id: 'public-directory', label: 'View Directory', targetTab: 'directory' },
+    ];
+  }
+
+  return [
+    { id: 'owner-dashboard', label: 'Owner Dashboard', targetTab: 'dashboard' },
+    { id: 'owner-listing', label: 'My Listing', targetTab: 'dashboard', dashboardSection: 'profile' },
+    { id: 'owner-reviews', label: 'Reviews', targetTab: 'dashboard', dashboardSection: 'reviews' },
+    { id: 'owner-upgrade', label: 'Upgrade Plan', targetTab: 'dashboard', dashboardSection: 'billing' },
+  ];
+}
+
+export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProfile['role'] }): HeaderTab[] {
+  if (!user.isLoggedIn) {
+    return [
+      { id: 'directory', label: 'Explore', targetTab: 'directory' },
+      { id: 'events', label: 'Events', targetTab: 'events' },
+      { id: 'pricing', label: 'Pricing', targetTab: 'pricing' },
+    ];
+  }
+
+  if (user.role === 'admin') {
+    return [
+      { id: 'admin-dashboard', label: 'Admin', targetTab: 'dashboard' },
+      { id: 'admin-listings', label: 'Listings', targetTab: 'dashboard', dashboardSection: 'profile' },
+      { id: 'admin-metrics', label: 'Metrics', targetTab: 'dashboard', dashboardSection: 'metrics' },
+      { id: 'public-directory', label: 'Directory', targetTab: 'directory' },
+    ];
+  }
+
+  return [
+    { id: 'owner-dashboard', label: 'Dashboard', targetTab: 'dashboard' },
+    { id: 'owner-listing', label: 'Listing', targetTab: 'dashboard', dashboardSection: 'profile' },
+    { id: 'owner-reviews', label: 'Reviews', targetTab: 'dashboard', dashboardSection: 'reviews' },
+    { id: 'owner-upgrade', label: 'Plan', targetTab: 'dashboard', dashboardSection: 'billing' },
+  ];
+}
+
 export default function Header({
   activeTab,
   setActiveTab,
@@ -74,6 +133,16 @@ export default function Header({
     }
   };
 
+  const handleTabClick = (tab: HeaderTab) => {
+    if (tab.dashboardSection) {
+      window.location.hash = `dashboard-${tab.dashboardSection}`;
+    }
+    setActiveTab(tab.targetTab);
+  };
+
+  const desktopTabs = getDesktopHeaderTabs(currentUser);
+  const mobileTabs = getMobileHeaderTabs(currentUser);
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-slate-100 bg-white/95 backdrop-blur-md shadow-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -98,18 +167,13 @@ export default function Header({
 
         {/* Desktop Navigation Tabs */}
         <nav className="hidden lg:flex space-x-1" aria-label="Tabs">
-          {[
-            { id: 'directory', label: 'Explore Directory' },
-            { id: 'events', label: 'Local Events' },
-            { id: 'pricing', label: 'Membership Tiers' },
-            ...(currentUser.isLoggedIn ? [{ id: 'dashboard', label: 'Owner Dashboard' }] : []),
-          ].map((tab) => {
-            const isActive = activeTab === tab.id;
+          {desktopTabs.map((tab) => {
+            const isActive = activeTab === tab.targetTab;
             return (
               <button
                 key={tab.id}
                 id={`tab-btn-${tab.id}`}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabClick(tab)}
                 className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                   isActive 
                     ? 'text-orange-700 font-semibold' 
@@ -207,17 +271,12 @@ export default function Header({
 
       {/* Mobile navigation tab bar */}
       <div className="lg:hidden flex border-t border-slate-100 bg-white justify-around py-2">
-        {[
-          { id: 'directory', label: 'Explore' },
-          { id: 'events', label: 'Events' },
-          { id: 'pricing', label: 'Pricing' },
-          ...(currentUser.isLoggedIn ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
-        ].map((tab) => {
-          const isActive = activeTab === tab.id;
+        {mobileTabs.map((tab) => {
+          const isActive = activeTab === tab.targetTab;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabClick(tab)}
               className={`text-xs font-medium py-1 px-3 rounded-md transition-colors ${
                 isActive ? 'text-orange-700 bg-orange-100 font-semibold' : 'text-slate-500'
               }`}
