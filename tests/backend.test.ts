@@ -860,6 +860,46 @@ test('POST /api/businesses/:id/claim requires admin auth and works with a server
   }
 });
 
+test('admin listing updates persist large uploaded logo and image data', async () => {
+  const dbPath = makeDbPath('admin-large-upload-save');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const bootstrap = await bootstrapRes.json();
+      const target = bootstrap.businesses[0];
+      assert.ok(target);
+
+      const logoUrl = `data:image/png;base64,${'a'.repeat(120_000)}`;
+      const imageUrl = `data:image/jpeg;base64,${'b'.repeat(180_000)}`;
+      const updateRes = await fetch(`${baseUrl}/api/businesses/${target.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          name: 'Large Upload Bakery',
+          logoUrl,
+          images: [imageUrl],
+        }),
+      });
+
+      assert.equal(updateRes.status, 200);
+      const updated = await updateRes.json();
+      assert.equal(updated.name, 'Large Upload Bakery');
+      assert.equal(updated.logoUrl, logoUrl);
+      assert.deepEqual(updated.images, [imageUrl]);
+
+      const afterRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const after = await afterRes.json();
+      const persisted = after.businesses.find((business: any) => business.id === target.id);
+      assert.equal(persisted.logoUrl, logoUrl);
+      assert.deepEqual(persisted.images, [imageUrl]);
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
+});
+
 test('destructive business and admin endpoints are disabled when admin auth is not configured', async () => {
   const dbPath = makeDbPath('admin-auth-disabled');
   delete process.env.ADMIN_API_TOKEN;

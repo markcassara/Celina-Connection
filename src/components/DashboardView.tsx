@@ -353,9 +353,12 @@ export default function DashboardView({
       return;
     }
 
-    updateMyBusiness(patch);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    updateMyBusiness(patch)
+      .then(() => {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      })
+      .catch((error) => alert(error instanceof Error ? error.message : 'Unable to save profile changes.'));
   };
 
   const handleReplySubmit = (reviewId: string) => {
@@ -416,7 +419,7 @@ export default function DashboardView({
 
     try {
       const uploadedImages = await Promise.all(filesToUse.map(readFileAsDataUrl));
-      updateMyBusiness({
+      await updateMyBusiness({
         images: [...currentImages, ...uploadedImages],
       });
     } catch (error) {
@@ -449,7 +452,7 @@ export default function DashboardView({
 
     try {
       const logoDataUrl = await readFileAsDataUrl(file);
-      updateMyBusiness({ logoUrl: logoDataUrl });
+      await updateMyBusiness({ logoUrl: logoDataUrl });
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Unable to upload the selected logo.');
     } finally {
@@ -2133,26 +2136,30 @@ function AdminDashboardView({
     setShowCreateModal(false);
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingBusiness) return;
 
-    onUpdateBusiness(editingBusiness.id, {
-      name: editName,
-      category: editCategory,
-      phone: editPhone,
-      email: editEmail,
-      description: editDesc,
-      tier: editTier,
-      isUnclaimed: editIsUnclaimed,
-      address: editAddress,
-      website: editWebsite,
-      logoUrl: editLogoUrl,
-      images: editImages.slice(0, maxImagesForTier(editTier)),
-      ownerId: editIsUnclaimed ? '' : editingBusiness.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`,
-    });
+    try {
+      await onUpdateBusiness(editingBusiness.id, {
+        name: editName,
+        category: editCategory,
+        phone: editPhone,
+        email: editEmail,
+        description: editDesc,
+        tier: editTier,
+        isUnclaimed: editIsUnclaimed,
+        address: editAddress,
+        website: editWebsite,
+        logoUrl: editLogoUrl,
+        images: editImages.slice(0, maxImagesForTier(editTier)),
+        ownerId: editIsUnclaimed ? '' : editingBusiness.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`,
+      });
 
-    setEditingBusiness(null);
+      setEditingBusiness(null);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to save listing changes.');
+    }
   };
 
   const handleFastToggleClaim = (bus: Business) => {

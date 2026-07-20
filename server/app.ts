@@ -98,7 +98,7 @@ async function generateContentWithFallback(ai: GoogleGenAI, params: {
 export function createApp(options: { dbPath?: string } = {}) {
   const app = express();
   const repository = createRepository(options);
-  app.use(express.json());
+  app.use(express.json({ limit: "10mb" }));
 
   const adminCookieName = "celina_admin_session";
   const ownerCookieName = "celina_owner_session";
