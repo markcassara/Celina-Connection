@@ -99,7 +99,7 @@ export default function EventsView() {
             <div className="flex items-start gap-2 text-xs">
               <Info className="w-4 h-4 text-orange-400 flex-shrink-0 mt-0.5" />
               <p className="text-slate-200 leading-relaxed font-medium">
-                Celina RSS calendar is currently unavailable. Events are compiled monthly from <span className="text-orange-300 font-bold">Celina Chamber</span> and <span className="text-orange-300 font-bold">Celina City</span> portals.
+                Paid-tier businesses can add promoted events here as an optional service. Community listings are compiled monthly from <span className="text-orange-300 font-bold">Celina Chamber</span> and <span className="text-orange-300 font-bold">Celina City</span> portals.
               </p>
             </div>
             <button
@@ -108,7 +108,7 @@ export default function EventsView() {
               className="w-full py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-md"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Syncing Calendars...' : 'Sync Local Events Now'}</span>
+              <span>{isSyncing ? 'Syncing Calendars...' : 'Refresh Local Events'}</span>
             </button>
           </div>
         </div>

@@ -23,7 +23,7 @@ export function buildOwnerProfilePatch(tier: Tier, values: OwnerProfileFormValue
     address: values.address,
   };
 
-  if (tier === 'pro' || tier === 'premium') {
+  if (tier === 'basic' || tier === 'pro' || tier === 'premium') {
     patch.website = values.website;
     patch.hours = values.hours;
   }

@@ -440,7 +440,21 @@ test('pricing keeps paid Basic tier while adding separate free launch tier', () 
   assert.doesNotMatch(checkoutSource, /targetTier === 'basic'\) \{\n\s+onPaymentSuccess\('basic', 0\)/);
 });
 
-test('basic owner profile patches include address but keep website and hours locked', () => {
+test('pricing and navigation reflect post-launch tier and events changes', () => {
+  const pricingSource = fs.readFileSync(path.join(process.cwd(), 'src/components/PricingView.tsx'), 'utf8');
+  const headerSource = fs.readFileSync(path.join(process.cwd(), 'src/components/Header.tsx'), 'utf8');
+  const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+
+  assert.match(pricingSource, /buttonText: 'Upgrade to Preston Elite'/);
+  assert.doesNotMatch(pricingSource, /Preston Elite Launches July 12/);
+  assert.match(pricingSource, /Local Events Promotion/);
+  assert.match(pricingSource, /paid-tier add-on/);
+  assert.match(headerSource, /label: 'Local Events'/);
+  assert.doesNotMatch(headerSource, /Join as Business/);
+  assert.match(appSource, /activeTab === 'events'/);
+});
+
+test('basic owner profile patches include address website and hours but keep premium fields locked', () => {
   const patch = buildOwnerProfilePatch('basic', {
     name: 'Celina Bakery',
     description: 'Fresh bread and pastries.',
@@ -461,8 +475,12 @@ test('basic owner profile patches include address but keep website and hours loc
   });
 
   assert.equal(patch.address, '127 N Ohio St, Celina, TX 75009');
-  assert.equal(patch.website, undefined);
-  assert.equal(patch.hours, undefined);
+  assert.equal(patch.website, 'https://celinabakery.com');
+  assert.deepEqual(patch.hours, {
+    monFri: '7:00 AM - 4:00 PM',
+    sat: '8:00 AM - 2:00 PM',
+    sun: 'Closed',
+  });
   assert.equal(patch.ctaText, undefined);
   assert.equal(patch.socialLinks, undefined);
 });

@@ -1158,27 +1158,24 @@ export default function DashboardView({
                   </div>
                   {isBasic && (
                     <p className="text-[10px] text-slate-500 mt-1.5">
-                      Your full address can show on your free listing so local customers can find you.
+                      Your full address can show on your Local Pioneer listing so local customers can find you.
                     </p>
                   )}
                 </div>
               </div>
 
-              {/* Pro Fields (Locked for Basic) */}
+              {/* Website & Hours Fields (Available for Basic) */}
               <div className="space-y-4 border-t border-slate-100 pt-5 relative">
                 <div className="flex items-center justify-between">
-                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">Pro-Partner Fields</span>
+                  <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">Website & Hours</span>
                   {isBasic && (
-                    <span 
-                      onClick={() => onUpgradePrompt('pro')} 
-                      className="text-[10px] font-bold bg-orange-100 text-orange-800 px-2 py-0.5 rounded cursor-pointer flex items-center gap-0.5"
-                    >
-                      <Lock className="w-2.5 h-2.5" /> Unlock with Pro ($5/m)
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded flex items-center gap-0.5">
+                      <Globe className="w-2.5 h-2.5" /> Included with Basic
                     </span>
                   )}
                 </div>
 
-                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${isBasic ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                       Website URL
@@ -1187,7 +1184,6 @@ export default function DashboardView({
                       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                       <input
                         type="url"
-                        disabled={isBasic}
                         placeholder="https://www.yourbusiness.com"
                         value={editWebsite}
                         onChange={(e) => setEditWebsite(e.target.value)}
@@ -1198,14 +1194,13 @@ export default function DashboardView({
                 </div>
 
                 {/* Hours Group */}
-                <div className={`space-y-2.5 ${isBasic ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                <div className="space-y-2.5">
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Hours of Operation</label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Monday - Friday</span>
                       <input
                         type="text"
-                        disabled={isBasic}
                         value={editMonFri}
                         onChange={(e) => setEditMonFri(e.target.value)}
                         className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
@@ -1215,7 +1210,6 @@ export default function DashboardView({
                       <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Saturday</span>
                       <input
                         type="text"
-                        disabled={isBasic}
                         value={editSat}
                         onChange={(e) => setEditSat(e.target.value)}
                         className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
@@ -1225,7 +1219,6 @@ export default function DashboardView({
                       <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Sunday</span>
                       <input
                         type="text"
-                        disabled={isBasic}
                         value={editSun}
                         onChange={(e) => setEditSun(e.target.value)}
                         className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"

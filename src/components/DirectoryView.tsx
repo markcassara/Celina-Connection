@@ -818,7 +818,7 @@ export default function DirectoryView({
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                       )}
-                      {selectedBusiness.website && selectedBusiness.tier !== 'basic' ? (
+                      {selectedBusiness.website ? (
                         <a
                           href={selectedBusiness.website}
                           target="_blank"
@@ -828,18 +828,7 @@ export default function DirectoryView({
                           <Globe className="w-4 h-4 text-slate-500" />
                           <span>Website</span>
                         </a>
-                      ) : (
-                        selectedBusiness.tier === 'basic' && (
-                          <button
-                            onClick={() => onUpgradePrompt('pro')}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-sm font-semibold cursor-pointer"
-                            title="Locked website feature"
-                          >
-                            <Lock className="w-3.5 h-3.5 text-slate-400" />
-                            <span className="line-through text-xs">Website Lock</span>
-                          </button>
-                        )
-                      )}
+                      ) : null}
                     </div>
                   </div>
 
@@ -935,20 +924,16 @@ export default function DirectoryView({
                         </div>
                       </div>
 
-                      {/* Hours of Operation (Pro/Premium only) */}
+                      {/* Hours of Operation */}
                       <div className="space-y-2.5 border-t border-slate-200/60 pt-4">
                         <div className="flex items-center justify-between">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" /> Hours
                           </h4>
-                          {selectedBusiness.tier === 'basic' && (
-                            <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                              <Lock className="w-2.5 h-2.5" /> Pro Feature
-                            </span>
-                          )}
+
                         </div>
 
-                        {selectedBusiness.tier !== 'basic' && selectedBusiness.hours ? (
+                        {selectedBusiness.hours ? (
                           <div className="space-y-1 text-slate-700 text-xs font-medium">
                             <div className="flex justify-between">
                               <span className="text-slate-500">Mon - Fri:</span>
@@ -965,13 +950,7 @@ export default function DirectoryView({
                           </div>
                         ) : (
                           <div className="p-3 bg-slate-100 rounded-xl text-center text-[11px] text-slate-400 italic">
-                            Hours are hidden for basic listings.
-                            <button
-                              onClick={() => onUpgradePrompt('pro')}
-                              className="block mx-auto text-orange-600 font-bold hover:underline mt-1 cursor-pointer"
-                            >
-                              Upgrade to Unlock
-                            </button>
+                            Hours have not been added yet.
                           </div>
                         )}
                       </div>

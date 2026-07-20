@@ -67,14 +67,14 @@ export default function PricingView({
       features: [
         'Standard search placement',
         'Basic contact info (Phone, Email)',
+        'Website link',
         'Business description',
         'Full street address with Map view',
+        'Hours of operation',
         '1 image upload',
         'Receive customer reviews',
       ],
       notIncluded: [
-        'Hours of operation',
-        'Website link',
         'Social media integration',
         'Manage & reply to reviews',
         'Front-page featured spot',
@@ -129,10 +129,9 @@ export default function PricingView({
         'Priority live support',
       ],
       notIncluded: [],
-      isComingSoon: true,
-      color: 'border-amber-400/40 bg-slate-950 text-white shadow-xl shadow-amber-500/5 relative overflow-hidden opacity-90',
-      buttonStyle: 'bg-amber-500/20 text-amber-400 border border-amber-500/30 cursor-not-allowed',
-      buttonText: 'Preston Elite Launches July 12',
+      color: 'border-amber-400 bg-slate-950 text-white shadow-xl shadow-amber-500/10 relative overflow-hidden',
+      buttonStyle: 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 hover:from-amber-300 hover:to-amber-400 shadow-md shadow-amber-500/10',
+      buttonText: 'Upgrade to Preston Elite',
     },
   ];
 
@@ -243,8 +242,8 @@ export default function PricingView({
               <div className="pt-8">
                 <button
                   id={`btn-subscribe-${card.id}`}
-                  onClick={() => !card.isComingSoon && handleTierClick(card.id)}
-                  disabled={isCurrentTier || card.isComingSoon}
+                  onClick={() => handleTierClick(card.id)}
+                  disabled={isCurrentTier}
                   className={`w-full py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     isCurrentTier
                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 cursor-not-allowed font-semibold'
@@ -321,14 +320,14 @@ export default function PricingView({
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Website & Custom CTA Buttons</td>
                 <td className="py-3.5 px-4 text-slate-400">No Link</td>
-                <td className="py-3.5 px-4 text-slate-400">No Link</td>
+                <td className="py-3.5 px-4 font-medium text-emerald-600">Website Link</td>
                 <td className="py-3.5 px-4 font-medium text-emerald-600">Website Link</td>
                 <td className="py-3.5 px-4 font-bold text-emerald-600">Custom Styled Button</td>
               </tr>
               <tr>
                 <td className="py-3.5 px-4 font-semibold text-slate-950">Hours of Operation</td>
                 <td className="py-3.5 px-4 text-slate-400">Hidden</td>
-                <td className="py-3.5 px-4 text-slate-400">Hidden</td>
+                <td className="py-3.5 px-4 text-emerald-600">Visible</td>
                 <td className="py-3.5 px-4 text-emerald-600">Visible</td>
                 <td className="py-3.5 px-4 text-emerald-600 font-bold">Visible</td>
               </tr>
@@ -358,22 +357,23 @@ export default function PricingView({
         </div>
       </div>
 
-      {/* Future Expansion Add-ons Section */}
+      {/* Paid Tier Add-ons Section */}
       <div className="space-y-6 pt-4">
         <div className="text-center max-w-xl mx-auto space-y-2">
           <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md tracking-wider">
-            Future Pipeline
+            Paid Tier Add-On
           </span>
           <h3 className="font-display text-xl font-bold text-slate-900">
-            Campaign Add-Ons Coming Soon
+            Add-On Services for Paid Members
           </h3>
           <p className="text-slate-500 text-xs leading-relaxed">
-            Boost your local campaigns with specialized add-on tools launching in future pipeline iterations.
+            Businesses on Local Pioneer, Celina Champion, or Preston Elite can layer on event promotion and campaign support as optional visibility boosters.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
+            { name: 'Local Events Promotion', desc: 'Add your grand opening, sale, workshop, or community event to the Local Events calendar as a paid-tier add-on.' },
             { name: 'Weekly Featured SMS Blast', desc: 'Push local promotion highlights directly to verified Celina shoppers.' },
             { name: 'Targeted Email Blast Campaigns', desc: 'Engage local subscribers with beautifully curated newsletters.' },
             { name: 'Social Media Management Packages', desc: 'Fully managed social posting and syndication to boost your local exposure.' },
@@ -389,7 +389,7 @@ export default function PricingView({
               </div>
               <div>
                 <span className="inline-flex items-center gap-0.5 text-[8px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
-                  <Lock className="w-2 h-2" /> COMING SOON
+                  <Lock className="w-2 h-2" /> PAID TIER ADD-ON
                 </span>
               </div>
             </div>

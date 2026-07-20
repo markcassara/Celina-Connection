@@ -696,6 +696,10 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'events' && (
+          <EventsView />
+        )}
+
         {activeTab === 'pricing' && (
           <PricingView
             currentUser={currentUser}
@@ -784,6 +788,7 @@ export default function App() {
             {/* Middle Nav Links */}
             <div className="flex flex-wrap gap-4 text-[11px] font-medium text-slate-600">
               <button onClick={() => setActiveTab('directory')} className="hover:text-slate-900">Browse Directory</button>
+              <button onClick={() => setActiveTab('events')} className="hover:text-slate-900">Local Events</button>
               <button onClick={() => setActiveTab('pricing')} className="hover:text-slate-900">Membership Plans</button>
               <button onClick={openOwnerLogin} className="hover:text-slate-900">Owner Login</button>
             </div>

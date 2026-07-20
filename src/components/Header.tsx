@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile, Tier } from '../types';
-import { MapPin, Building2, Shield, LogIn, LogOut, Award, Star, Sparkles } from 'lucide-react';
+import { MapPin, Building2, LogIn, LogOut, Award, Star, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface HeaderProps {
@@ -100,8 +100,9 @@ export default function Header({
         <nav className="hidden lg:flex space-x-1" aria-label="Tabs">
           {[
             { id: 'directory', label: 'Explore Directory' },
+            { id: 'events', label: 'Local Events' },
             { id: 'pricing', label: 'Membership Tiers' },
-            { id: 'dashboard', label: currentUser.isLoggedIn ? 'Owner Dashboard' : 'Join as Business' },
+            ...(currentUser.isLoggedIn ? [{ id: 'dashboard', label: 'Owner Dashboard' }] : []),
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -208,8 +209,9 @@ export default function Header({
       <div className="lg:hidden flex border-t border-slate-100 bg-white justify-around py-2">
         {[
           { id: 'directory', label: 'Explore' },
+          { id: 'events', label: 'Events' },
           { id: 'pricing', label: 'Pricing' },
-          { id: 'dashboard', label: currentUser.isLoggedIn ? 'Dashboard' : 'Join' },
+          ...(currentUser.isLoggedIn ? [{ id: 'dashboard', label: 'Dashboard' }] : []),
         ].map((tab) => {
           const isActive = activeTab === tab.id;
           return (
