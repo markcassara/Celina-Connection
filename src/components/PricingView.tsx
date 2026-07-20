@@ -28,9 +28,9 @@ export default function PricingView({
     {
       id: 'basic' as Tier,
       name: 'Local Pioneer (Basic)',
-      price: billingCycle === 'year' ? '$60' : '$6',
-      period: billingCycle === 'year' ? 'per year' : 'per month',
-      description: 'Standard business card directory listing. Secure your local presence on the platform.',
+      price: 'Free',
+      period: 'for the first 100 listings',
+      description: 'Standard business card directory listing. Secure your local presence on the platform while launch spots remain.',
       icon: <Info className="w-6 h-6 text-slate-500" />,
       features: [
         'Standard search placement',
@@ -50,7 +50,7 @@ export default function PricingView({
       ],
       color: 'border-slate-200 hover:border-slate-300 bg-white text-slate-900',
       buttonStyle: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
-      buttonText: 'Claim Basic Listing',
+      buttonText: 'Claim Free Listing',
     },
     {
       id: 'pro' as Tier,
@@ -251,7 +251,7 @@ export default function PricingView({
             <thead>
               <tr className="border-b border-slate-200 text-slate-400 uppercase tracking-wider font-bold">
                 <th className="py-3 px-4">Directory Feature</th>
-                <th className="py-3 px-4">Basic ({billingCycle === 'year' ? '$60/yr' : '$6/mo'})</th>
+                <th className="py-3 px-4">Basic (Free)</th>
                 <th className="py-3 px-4">Pro ({billingCycle === 'year' ? '$160/yr' : '$16/mo'})</th>
                 <th className="py-3 px-4">Premium ({billingCycle === 'year' ? '$290/yr' : '$29/mo'})</th>
               </tr>
