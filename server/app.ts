@@ -149,7 +149,8 @@ export function createApp(options: { dbPath?: string } = {}) {
     };
   };
   const verificationUrlFor = (token: string) => `${(process.env.PUBLIC_SITE_URL || "https://www.celinaconnection.com").replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
-  const ownerVerificationEmail = (businessName: string, verificationUrl: string) => ({
+  type TransactionalEmailMessage = { subject: string; html: string; text: string };
+  const ownerVerificationEmail = (businessName: string, verificationUrl: string): TransactionalEmailMessage => ({
     subject: "Verify your Celina Connection listing",
     html: `<p>Thanks for registering ${businessName}.</p><p>Click below to verify your email and activate your owner login:</p><p><a href=\"${verificationUrl}\">Verify my email</a></p><p>This link expires in 24 hours.</p>`,
     text: `Thanks for registering ${businessName}.\n\nVerify your email and activate your owner login: ${verificationUrl}\n\nThis link expires in 24 hours.`,
@@ -159,10 +160,78 @@ export function createApp(options: { dbPath?: string } = {}) {
     ...init,
     signal: AbortSignal.timeout(emailDeliveryTimeoutMs()),
   });
+  const parseGhlTags = () => (process.env.GHL_WELCOME_TAGS || "celina-connection,owner-registration")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  const sendEmailViaGhl = async (email: string, businessName: string, message: TransactionalEmailMessage) => {
+    const apiKey = process.env.GHL_API_KEY || process.env.GOHIGHLEVEL_API_KEY || process.env.LEADCONNECTOR_API_KEY;
+    const locationId = process.env.GHL_LOCATION_ID || process.env.GOHIGHLEVEL_LOCATION_ID || process.env.LEADCONNECTOR_LOCATION_ID;
+    if (!apiKey || !locationId) return false;
+
+    const baseUrl = (process.env.GHL_API_BASE_URL || "https://services.leadconnectorhq.com").replace(/\/$/, "");
+    const headers = {
+      authorization: `Bearer ${apiKey}`,
+      version: process.env.GHL_API_VERSION || "2021-07-28",
+      "content-type": "application/json",
+      accept: "application/json",
+    };
+    const upsertResponse = await fetchWithEmailTimeout(`${baseUrl}/contacts/upsert`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        locationId,
+        email,
+        name: businessName,
+        tags: parseGhlTags(),
+        source: "Celina Connection",
+      }),
+    });
+    if (!upsertResponse.ok) {
+      const body = await upsertResponse.text().catch(() => "");
+      throw new Error(`contact upsert failed: ${upsertResponse.status} ${body}`.trim());
+    }
+    const upsertJson: any = await upsertResponse.json().catch(() => ({}));
+    const contactId = upsertJson?.contact?.id || upsertJson?.id || upsertJson?.contactId;
+    if (!contactId) {
+      throw new Error("contact upsert did not return a contact id");
+    }
+
+    const sendResponse = await fetchWithEmailTimeout(`${baseUrl}/conversations/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "Email",
+        contactId,
+        emailTo: email,
+        subject: message.subject,
+        html: message.html,
+        message: message.text,
+      }),
+    });
+    if (!sendResponse.ok) {
+      const body = await sendResponse.text().catch(() => "");
+      throw new Error(`email send failed: ${sendResponse.status} ${body}`.trim());
+    }
+    return true;
+  };
   const sendOwnerVerificationEmail = async (email: string, businessName: string, verificationUrl: string) => {
     const message = ownerVerificationEmail(businessName, verificationUrl);
     const deliveryErrors: string[] = [];
     let hasConfiguredProvider = false;
+
+    const hasGhlConfig = !!(
+      (process.env.GHL_API_KEY || process.env.GOHIGHLEVEL_API_KEY || process.env.LEADCONNECTOR_API_KEY) &&
+      (process.env.GHL_LOCATION_ID || process.env.GOHIGHLEVEL_LOCATION_ID || process.env.LEADCONNECTOR_LOCATION_ID)
+    );
+    if (hasGhlConfig) {
+      hasConfiguredProvider = true;
+      try {
+        if (await sendEmailViaGhl(email, businessName, message)) return;
+      } catch (error) {
+        deliveryErrors.push(`GHL: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
 
     const brevoApiKey = process.env.BREVO_API_KEY;
     const brevoSenderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || "mark@legacywealthco.com";

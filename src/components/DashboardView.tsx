@@ -192,68 +192,6 @@ export default function DashboardView({
     }
   }, [myBusiness?.id, activeSubTab]);
 
-  // Instant Test Drive
-  const handleInstantTestDrive = async () => {
-    const randomSuffix = Math.random().toString(36).substring(2, 7);
-    const guestOwnerId = `guest-owner-${randomSuffix}`;
-    const guestBusId = `guest-business-${randomSuffix}`;
-    const guestEmail = `guest-${randomSuffix}@celinaconnection.com`;
-    const guestBusName = `Celina Bistro #${randomSuffix.toUpperCase()}`;
-
-    // Standard properties
-    const guestBus = {
-      id: guestBusId,
-      name: guestBusName,
-      category: "Dining",
-      description: "A cozy, welcoming guest bistro in Celina. Preview the business owner experience, manage your listing, add custom media, post replies to reviews, and see visitor metrics in action!",
-      phone: "(972) 555-0111",
-      email: guestEmail,
-      website: "https://www.celinaguestbistro.com",
-      address: "142 N Ohio St, Celina, TX 75009",
-      hours: {
-        monFri: "8:00 AM - 10:00 PM",
-        sat: "8:00 AM - 11:00 PM",
-        sun: "9:00 AM - 9:00 PM"
-      },
-      logoUrl: '',
-      images: [],
-      socialLinks: {
-        facebook: "https://facebook.com/celinabistro",
-        instagram: "https://instagram.com/celinabistro"
-      },
-      featured: true,
-      ctaText: "Reserve Table",
-      tier: "premium" as Tier,
-      ownerId: guestOwnerId,
-      createdAt: new Date().toISOString(),
-      viewsCount: 284,
-      reviews: [
-        {
-          id: `rev-g1-${randomSuffix}`,
-          authorName: "Travis K.",
-          rating: 5,
-          text: "Phenomenal addition to our local Celina food scene! Warm hospitality and spectacular menu.",
-          createdAt: new Date().toISOString()
-        }
-      ]
-    };
-
-    await onAddBusiness(guestBus);
-
-    setCurrentUser({
-      id: guestOwnerId,
-      email: guestEmail,
-      businessName: guestBusName,
-      businessId: guestBusId,
-      tier: "premium" as Tier,
-      isLoggedIn: true,
-      addonSlots: 0,
-      role: 'owner'
-    });
-
-    setActiveSubTab('profile');
-  };
-
   const handleOwnerLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setOwnerLoginError('');
@@ -548,28 +486,6 @@ export default function DashboardView({
             Welcome, Celina business owners! Whether your business is on the historic Downtown Square, Preston Road, or serving our community home-to-home, register in seconds to make sure local families can find you. 
           </p>
 
-          {/* Quick Demo Login Cards */}
-          <div className="space-y-4 pt-4">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Try the Demo</span>
-              <span className="h-px bg-slate-200 flex-grow" />
-            </div>
-            
-            <div className="p-1 rounded-3xl bg-slate-50 border border-slate-100">
-              <button
-                onClick={handleInstantTestDrive}
-                className="w-full py-4 px-4 bg-slate-950 text-amber-400 hover:bg-slate-900 hover:text-amber-300 rounded-2xl cursor-pointer text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 border border-amber-400/20 shadow-lg shadow-slate-900/10 transition-all group"
-              >
-                <Zap className="w-4 h-4 fill-amber-400 text-amber-400 group-hover:scale-110 transition-transform animate-pulse" />
-                <span>⚡ Try Demo (Instant Access)</span>
-              </button>
-              <div className="p-3">
-                <p className="text-[10px] text-slate-500 leading-normal font-medium text-center">
-                  Skip the form! This automatically generates a unique Premium guest business profile and logs you in instantly so you can explore the business owner portal immediately.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Right Side: Tabbed Login/Register/Admin Forms */}

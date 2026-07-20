@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createServer as createHttpServer } from 'node:http';
 import { AddressInfo, createServer } from 'node:net';
 
 import { createApp } from '../server/app.ts';
@@ -90,6 +91,97 @@ async function withHangingTcpServer(run: (port: number) => Promise<void>) {
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 }
+
+async function withFakeGhl(run: (baseUrl: string, requests: Array<{ url: string; body: any; authorization?: string; version?: string }>) => Promise<void>) {
+  const requests: Array<{ url: string; body: any; authorization?: string; version?: string }> = [];
+  const server = createHttpServer((req, res) => {
+    let raw = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      raw += chunk;
+    });
+    req.on('end', () => {
+      const body = raw ? JSON.parse(raw) : {};
+      requests.push({
+        url: req.url || '',
+        body,
+        authorization: req.headers.authorization,
+        version: req.headers.version as string | undefined,
+      });
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/contacts/upsert') {
+        res.end(JSON.stringify({ contact: { id: 'contact-123' } }));
+        return;
+      }
+      if (req.url === '/conversations/messages') {
+        res.end(JSON.stringify({ messageId: 'message-123' }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: 'not found' }));
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  const { port } = server.address() as AddressInfo;
+  try {
+    await run(`http://127.0.0.1:${port}`, requests);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+}
+
+test('owner verification email can be delivered through GoHighLevel contact messaging', async () => {
+  const dbPath = makeDbPath('ghl-verification');
+
+  await withFakeGhl(async (ghlBaseUrl, requests) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+    process.env.GHL_WELCOME_TAGS = 'celina-connection,owner-registration,welcome-email';
+    process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+    delete process.env.BREVO_API_KEY;
+    delete process.env.RESEND_API_KEY;
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/api/owner/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'GHL Mail Test',
+            category: 'Home & Professional Services',
+            description: 'A test listing for GHL delivery.',
+            phone: '(972) 555-0196',
+            email: 'owner-ghl@example.com',
+            password: 'StrongPass123!',
+            startedAt: Date.now() - 4000,
+            company: '',
+          }),
+        });
+        assert.equal(res.status, 201);
+        assert.equal(requests.length, 2);
+        assert.equal(requests[0].url, '/contacts/upsert');
+        assert.equal(requests[0].authorization, 'Bearer test-ghl-key');
+        assert.equal(requests[0].body.locationId, 'test-location-id');
+        assert.equal(requests[0].body.email, 'owner-ghl@example.com');
+        assert.deepEqual(requests[0].body.tags, ['celina-connection', 'owner-registration', 'welcome-email']);
+        assert.equal(requests[1].url, '/conversations/messages');
+        assert.equal(requests[1].body.type, 'Email');
+        assert.equal(requests[1].body.contactId, 'contact-123');
+        assert.equal(requests[1].body.emailTo, 'owner-ghl@example.com');
+        assert.match(requests[1].body.html, /verify-email\?token=/);
+      });
+    } finally {
+      for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL', 'GHL_WELCOME_TAGS', 'CELINA_EXPOSE_VERIFICATION_LINK']) {
+        delete process.env[key];
+      }
+    }
+  });
+});
 
 test('owner verification email can be delivered through SMTP configuration', async () => {
   const dbPath = makeDbPath('smtp-verification');
