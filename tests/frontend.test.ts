@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
-import { getDesktopHeaderTabs, getMobileHeaderTabs } from '../src/components/Header.tsx';
+import { getDesktopHeaderTabs, getMobileHeaderTabs, isHeaderTabActive } from '../src/components/Header.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -52,7 +52,7 @@ test('logged-in admins get owner dashboard navigation plus admin tools without s
   assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
   assert.deepEqual(
     desktopTabs.map((tab) => tab.dashboardSection ?? null),
-    [null, 'profile', 'reviews', 'admin-listings', 'admin-bugs', null],
+    ['profile', 'profile', 'reviews', 'admin-listings', 'admin-bugs', null],
   );
 
   const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
@@ -61,4 +61,23 @@ test('logged-in admins get owner dashboard navigation plus admin tools without s
     ['Dashboard', 'Listing', 'Reviews', 'Listings', 'Bugs', 'Directory'],
   );
   assert.equal(mobileTabs.some((tab) => tab.label === 'Metrics'), false);
+});
+
+test('dashboard navigation highlights only the selected dashboard section', () => {
+  const adminTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' });
+
+  assert.deepEqual(
+    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
+    [false, false, false, true, false, false],
+  );
+
+  assert.deepEqual(
+    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-reviews')),
+    [false, false, true, false, false, false],
+  );
+
+  assert.deepEqual(
+    adminTabs.map((tab) => isHeaderTabActive(tab, 'directory', '#dashboard-admin-listings')),
+    [false, false, false, false, false, true],
+  );
 });

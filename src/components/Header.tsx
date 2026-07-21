@@ -33,7 +33,7 @@ export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserPro
 
   if (user.role === 'admin') {
     return [
-      { id: 'owner-dashboard', label: 'Owner Dashboard', targetTab: 'dashboard' },
+      { id: 'owner-dashboard', label: 'Owner Dashboard', targetTab: 'dashboard', dashboardSection: 'profile' },
       { id: 'owner-listing', label: 'My Listing', targetTab: 'dashboard', dashboardSection: 'profile' },
       { id: 'owner-reviews', label: 'Reviews', targetTab: 'dashboard', dashboardSection: 'reviews' },
       { id: 'admin-listings', label: 'Manage Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
@@ -61,7 +61,7 @@ export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProf
 
   if (user.role === 'admin') {
     return [
-      { id: 'owner-dashboard', label: 'Dashboard', targetTab: 'dashboard' },
+      { id: 'owner-dashboard', label: 'Dashboard', targetTab: 'dashboard', dashboardSection: 'profile' },
       { id: 'owner-listing', label: 'Listing', targetTab: 'dashboard', dashboardSection: 'profile' },
       { id: 'owner-reviews', label: 'Reviews', targetTab: 'dashboard', dashboardSection: 'reviews' },
       { id: 'admin-listings', label: 'Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
@@ -76,6 +76,22 @@ export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProf
     { id: 'owner-reviews', label: 'Reviews', targetTab: 'dashboard', dashboardSection: 'reviews' },
     { id: 'owner-upgrade', label: 'Plan', targetTab: 'dashboard', dashboardSection: 'billing' },
   ];
+}
+
+export function isHeaderTabActive(tab: HeaderTab, activeTab: string, locationHash: string = window.location.hash) {
+  if (activeTab !== tab.targetTab) return false;
+
+  if (tab.targetTab !== 'dashboard') return true;
+
+  const activeDashboardSection = locationHash.startsWith('#dashboard-')
+    ? locationHash.replace('#dashboard-', '')
+    : undefined;
+
+  if (tab.dashboardSection) {
+    return activeDashboardSection ? activeDashboardSection === tab.dashboardSection : tab.id === 'owner-dashboard';
+  }
+
+  return !activeDashboardSection;
 }
 
 export default function Header({
@@ -170,9 +186,9 @@ export default function Header({
         </div>
 
         {/* Desktop Navigation Tabs */}
-        <nav className="hidden lg:flex space-x-1" aria-label="Tabs">
+        <nav className="hidden 2xl:flex space-x-1" aria-label="Tabs">
           {desktopTabs.map((tab) => {
-            const isActive = activeTab === tab.targetTab;
+            const isActive = isHeaderTabActive(tab, activeTab);
             return (
               <button
                 key={tab.id}
@@ -274,14 +290,14 @@ export default function Header({
       </div>
 
       {/* Mobile navigation tab bar */}
-      <div className="lg:hidden flex border-t border-slate-100 bg-white justify-around py-2">
+      <div className="2xl:hidden flex border-t border-slate-100 bg-white gap-2 overflow-x-auto px-4 py-2 sm:justify-center">
         {mobileTabs.map((tab) => {
-          const isActive = activeTab === tab.targetTab;
+          const isActive = isHeaderTabActive(tab, activeTab);
           return (
             <button
               key={tab.id}
               onClick={() => handleTabClick(tab)}
-              className={`text-xs font-medium py-1 px-3 rounded-md transition-colors ${
+              className={`shrink-0 whitespace-nowrap text-xs font-medium py-1 px-3 rounded-md transition-colors ${
                 isActive ? 'text-orange-700 bg-orange-100 font-semibold' : 'text-slate-500'
               }`}
             >
