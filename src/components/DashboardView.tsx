@@ -69,6 +69,12 @@ export function getDashboardSectionFromHash(hash: string = typeof window === 'un
   return dashboardSubTabs.includes(hashSection as DashboardSubTab) ? (hashSection as DashboardSubTab) : 'profile';
 }
 
+export type AdminActiveTab = 'listings' | 'bugs';
+
+export function getAdminTabFromDashboardSection(sectionOrHash: DashboardSubTab | string): AdminActiveTab {
+  return sectionOrHash === 'admin-bugs' || sectionOrHash === '#dashboard-admin-bugs' ? 'bugs' : 'listings';
+}
+
 export default function DashboardView({
   currentUser,
   setCurrentUser,
@@ -129,9 +135,7 @@ export default function DashboardView({
   const [activeSubTab, setActiveSubTab] = useState<DashboardSubTab>(() => getDashboardSectionFromHash(locationHash));
 
   React.useEffect(() => {
-    const syncDashboardHash = () => {
-      setActiveSubTab(getDashboardSectionFromHash());
-    };
+    const syncDashboardHash = () => setActiveSubTab(getDashboardSectionFromHash(locationHash));
     window.addEventListener('hashchange', syncDashboardHash);
     syncDashboardHash();
     return () => window.removeEventListener('hashchange', syncDashboardHash);
@@ -789,6 +793,7 @@ export default function DashboardView({
   if (!myBusiness && currentUser.role === 'admin') {
     return (
       <AdminDashboardView
+        activeDashboardSection={activeSubTab}
         businesses={businesses}
         onUpdateBusiness={onUpdateBusiness}
         onAddBusiness={onAddBusiness}
@@ -1073,6 +1078,7 @@ export default function DashboardView({
               {/* ADMIN TOOLS SUBTABS */}
               {(activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs') && currentUser.role === 'admin' && (
                 <AdminDashboardView
+                  activeDashboardSection={activeSubTab}
                   businesses={businesses}
                   onUpdateBusiness={onUpdateBusiness}
                   onAddBusiness={onAddBusiness}
@@ -1836,6 +1842,7 @@ export default function DashboardView({
 // ==========================================
 
 interface AdminDashboardViewProps {
+  activeDashboardSection: DashboardSubTab;
   businesses: Business[];
   onUpdateBusiness: (
     businessIdOrIds: string | string[],
@@ -1851,6 +1858,7 @@ interface AdminDashboardViewProps {
 }
 
 function AdminDashboardView({
+  activeDashboardSection,
   businesses,
   onUpdateBusiness,
   onAddBusiness,
@@ -1861,12 +1869,11 @@ function AdminDashboardView({
   onUpdateBugStatus,
   onDeleteBugStatus,
 }: AdminDashboardViewProps) {
-  type AdminActiveTab = 'listings' | 'bugs';
   const getAdminTabFromHash = (): AdminActiveTab => {
     if (typeof window === 'undefined') return 'listings';
-    return window.location.hash === '#dashboard-admin-bugs' ? 'bugs' : 'listings';
+    return getAdminTabFromDashboardSection(window.location.hash);
   };
-  const [adminActiveTab, setAdminActiveTab] = useState<AdminActiveTab>(getAdminTabFromHash);
+  const [adminActiveTab, setAdminActiveTab] = useState<AdminActiveTab>(() => getAdminTabFromDashboardSection(activeDashboardSection));
 
   React.useEffect(() => {
     const syncAdminHash = () => setAdminActiveTab(getAdminTabFromHash());
@@ -1874,6 +1881,10 @@ function AdminDashboardView({
     syncAdminHash();
     return () => window.removeEventListener('hashchange', syncAdminHash);
   }, []);
+
+  React.useEffect(() => {
+    setAdminActiveTab(getAdminTabFromDashboardSection(activeDashboardSection));
+  }, [activeDashboardSection]);
   const setAdminTab = (tab: AdminActiveTab) => {
     window.location.hash = `dashboard-admin-${tab}`;
     setAdminActiveTab(tab);
