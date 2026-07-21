@@ -115,8 +115,8 @@ export default function DashboardView({
   const [regCompany, setRegCompany] = useState('');
   const [regFormStartedAt, setRegFormStartedAt] = useState(Date.now());
   
-  type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics';
-  const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics'];
+  type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-listings' | 'admin-bugs';
+  const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-listings', 'admin-bugs'];
   const getDashboardSectionFromHash = (): DashboardSubTab => {
     if (typeof window === 'undefined') return 'profile';
     const hashSection = window.location.hash.replace('#dashboard-', '');
@@ -765,25 +765,8 @@ export default function DashboardView({
     );
   }
 
-  // Master Admin Dashboard Panel
-  if (currentUser.isLoggedIn && currentUser.role === 'admin') {
-    return (
-      <AdminDashboardView
-        businesses={businesses}
-        onUpdateBusiness={onUpdateBusiness}
-        onAddBusiness={onAddBusiness}
-        onDeleteBusiness={onDeleteBusiness}
-        onResetDatabase={onResetDatabase}
-        setCurrentUser={setCurrentUser}
-        reportedBugs={reportedBugs}
-        onUpdateBugStatus={onUpdateBugStatus}
-        onDeleteBugStatus={onDeleteBugStatus}
-      />
-    );
-  }
-
-  // Safe Guard: Ensure user business exists
-  if (!myBusiness) {
+  // Safe Guard: Ensure owner users have a business; admins can still access admin tools if no owned listing exists.
+  if (!myBusiness && currentUser.role !== 'admin') {
     return (
       <div className="py-12 text-center max-w-md mx-auto space-y-4">
         <ShieldAlert className="w-12 h-12 text-orange-500 mx-auto" />
@@ -796,6 +779,22 @@ export default function DashboardView({
           Reset and Retry
         </button>
       </div>
+    );
+  }
+
+  if (!myBusiness && currentUser.role === 'admin') {
+    return (
+      <AdminDashboardView
+        businesses={businesses}
+        onUpdateBusiness={onUpdateBusiness}
+        onAddBusiness={onAddBusiness}
+        onDeleteBusiness={onDeleteBusiness}
+        onResetDatabase={onResetDatabase}
+        setCurrentUser={setCurrentUser}
+        reportedBugs={reportedBugs}
+        onUpdateBugStatus={onUpdateBugStatus}
+        onDeleteBugStatus={onDeleteBugStatus}
+      />
     );
   }
 
@@ -915,12 +914,23 @@ export default function DashboardView({
                 { id: 'reviews', label: 'Review Responder', icon: <MessageSquare className="w-4 h-4" /> },
                 { id: 'metrics', label: 'Traffic Metrics', icon: <TrendingUp className="w-4 h-4" /> },
                 { id: 'billing', label: 'Billing & Tiers', icon: <Receipt className="w-4 h-4" /> },
+                ...(currentUser.role === 'admin'
+                  ? [
+                      { id: 'admin-listings', label: 'Admin Listings', icon: <ShieldAlert className="w-4 h-4" /> },
+                      { id: 'admin-bugs', label: 'Bug Reports', icon: <Bug className="w-4 h-4" /> },
+                    ]
+                  : []),
               ].map((tab) => {
                 const isSelected = activeSubTab === tab.id;
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveSubTab(tab.id as any)}
+                    onClick={() => {
+                      setActiveSubTab(tab.id as DashboardSubTab);
+                      if (tab.id === 'admin-listings' || tab.id === 'admin-bugs') {
+                        window.location.hash = `dashboard-${tab.id}`;
+                      }
+                    }}
                     className={`w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
                       isSelected
                         ? 'bg-orange-50 text-orange-700 shadow-sm'
@@ -1056,6 +1066,21 @@ export default function DashboardView({
             </div>
           ) : (
             <>
+              {/* ADMIN TOOLS SUBTABS */}
+              {(activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs') && currentUser.role === 'admin' && (
+                <AdminDashboardView
+                  businesses={businesses}
+                  onUpdateBusiness={onUpdateBusiness}
+                  onAddBusiness={onAddBusiness}
+                  onDeleteBusiness={onDeleteBusiness}
+                  onResetDatabase={onResetDatabase}
+                  setCurrentUser={setCurrentUser}
+                  reportedBugs={reportedBugs}
+                  onUpdateBugStatus={onUpdateBugStatus}
+                  onDeleteBugStatus={onDeleteBugStatus}
+                />
+              )}
+
               {/* PROFILE EDITOR SUBTAB */}
               {activeSubTab === 'profile' && (
             <form onSubmit={handleProfileSave} className="space-y-6">
