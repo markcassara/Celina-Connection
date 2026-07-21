@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
 import { getDesktopHeaderTabs, getMobileHeaderTabs, getHeaderTabHref, isHeaderTabActive } from '../src/components/Header.tsx';
+import { getDashboardSectionFromHash } from '../src/components/DashboardView.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -80,6 +81,16 @@ test('dashboard navigation highlights only the selected dashboard section', () =
     adminTabs.map((tab) => isHeaderTabActive(tab, 'directory', '#dashboard-admin-listings')),
     [false, false, false, false, false, true],
   );
+});
+
+test('dashboard hash parser recognizes header menu sections', () => {
+  assert.equal(getDashboardSectionFromHash('#dashboard-profile'), 'profile');
+  assert.equal(getDashboardSectionFromHash('#dashboard-reviews'), 'reviews');
+  assert.equal(getDashboardSectionFromHash('#dashboard-billing'), 'billing');
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings'), 'admin-listings');
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs'), 'admin-bugs');
+  assert.equal(getDashboardSectionFromHash(''), 'profile');
+  assert.equal(getDashboardSectionFromHash('#unknown'), 'profile');
 });
 
 test('header tabs expose real hrefs including dashboard section links', () => {

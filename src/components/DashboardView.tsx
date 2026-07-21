@@ -57,6 +57,16 @@ interface DashboardViewProps {
   portalMode: 'owner' | 'admin';
   setPortalMode: (mode: 'owner' | 'admin') => void;
   defaultOwnerView?: 'register' | 'login';
+  locationHash?: string;
+}
+
+export type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-listings' | 'admin-bugs';
+
+export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-listings', 'admin-bugs'];
+
+export function getDashboardSectionFromHash(hash: string = typeof window === 'undefined' ? '' : window.location.hash): DashboardSubTab {
+  const hashSection = hash.replace('#dashboard-', '');
+  return dashboardSubTabs.includes(hashSection as DashboardSubTab) ? (hashSection as DashboardSubTab) : 'profile';
 }
 
 export default function DashboardView({
@@ -77,6 +87,7 @@ export default function DashboardView({
   portalMode,
   setPortalMode,
   defaultOwnerView = 'register',
+  locationHash,
 }: DashboardViewProps) {
   const [isSigningIn, setIsSigningIn] = useState(defaultOwnerView === 'login'); // Toggle Owner Register vs Owner Login
 
@@ -115,14 +126,7 @@ export default function DashboardView({
   const [regCompany, setRegCompany] = useState('');
   const [regFormStartedAt, setRegFormStartedAt] = useState(Date.now());
   
-  type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-listings' | 'admin-bugs';
-  const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-listings', 'admin-bugs'];
-  const getDashboardSectionFromHash = (): DashboardSubTab => {
-    if (typeof window === 'undefined') return 'profile';
-    const hashSection = window.location.hash.replace('#dashboard-', '');
-    return dashboardSubTabs.includes(hashSection as DashboardSubTab) ? (hashSection as DashboardSubTab) : 'profile';
-  };
-  const [activeSubTab, setActiveSubTab] = useState<DashboardSubTab>(getDashboardSectionFromHash);
+  const [activeSubTab, setActiveSubTab] = useState<DashboardSubTab>(() => getDashboardSectionFromHash(locationHash));
 
   React.useEffect(() => {
     const syncDashboardHash = () => {
@@ -131,7 +135,7 @@ export default function DashboardView({
     window.addEventListener('hashchange', syncDashboardHash);
     syncDashboardHash();
     return () => window.removeEventListener('hashchange', syncDashboardHash);
-  }, []);
+  }, [locationHash]);
 
   React.useEffect(() => {
     if (!currentUser.isLoggedIn && portalMode === 'owner') {

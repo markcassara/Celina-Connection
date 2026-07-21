@@ -769,6 +769,7 @@ export default function App() {
             portalMode={dashboardPortalMode}
             setPortalMode={setDashboardPortalMode}
             defaultOwnerView={activeTab === 'owner-login' ? 'login' : 'register'}
+            locationHash={location.hash}
           />
         )}
       </main>
