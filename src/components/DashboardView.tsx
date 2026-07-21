@@ -238,7 +238,7 @@ export default function DashboardView({
         isLoggedIn: true,
         role: 'admin',
       });
-      setActiveSubTab('metrics');
+      setActiveSubTab('profile');
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : 'Admin login failed.');
     }
@@ -1832,7 +1832,23 @@ function AdminDashboardView({
   onUpdateBugStatus,
   onDeleteBugStatus,
 }: AdminDashboardViewProps) {
-  const [adminActiveTab, setAdminActiveTab] = useState<'listings' | 'bugs'>('listings');
+  type AdminActiveTab = 'listings' | 'bugs';
+  const getAdminTabFromHash = (): AdminActiveTab => {
+    if (typeof window === 'undefined') return 'listings';
+    return window.location.hash === '#dashboard-admin-bugs' ? 'bugs' : 'listings';
+  };
+  const [adminActiveTab, setAdminActiveTab] = useState<AdminActiveTab>(getAdminTabFromHash);
+
+  React.useEffect(() => {
+    const syncAdminHash = () => setAdminActiveTab(getAdminTabFromHash());
+    window.addEventListener('hashchange', syncAdminHash);
+    syncAdminHash();
+    return () => window.removeEventListener('hashchange', syncAdminHash);
+  }, []);
+  const setAdminTab = (tab: AdminActiveTab) => {
+    window.location.hash = `dashboard-admin-${tab}`;
+    setAdminActiveTab(tab);
+  };
   const [bugSearch, setBugSearch] = useState('');
   const [bugCategoryFilter, setBugCategoryFilter] = useState<'all' | 'visual' | 'functional' | 'data' | 'other'>('all');
   const [bugSeverityFilter, setBugSeverityFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
@@ -2257,7 +2273,7 @@ function AdminDashboardView({
       {/* Admin Segment Tabs Navigation */}
       <div className="flex border-b border-slate-200" id="admin-workspace-tabs">
         <button
-          onClick={() => setAdminActiveTab('listings')}
+          onClick={() => setAdminTab('listings')}
           className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
             adminActiveTab === 'listings'
               ? 'border-orange-500 text-orange-600 font-black'
@@ -2268,7 +2284,7 @@ function AdminDashboardView({
           <span>Directory Listings ({businesses.length})</span>
         </button>
         <button
-          onClick={() => setAdminActiveTab('bugs')}
+          onClick={() => setAdminTab('bugs')}
           className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 relative ${
             adminActiveTab === 'bugs'
               ? 'border-orange-500 text-orange-600 font-black'

@@ -42,3 +42,23 @@ test('logged-in mobile users see owner-focused navigation instead of public navi
     ['Dashboard', 'Listing', 'Reviews', 'Plan'],
   );
 });
+
+test('logged-in admins get working admin navigation without site metrics', () => {
+  const desktopTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' });
+  assert.deepEqual(
+    desktopTabs.map((tab) => tab.label),
+    ['Admin Dashboard', 'Manage Listings', 'Bug Reports', 'View Directory'],
+  );
+  assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
+  assert.deepEqual(
+    desktopTabs.map((tab) => tab.dashboardSection ?? null),
+    ['admin-listings', 'admin-listings', 'admin-bugs', null],
+  );
+
+  const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
+  assert.deepEqual(
+    mobileTabs.map((tab) => tab.label),
+    ['Admin', 'Listings', 'Bugs', 'Directory'],
+  );
+  assert.equal(mobileTabs.some((tab) => tab.label === 'Metrics'), false);
+});

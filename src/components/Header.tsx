@@ -19,7 +19,7 @@ export interface HeaderTab {
   id: string;
   label: string;
   targetTab: string;
-  dashboardSection?: 'profile' | 'reviews' | 'billing' | 'metrics' | 'media';
+  dashboardSection?: 'profile' | 'reviews' | 'billing' | 'metrics' | 'media' | 'admin-listings' | 'admin-bugs';
 }
 
 export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserProfile['role'] }): HeaderTab[] {
@@ -33,9 +33,9 @@ export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserPro
 
   if (user.role === 'admin') {
     return [
-      { id: 'admin-dashboard', label: 'Admin Dashboard', targetTab: 'dashboard' },
-      { id: 'admin-listings', label: 'Manage Listings', targetTab: 'dashboard', dashboardSection: 'profile' },
-      { id: 'admin-metrics', label: 'Site Metrics', targetTab: 'dashboard', dashboardSection: 'metrics' },
+      { id: 'admin-dashboard', label: 'Admin Dashboard', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
+      { id: 'admin-listings', label: 'Manage Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
+      { id: 'admin-bugs', label: 'Bug Reports', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
       { id: 'public-directory', label: 'View Directory', targetTab: 'directory' },
     ];
   }
@@ -59,9 +59,9 @@ export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProf
 
   if (user.role === 'admin') {
     return [
-      { id: 'admin-dashboard', label: 'Admin', targetTab: 'dashboard' },
-      { id: 'admin-listings', label: 'Listings', targetTab: 'dashboard', dashboardSection: 'profile' },
-      { id: 'admin-metrics', label: 'Metrics', targetTab: 'dashboard', dashboardSection: 'metrics' },
+      { id: 'admin-dashboard', label: 'Admin', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
+      { id: 'admin-listings', label: 'Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
+      { id: 'admin-bugs', label: 'Bugs', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
       { id: 'public-directory', label: 'Directory', targetTab: 'directory' },
     ];
   }
