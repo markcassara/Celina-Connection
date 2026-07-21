@@ -312,7 +312,7 @@ export default function Header({
             <button
               id="btn-signin-nav"
               onClick={onOpenLogin}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-slate-900 to-slate-800 text-white hover:from-orange-600 hover:to-amber-500 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
+              className="hidden xl:inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-slate-900 to-slate-800 text-white hover:from-orange-600 hover:to-amber-500 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
               <span>Owners Login</span>
@@ -356,6 +356,20 @@ export default function Header({
                 </a>
               );
             })}
+            {!currentUser.isLoggedIn && (
+              <button
+                id="btn-signin-mobile-menu"
+                type="button"
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  onOpenLogin();
+                }}
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all duration-300 hover:from-orange-600 hover:to-amber-500 hover:shadow-md"
+              >
+                <LogIn className="h-4 w-4" />
+                <span>Owners Login</span>
+              </button>
+            )}
           </nav>
         </div>
       )}
