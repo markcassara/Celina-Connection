@@ -134,6 +134,14 @@ export default function App() {
     setActiveTab('admin-login');
   };
 
+  const handleHeaderNavigate = (tab: string, hash?: string) => {
+    setIsGated(false);
+    sessionStorage.setItem('celina_connection_gated_bypass', 'true');
+    const pathname = tab === 'directory' ? '/' : `/${tab}`;
+    navigate({ pathname, hash: hash ? `#${hash}` : '' });
+    setActiveTab(tab);
+  };
+
   // UI state overlays
   const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
   const [targetTier, setTargetTier] = useState<Tier | null>(null);
@@ -647,6 +655,7 @@ export default function App() {
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
+        onNavigateTab={handleHeaderNavigate}
         currentUser={currentUser}
         setCurrentUser={setCurrentUser}
         onOpenLogin={handleOpenLoginPrompt}

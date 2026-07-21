@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
-import { getDesktopHeaderTabs, getMobileHeaderTabs, isHeaderTabActive } from '../src/components/Header.tsx';
+import { getDesktopHeaderTabs, getMobileHeaderTabs, getHeaderTabHref, isHeaderTabActive } from '../src/components/Header.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -79,5 +79,21 @@ test('dashboard navigation highlights only the selected dashboard section', () =
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'directory', '#dashboard-admin-listings')),
     [false, false, false, false, false, true],
+  );
+});
+
+test('header tabs expose real hrefs including dashboard section links', () => {
+  const adminTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' });
+
+  assert.deepEqual(
+    adminTabs.map((tab) => getHeaderTabHref(tab)),
+    [
+      '/dashboard#dashboard-profile',
+      '/dashboard#dashboard-profile',
+      '/dashboard#dashboard-reviews',
+      '/dashboard#dashboard-admin-listings',
+      '/dashboard#dashboard-admin-bugs',
+      '/',
+    ],
   );
 });

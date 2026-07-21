@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 interface HeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  onNavigateTab?: (tab: string, hash?: string) => void;
   currentUser: UserProfile;
   setCurrentUser: React.Dispatch<React.SetStateAction<UserProfile>>;
   onOpenLogin: () => void;
@@ -94,9 +95,15 @@ export function isHeaderTabActive(tab: HeaderTab, activeTab: string, locationHas
   return !activeDashboardSection;
 }
 
+export function getHeaderTabHref(tab: HeaderTab) {
+  const path = tab.targetTab === 'directory' ? '/' : `/${tab.targetTab}`;
+  return tab.dashboardSection ? `${path}#dashboard-${tab.dashboardSection}` : path;
+}
+
 export default function Header({
   activeTab,
   setActiveTab,
+  onNavigateTab,
   currentUser,
   setCurrentUser,
   onOpenLogin,
@@ -106,6 +113,17 @@ export default function Header({
   onServerAiAvailabilityChange,
 }: HeaderProps) {
   const [isCheckingAiConfig, setIsCheckingAiConfig] = React.useState(false);
+  const [currentHash, setCurrentHash] = React.useState(() => window.location.hash);
+
+  React.useEffect(() => {
+    const syncHash = () => setCurrentHash(window.location.hash);
+    window.addEventListener('hashchange', syncHash);
+    window.addEventListener('popstate', syncHash);
+    return () => {
+      window.removeEventListener('hashchange', syncHash);
+      window.removeEventListener('popstate', syncHash);
+    };
+  }, []);
 
   const refreshAiAvailability = async () => {
     const response = await fetch('/api/ai-config', { cache: 'no-store' });
@@ -154,9 +172,13 @@ export default function Header({
   };
 
   const handleTabClick = (tab: HeaderTab) => {
-    if (tab.dashboardSection) {
-      window.location.hash = `dashboard-${tab.dashboardSection}`;
+    const hash = tab.dashboardSection ? `dashboard-${tab.dashboardSection}` : undefined;
+    setCurrentHash(hash ? `#${hash}` : '');
+    if (onNavigateTab) {
+      onNavigateTab(tab.targetTab, hash);
+      return;
     }
+    if (hash) window.location.hash = hash;
     setActiveTab(tab.targetTab);
   };
 
@@ -186,18 +208,22 @@ export default function Header({
         </div>
 
         {/* Desktop Navigation Tabs */}
-        <nav className="hidden 2xl:flex space-x-1" aria-label="Tabs">
+        <nav className="hidden xl:flex items-center gap-1 rounded-2xl bg-slate-50 p-1 ring-1 ring-slate-200/70" aria-label="Tabs">
           {desktopTabs.map((tab) => {
-            const isActive = isHeaderTabActive(tab, activeTab);
+            const isActive = isHeaderTabActive(tab, activeTab, currentHash);
             return (
-              <button
+              <a
                 key={tab.id}
                 id={`tab-btn-${tab.id}`}
-                onClick={() => handleTabClick(tab)}
-                className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                href={getHeaderTabHref(tab)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleTabClick(tab);
+                }}
+                className={`relative rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
                   isActive 
-                    ? 'text-orange-700 font-semibold' 
-                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                    ? 'bg-white text-orange-700 shadow-sm ring-1 ring-orange-100' 
+                    : 'text-slate-500 hover:bg-white/80 hover:text-slate-900'
                 }`}
               >
                 {tab.label}
@@ -208,7 +234,7 @@ export default function Header({
                     transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                   />
                 )}
-              </button>
+              </a>
             );
           })}
         </nav>
@@ -290,21 +316,27 @@ export default function Header({
       </div>
 
       {/* Mobile navigation tab bar */}
-      <div className="2xl:hidden flex border-t border-slate-100 bg-white gap-2 overflow-x-auto px-4 py-2 sm:justify-center">
-        {mobileTabs.map((tab) => {
-          const isActive = isHeaderTabActive(tab, activeTab);
-          return (
-            <button
-              key={tab.id}
-              onClick={() => handleTabClick(tab)}
-              className={`shrink-0 whitespace-nowrap text-xs font-medium py-1 px-3 rounded-md transition-colors ${
-                isActive ? 'text-orange-700 bg-orange-100 font-semibold' : 'text-slate-500'
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+      <div className="xl:hidden border-t border-slate-100 bg-white px-3 py-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {mobileTabs.map((tab) => {
+            const isActive = isHeaderTabActive(tab, activeTab, currentHash);
+            return (
+              <a
+                key={tab.id}
+                href={getHeaderTabHref(tab)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  handleTabClick(tab);
+                }}
+                className={`flex items-center justify-center rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
+                  isActive ? 'bg-orange-100 text-orange-700 shadow-sm' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                {tab.label}
+              </a>
+            );
+          })}
+        </div>
       </div>
     </header>
   );
