@@ -162,6 +162,12 @@ export default function App() {
     message: string;
   } | null>(null);
 
+  useEffect(() => {
+    if (!paymentNotification) return undefined;
+    const timer = window.setTimeout(() => setPaymentNotification(null), 30000);
+    return () => window.clearTimeout(timer);
+  }, [paymentNotification]);
+
   // Initialize data on mount
   useEffect(() => {
     let isMounted = true;

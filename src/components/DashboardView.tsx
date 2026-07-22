@@ -90,6 +90,12 @@ export function shouldFocusAdminListings(hash: string, adminTab: AdminActiveTab)
   return adminTab === 'listings' && hash === '#dashboard-admin-listings';
 }
 
+const ADMIN_HIDDEN_UNCLAIMED_LISTING_IDS = new Set(['lucys-on-the-square', 'annie-jack-boutique']);
+
+export function isHiddenFromAdminListings(business: Pick<Business, 'id' | 'isUnclaimed'>) {
+  return business.isUnclaimed && ADMIN_HIDDEN_UNCLAIMED_LISTING_IDS.has(business.id);
+}
+
 export default function DashboardView({
   currentUser,
   setCurrentUser,
@@ -164,8 +170,9 @@ export default function DashboardView({
   }, [defaultOwnerView, portalMode, currentUser.isLoggedIn]);
 
   // Multi-business list and active selection
+  const adminOwnedBusinesses = businesses.filter((b) => b.ownerId === currentUser.id && !b.isUnclaimed);
   const myBusinesses = currentUser.role === 'admin'
-    ? businesses
+    ? adminOwnedBusinesses
     : businesses.filter(
         (b) => b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase())
       );
@@ -1084,6 +1091,19 @@ export default function DashboardView({
                 </button>
               </div>
             </form>
+          ) : (activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs') && currentUser.role === 'admin' ? (
+            <AdminDashboardView
+              activeDashboardSection={activeSubTab}
+              businesses={businesses}
+              onUpdateBusiness={onUpdateBusiness}
+              onAddBusiness={onAddBusiness}
+              onDeleteBusiness={onDeleteBusiness}
+              onResetDatabase={onResetDatabase}
+              setCurrentUser={setCurrentUser}
+              reportedBugs={reportedBugs}
+              onUpdateBugStatus={onUpdateBugStatus}
+              onDeleteBugStatus={onDeleteBugStatus}
+            />
           ) : !myBusiness ? (
             <div className="py-12 text-center max-w-sm mx-auto space-y-3">
               <ShieldAlert className="w-12 h-12 text-orange-500 mx-auto" />
@@ -1092,22 +1112,6 @@ export default function DashboardView({
             </div>
           ) : (
             <>
-              {/* ADMIN TOOLS SUBTABS */}
-              {(activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs') && currentUser.role === 'admin' && (
-                <AdminDashboardView
-                  activeDashboardSection={activeSubTab}
-                  businesses={businesses}
-                  onUpdateBusiness={onUpdateBusiness}
-                  onAddBusiness={onAddBusiness}
-                  onDeleteBusiness={onDeleteBusiness}
-                  onResetDatabase={onResetDatabase}
-                  setCurrentUser={setCurrentUser}
-                  reportedBugs={reportedBugs}
-                  onUpdateBugStatus={onUpdateBugStatus}
-                  onDeleteBugStatus={onDeleteBugStatus}
-                />
-              )}
-
               {/* PROFILE EDITOR SUBTAB */}
               {activeSubTab === 'profile' && (
             <form onSubmit={handleProfileSave} className="space-y-6">
@@ -2143,18 +2147,19 @@ function AdminDashboardView({
   };
 
   // Stats calculation
-  const totalListings = businesses.length;
-  const claimedListingsCount = businesses.filter((b) => !b.isUnclaimed && b.ownerId).length;
-  const unclaimedListingsCount = businesses.filter((b) => b.isUnclaimed).length;
+  const adminListings = businesses.filter((b) => !isHiddenFromAdminListings(b));
+  const totalListings = adminListings.length;
+  const claimedListingsCount = adminListings.filter((b) => !b.isUnclaimed && b.ownerId).length;
+  const unclaimedListingsCount = adminListings.filter((b) => b.isUnclaimed).length;
   
   // Free spots calculation (starting at 92 to simulate high competitive demand)
   const freeClaimedBasicCount = Math.min(
     100,
-    92 + businesses.filter((b) => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length
+    92 + adminListings.filter((b) => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length
   );
 
   // Filter listings
-  const filteredListings = businesses.filter((b) => {
+  const filteredListings = adminListings.filter((b) => {
     const matchesSearch =
       b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       b.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -2361,7 +2366,7 @@ function AdminDashboardView({
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>Directory Listings ({businesses.length})</span>
+          <span>Directory Listings ({adminListings.length})</span>
         </button>
         <button
           onClick={() => setAdminTab('bugs')}
@@ -2615,144 +2620,146 @@ function AdminDashboardView({
           </div>
         )}
 
-        {/* Responsive Table Grid */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600 border-collapse">
-            <thead>
-              <tr className="bg-slate-100/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="p-4 pl-6 w-12 text-center">
-                  <input
-                    type="checkbox"
-                    id="select-all-checkbox"
-                    className="h-4.5 w-4.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500 cursor-pointer accent-orange-600"
-                    checked={filteredListings.length > 0 && filteredListings.every(b => selectedBusIds.includes(b.id))}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        const allFilteredIds = filteredListings.map(b => b.id);
-                        setSelectedBusIds(prev => {
-                          const combined = new Set([...prev, ...allFilteredIds]);
-                          return Array.from(combined);
-                        });
-                      } else {
-                        const filteredIdsSet = new Set(filteredListings.map(b => b.id));
-                        setSelectedBusIds(prev => prev.filter(id => !filteredIdsSet.has(id)));
-                      }
-                    }}
-                  />
-                </th>
-                <th className="p-4">Business Details</th>
-                <th className="p-4">Owner Assignment</th>
-                <th className="p-4">Membership Level</th>
-                <th className="p-4">Traffic</th>
-                <th className="p-4 pr-6 text-right">Administrative Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-              {filteredListings.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-400 font-semibold italic">
-                    No matching listings found in the directory database.
-                  </td>
-                </tr>
-              ) : (
-                filteredListings.map((bus) => (
-                  <tr key={bus.id} className={`hover:bg-slate-50/50 transition-colors ${selectedBusIds.includes(bus.id) ? 'bg-orange-50/10' : ''}`}>
-                    <td className="p-4 pl-6 w-12 text-center">
-                      <input
-                        type="checkbox"
-                        id={`select-checkbox-${bus.id}`}
-                        className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 cursor-pointer accent-orange-600"
-                        checked={selectedBusIds.includes(bus.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedBusIds(prev => [...prev, bus.id]);
-                          } else {
-                            setSelectedBusIds(prev => prev.filter(id => id !== bus.id));
-                          }
-                        }}
-                      />
-                    </td>
-                    <td className="p-4">
-                      <div className="space-y-0.5">
-                        <p className="font-bold text-slate-900 text-sm">{bus.name}</p>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                          <span className="font-bold uppercase text-orange-600">{bus.category}</span>
-                          <span>•</span>
-                          <span>ID: {bus.id}</span>
+        {/* Responsive Listing Management Grid */}
+        <div className="p-4 sm:p-5 bg-white" id="admin-listing-directory-grid">
+          {filteredListings.length === 0 ? (
+            <div className="text-center py-12 px-4 text-slate-400 font-semibold italic border border-dashed border-slate-200 rounded-2xl bg-slate-50/70">
+              No matching listings found in the directory database.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              {filteredListings.map((bus) => {
+                const isSelected = selectedBusIds.includes(bus.id);
+                const tierLabel = bus.tier === 'premium'
+                  ? 'Premium Spotlight'
+                  : bus.tier === 'pro'
+                    ? 'Pro Partner'
+                    : bus.tier === 'basic'
+                      ? 'Basic Paid'
+                      : 'Free Launch';
+
+                return (
+                  <article
+                    key={bus.id}
+                    className={`rounded-2xl border bg-white p-4 sm:p-5 shadow-sm transition-all ${
+                      isSelected ? 'border-orange-300 ring-2 ring-orange-100 bg-orange-50/30' : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          id={`select-checkbox-${bus.id}`}
+                          aria-label={`Select ${bus.name}`}
+                          className="mt-1 h-4.5 w-4.5 rounded border-slate-300 text-orange-600 focus:ring-orange-500 cursor-pointer accent-orange-600 flex-shrink-0"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedBusIds(prev => [...prev, bus.id]);
+                            } else {
+                              setSelectedBusIds(prev => prev.filter(id => id !== bus.id));
+                            }
+                          }}
+                        />
+
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                            <div className="min-w-0">
+                              <h4 className="font-display text-base font-black text-slate-950 leading-tight break-words">{bus.name}</h4>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                                <span className="text-orange-600">{bus.category}</span>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-slate-400 normal-case tracking-normal">ID: {bus.id}</span>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => handleFastCycleTier(bus)}
+                              title="Click to cycle membership tier"
+                              className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black cursor-pointer transition-all border shadow-xs whitespace-nowrap self-start ${
+                                bus.tier === 'premium'
+                                  ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-orange-700 border-orange-300'
+                                  : bus.tier === 'pro'
+                                  ? 'bg-gradient-to-r from-indigo-500/10 to-blue-500/10 text-indigo-700 border-indigo-200'
+                                  : bus.tier === 'basic'
+                                  ? 'bg-slate-100 text-slate-700 border-slate-200'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}
+                            >
+                              {tierLabel}
+                              <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black">Cycle</span>
+                            </button>
+                          </div>
+
+                          <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">
+                            {bus.description}
+                          </p>
                         </div>
                       </div>
-                    </td>
-                    <td className="p-4">
-                      {bus.isUnclaimed ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black bg-rose-50 border border-rose-200 text-rose-600 animate-pulse">
-                          ⚠️ Unclaimed Listing
-                        </span>
-                      ) : (
-                        <div className="space-y-0.5">
-                          <p className="font-bold text-slate-900 text-[11px] truncate max-w-[160px]">{bus.email}</p>
-                          <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider block">Owner ID: {bus.ownerId}</span>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 min-w-0">
+                          <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">Owner</span>
+                          {bus.isUnclaimed ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-black bg-rose-50 border border-rose-200 text-rose-600">
+                              ⚠️ Awaiting claim
+                            </span>
+                          ) : (
+                            <>
+                              <p className="font-bold text-slate-900 truncate">{bus.email || 'No email on file'}</p>
+                              <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider truncate">Owner ID: {bus.ownerId || 'unassigned'}</p>
+                            </>
+                          )}
                         </div>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <button
-                        onClick={() => handleFastCycleTier(bus)}
-                        title="Click to instantly toggle membership tier!"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer transition-all border shadow-xs ${
-                          bus.tier === 'premium'
-                            ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/10 text-orange-700 border-orange-300'
-                            : bus.tier === 'pro'
-                            ? 'bg-gradient-to-r from-indigo-500/10 to-blue-500/10 text-indigo-700 border-indigo-200'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        {bus.tier === 'premium' ? '✨ Premium Spotlight' : bus.tier === 'pro' ? '⭐ Pro Partner' : bus.tier === 'basic' ? '💼 Basic Paid' : '🎉 Free Launch'}
-                        <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black block ml-1 hover:underline">Cycle</span>
-                      </button>
-                    </td>
-                    <td className="p-4 text-slate-500">
-                      <div className="flex items-center gap-1">
-                        <Eye className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="text-slate-900 font-bold">{bus.viewsCount}</span>
-                        <span className="text-[10px] text-slate-400 font-semibold">views</span>
+
+                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 min-w-0">
+                          <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">Contact</span>
+                          <p className="font-bold text-slate-900 flex items-center gap-1.5 truncate"><Phone className="w-3 h-3 text-slate-400 flex-shrink-0" /> {bus.phone || 'No phone'}</p>
+                          <p className="text-[9px] text-slate-400 font-semibold flex items-center gap-1.5 truncate"><Mail className="w-3 h-3 flex-shrink-0" /> {bus.email || 'No public email'}</p>
+                        </div>
+
+                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 min-w-0">
+                          <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">Traffic</span>
+                          <p className="font-display text-xl font-black text-slate-950 flex items-center gap-1.5"><Eye className="w-4 h-4 text-slate-400" /> {bus.viewsCount}</p>
+                          <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Directory views</p>
+                        </div>
                       </div>
-                    </td>
-                    <td className="p-4 pr-6 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
+
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-100 pt-3">
                         <button
                           onClick={() => handleFastToggleClaim(bus)}
-                          title={bus.isUnclaimed ? 'Verify and assign owner email' : 'Mark profile as unclaimed'}
-                          className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                          className={`px-3.5 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black flex items-center justify-center gap-1.5 ${
                             bus.isUnclaimed 
-                              ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-600'
+                              ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700'
                               : 'bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-600'
                           }`}
                         >
-                          <ShieldCheck className="w-4 h-4" />
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          {bus.isUnclaimed ? 'Mark Claimed' : 'Move to Awaiting Claim'}
                         </button>
 
-                        <button
-                          onClick={() => openEditModal(bus)}
-                          title="Edit complete profile information"
-                          className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-all cursor-pointer"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+                          <button
+                            onClick={() => openEditModal(bus)}
+                            className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer text-[10px] font-black flex items-center justify-center gap-1.5"
+                          >
+                            <Edit className="w-3.5 h-3.5" /> Edit
+                          </button>
 
-                        <button
-                          onClick={() => handleDeleteClick(bus.id, bus.name)}
-                          title="Permanently remove profile from database"
-                          className="p-2 rounded-xl border border-rose-100 bg-white hover:bg-rose-50 text-rose-500 transition-all cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          <button
+                            onClick={() => handleDeleteClick(bus.id, bus.name)}
+                            className="px-3.5 py-2 rounded-xl border border-rose-100 bg-white hover:bg-rose-50 text-rose-600 transition-all cursor-pointer text-[10px] font-black flex items-center justify-center gap-1.5"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                          </button>
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Database Restore Action Panel Footer */}

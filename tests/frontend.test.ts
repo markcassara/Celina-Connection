@@ -5,7 +5,7 @@ import { renderToString } from 'react-dom/server';
 
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
 import { getDesktopHeaderTabs, getMobileHeaderTabs, getHeaderTabHref, isHeaderTabActive } from '../src/components/Header.tsx';
-import DashboardView, { getDashboardSectionFromHash, getAdminTabFromDashboardSection, shouldFocusAdminListings } from '../src/components/DashboardView.tsx';
+import DashboardView, { getDashboardSectionFromHash, getAdminTabFromDashboardSection, shouldFocusAdminListings, isHiddenFromAdminListings } from '../src/components/DashboardView.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -55,7 +55,7 @@ test('logged-in admins get admin-focused navigation without owner-only dead-end 
   assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
   assert.deepEqual(
     desktopTabs.map((tab) => tab.dashboardSection ?? null),
-    ['admin-listings', 'profile', 'admin-bugs', null],
+    ['admin-listings', 'admin-listings', 'admin-bugs', null],
   );
 
   const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
@@ -71,7 +71,7 @@ test('dashboard navigation highlights only the selected dashboard section', () =
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
-    [true, false, false, false],
+    [true, true, false, false],
   );
 
   assert.deepEqual(
@@ -81,7 +81,7 @@ test('dashboard navigation highlights only the selected dashboard section', () =
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
-    [false, true, false, false],
+    [false, false, false, false],
   );
 
   assert.deepEqual(
@@ -120,7 +120,7 @@ test('header tabs expose real hrefs including dashboard section links', () => {
     adminTabs.map((tab) => getHeaderTabHref(tab)),
     [
       '/dashboard#dashboard-admin-listings',
-      '/dashboard#dashboard-profile',
+      '/dashboard#dashboard-admin-listings',
       '/dashboard#dashboard-admin-bugs',
       '/',
     ],
@@ -141,7 +141,7 @@ test('admin dashboard menu click focuses the listings manager instead of the gen
   assert.equal(shouldFocusAdminListings('#dashboard-admin-bugs', 'bugs'), false);
 });
 
-test('admin manage listings route renders the owner-style listing edit page', () => {
+test('admin manage listings route renders the responsive listings manager, not the owner edit page', () => {
   const business = {
     id: 'admin-visible-1',
     name: 'Admin Visible Bakery',
@@ -176,13 +176,22 @@ test('admin manage listings route renders the owner-style listing edit page', ()
       onUpdateBusiness: () => undefined,
       onUpgradePrompt: () => undefined,
       reportedBugs: [],
-      portalMode: 'owner',
+      portalMode: 'admin',
       setPortalMode: () => undefined,
-      locationHash: '#dashboard-profile',
+      locationHash: '#dashboard-admin-listings',
     } as any),
   );
 
-  assert.match(html, /Listing Edit Page/);
+  assert.match(html, /admin-listing-directory-grid/);
   assert.match(html, /Admin Visible Bakery/);
+  assert.match(html, /Total Directory Listings/);
+  assert.doesNotMatch(html, /Listing Edit Page/);
   assert.doesNotMatch(html, /No Listing Selected/);
+});
+
+test('Lucys and Annie Jack stay public but are hidden from the admin listing manager', () => {
+  assert.equal(isHiddenFromAdminListings({ id: 'lucys-on-the-square', isUnclaimed: true }), true);
+  assert.equal(isHiddenFromAdminListings({ id: 'annie-jack-boutique', isUnclaimed: true }), true);
+  assert.equal(isHiddenFromAdminListings({ id: 'little-wooden-penguin', isUnclaimed: true }), false);
+  assert.equal(isHiddenFromAdminListings({ id: 'lucys-on-the-square', isUnclaimed: false }), false);
 });
