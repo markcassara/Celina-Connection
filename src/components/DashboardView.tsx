@@ -64,9 +64,24 @@ export type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'met
 
 export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-listings', 'admin-bugs'];
 
-export function getDashboardSectionFromHash(hash: string = typeof window === 'undefined' ? '' : window.location.hash): DashboardSubTab {
-  const hashSection = hash.replace('#dashboard-', '');
-  return dashboardSubTabs.includes(hashSection as DashboardSubTab) ? (hashSection as DashboardSubTab) : 'profile';
+export function getDashboardSectionFromHash(
+  hash: string = typeof window === 'undefined' ? '' : window.location.hash,
+  role?: UserProfile['role'],
+): DashboardSubTab {
+  const hashSection = hash.replace('#dashboard-', '') as DashboardSubTab;
+  const isKnownSection = dashboardSubTabs.includes(hashSection);
+  const fallbackSection: DashboardSubTab = role === 'admin' ? 'admin-listings' : 'profile';
+
+  if (!isKnownSection) return fallbackSection;
+
+  const isAdminOnlySection = hashSection === 'admin-listings' || hashSection === 'admin-bugs';
+  if (isAdminOnlySection && role && role !== 'admin') return 'profile';
+
+  // Admin users do not have an owner listing/profile by default. Keep every
+  // admin header/menu click on a populated admin panel instead of a blank owner pane.
+  if (role === 'admin' && !isAdminOnlySection) return 'admin-listings';
+
+  return hashSection;
 }
 
 export type AdminActiveTab = 'listings' | 'bugs';
@@ -132,14 +147,14 @@ export default function DashboardView({
   const [regCompany, setRegCompany] = useState('');
   const [regFormStartedAt, setRegFormStartedAt] = useState(Date.now());
   
-  const [activeSubTab, setActiveSubTab] = useState<DashboardSubTab>(() => getDashboardSectionFromHash(locationHash));
+  const [activeSubTab, setActiveSubTab] = useState<DashboardSubTab>(() => getDashboardSectionFromHash(locationHash, currentUser.role));
 
   React.useEffect(() => {
-    const syncDashboardHash = () => setActiveSubTab(getDashboardSectionFromHash(locationHash));
+    const syncDashboardHash = () => setActiveSubTab(getDashboardSectionFromHash(window.location.hash || locationHash || '', currentUser.role));
     window.addEventListener('hashchange', syncDashboardHash);
     syncDashboardHash();
     return () => window.removeEventListener('hashchange', syncDashboardHash);
-  }, [locationHash]);
+  }, [locationHash, currentUser.role]);
 
   React.useEffect(() => {
     if (!currentUser.isLoggedIn && portalMode === 'owner') {
@@ -246,7 +261,7 @@ export default function DashboardView({
         isLoggedIn: true,
         role: 'admin',
       });
-      setActiveSubTab('profile');
+      setActiveSubTab('admin-listings');
     } catch (error) {
       setAdminError(error instanceof Error ? error.message : 'Admin login failed.');
     }
