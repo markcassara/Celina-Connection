@@ -2103,6 +2103,8 @@ function AdminDashboardView({
   const [editWebsite, setEditWebsite] = useState('');
   const [editLogoUrl, setEditLogoUrl] = useState('');
   const [editImages, setEditImages] = useState<string[]>([]);
+  const [editOwnerEmail, setEditOwnerEmail] = useState('');
+  const [editOwnerPassword, setEditOwnerPassword] = useState('');
 
   // Handle opening the Edit modal
   const openEditModal = (bus: Business) => {
@@ -2118,6 +2120,8 @@ function AdminDashboardView({
     setEditWebsite(bus.website || '');
     setEditLogoUrl(bus.logoUrl || '');
     setEditImages((bus.images || []).slice(0, maxImagesForTier(bus.tier)));
+    setEditOwnerEmail(bus.email || '');
+    setEditOwnerPassword('');
   };
 
   const readImageFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
@@ -2262,6 +2266,11 @@ function AdminDashboardView({
     if (!editingBusiness) return;
 
     try {
+      if (!editIsUnclaimed && editOwnerPassword && editOwnerPassword.length < 10) {
+        alert('Owner password must be at least 10 characters.');
+        return;
+      }
+
       await onUpdateBusiness(editingBusiness.id, {
         name: editName,
         category: editCategory,
@@ -2275,7 +2284,9 @@ function AdminDashboardView({
         logoUrl: editLogoUrl,
         images: editImages.slice(0, maxImagesForTier(editTier)),
         ownerId: editIsUnclaimed ? '' : editingBusiness.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`,
-      });
+        ownerEmail: editIsUnclaimed ? '' : editOwnerEmail,
+        ...(editOwnerPassword ? { ownerPassword: editOwnerPassword } : {}),
+      } as any);
 
       setEditingBusiness(null);
     } catch (error) {
@@ -3182,16 +3193,51 @@ function AdminDashboardView({
               </div>
 
               {!editIsUnclaimed && (
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Owner Contact Email</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="owner@email.com"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
-                  />
+                <div className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800">Owner Assignment / CRM Access</h4>
+                    <p className="text-[10px] font-semibold text-emerald-700/70">
+                      Assign this listing to an owner account or reset the owner's login password. Leave password blank to keep the current password.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">Owner Login Email</label>
+                      <input
+                        type="email"
+                        required
+                        placeholder="owner@email.com"
+                        value={editOwnerEmail}
+                        onChange={(e) => {
+                          setEditOwnerEmail(e.target.value);
+                          setEditEmail(e.target.value);
+                        }}
+                        className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">Set / Change Password</label>
+                      <input
+                        type="password"
+                        minLength={10}
+                        placeholder="Optional new password"
+                        value={editOwnerPassword}
+                        onChange={(e) => setEditOwnerPassword(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">Public Contact Email</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="public@email.com"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                    />
+                  </div>
                 </div>
               )}
 

@@ -61,6 +61,7 @@ export interface CelinaDataStore {
   verifyOwnerEmailByTokenHash(tokenHash: string): (Business & { ownerPasswordHash?: string }) | null | Promise<(Business & { ownerPasswordHash?: string }) | null>;
   refreshOwnerEmailVerification(email: string, verification: { tokenHash: string; expiresAt: string }): Business | null | Promise<Business | null>;
   updateBusiness(id: string, updates: Partial<Business>): Business | null | Promise<Business | null>;
+  updateOwnerAccount(id: string, updates: { ownerId?: string; email?: string; passwordHash?: string; emailVerified?: boolean }): (Business & { ownerPasswordHash?: string }) | null | Promise<(Business & { ownerPasswordHash?: string }) | null>;
   deleteBusiness(id: string): boolean | Promise<boolean>;
   claimBusiness(id: string, email: string): { business: Business; currentUser: UserProfile } | null | Promise<{ business: Business; currentUser: UserProfile } | null>;
   addReview(id: string, input: Pick<Review, 'authorName' | 'rating' | 'text' | 'ownerReply'>): { business: Business; review: Review } | null | Promise<{ business: Business; review: Review } | null>;
@@ -472,6 +473,31 @@ export class CelinaRepository implements CelinaDataStore {
     return updated;
   }
 
+  updateOwnerAccount(id: string, updates: { ownerId?: string; email?: string; passwordHash?: string; emailVerified?: boolean }) {
+    const current = this.getBusiness(id);
+    if (!current) return null;
+    const ownerId = updates.ownerId ?? current.ownerId;
+    const email = updates.email ?? current.email;
+    const emailVerified = updates.emailVerified ?? current.emailVerified ?? true;
+    const emailVerifiedAt = emailVerified ? (current.emailVerifiedAt || new Date().toISOString()) : '';
+    const updated: Business = {
+      ...current,
+      ownerId,
+      email,
+      isUnclaimed: !ownerId,
+      emailVerified,
+      emailVerifiedAt,
+    };
+    this.upsertBusiness(updated);
+    const passwordClause = updates.passwordHash ? ', owner_password_hash = ?' : '';
+    const params = updates.passwordHash
+      ? [emailVerified ? 1 : 0, emailVerifiedAt, '', null, updates.passwordHash, id]
+      : [emailVerified ? 1 : 0, emailVerifiedAt, '', null, id];
+    this.db.prepare(`UPDATE businesses SET email_verified = ?, email_verified_at = ?, email_verification_token_hash = ?, email_verification_expires_at = ?${passwordClause} WHERE id = ?`)
+      .run(...params);
+    return this.getOwnedBusinessByOwnerId(ownerId) || rowToOwnedBusiness({ ...toBusinessParams(updated), owner_password_hash: updates.passwordHash || '' });
+  }
+
   deleteBusiness(id: string) {
     const result = this.db.prepare('DELETE FROM businesses WHERE id = ?').run(id);
     return result.changes > 0;
@@ -822,6 +848,31 @@ class PostgresRepository implements CelinaDataStore {
     const updated: Business = { ...current, ...updates, id };
     await this.upsertBusiness(updated);
     return updated;
+  }
+
+  async updateOwnerAccount(id: string, updates: { ownerId?: string; email?: string; passwordHash?: string; emailVerified?: boolean }) {
+    const current = await this.getBusiness(id);
+    if (!current) return null;
+    const ownerId = updates.ownerId ?? current.ownerId;
+    const email = updates.email ?? current.email;
+    const emailVerified = updates.emailVerified ?? current.emailVerified ?? true;
+    const emailVerifiedAt = emailVerified ? (current.emailVerifiedAt || new Date().toISOString()) : '';
+    const updated: Business = {
+      ...current,
+      ownerId,
+      email,
+      isUnclaimed: !ownerId,
+      emailVerified,
+      emailVerifiedAt,
+    };
+    await this.upsertBusiness(updated);
+    if (updates.passwordHash) {
+      await this.sql`UPDATE businesses SET owner_password_hash = ${updates.passwordHash}, email_verified = ${emailVerified}, email_verified_at = ${emailVerifiedAt}, email_verification_token_hash = NULL, email_verification_expires_at = NULL WHERE id = ${id}`;
+    } else {
+      await this.sql`UPDATE businesses SET email_verified = ${emailVerified}, email_verified_at = ${emailVerifiedAt}, email_verification_token_hash = NULL, email_verification_expires_at = NULL WHERE id = ${id}`;
+    }
+    const owned = await this.getOwnedBusinessByOwnerId(ownerId);
+    return owned || { ...updated, ownerPasswordHash: updates.passwordHash || '' };
   }
 
   async deleteBusiness(id: string) {

@@ -718,6 +718,9 @@ test('admin listing edit modal exposes profile info plus logo and image manageme
   assert.match(dashboardSource, /Upload Gallery Images/);
   assert.match(dashboardSource, /Business Description/);
   assert.match(dashboardSource, /Website URL/);
+  assert.match(dashboardSource, /Owner Assignment \/ CRM Access/);
+  assert.match(dashboardSource, /Owner Login Email/);
+  assert.match(dashboardSource, /Set \/ Change Password/);
 });
 
 test('self registration rejects spam traps, too-fast submissions, duplicate emails, and weak passwords', async () => {
@@ -969,6 +972,76 @@ test('POST /api/businesses/:id/claim requires admin auth and works with a server
       assert.equal(claimed.business.email, 'owner@example.com');
       assert.equal(claimed.currentUser.email, 'owner@example.com');
       assert.equal(claimed.currentUser.businessId, target.id);
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
+});
+
+test('admin can assign listing owner access and reset owner passwords', async () => {
+  const dbPath = makeDbPath('admin-owner-assignment');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const bootstrap = await bootstrapRes.json();
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      assert.ok(target);
+
+      const weakPasswordRes = await fetch(`${baseUrl}/api/businesses/${target.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ isUnclaimed: false, ownerEmail: 'assigned@example.com', ownerPassword: 'short' }),
+      });
+      assert.equal(weakPasswordRes.status, 400);
+
+      const assignRes = await fetch(`${baseUrl}/api/businesses/${target.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          isUnclaimed: false,
+          ownerEmail: 'assigned@example.com',
+          ownerPassword: 'Correct Horse Battery 42',
+        }),
+      });
+      assert.equal(assignRes.status, 200);
+      const assigned = await assignRes.json();
+      assert.equal(assigned.isUnclaimed, false);
+      assert.equal(assigned.email, 'assigned@example.com');
+      assert.equal(assigned.ownerId, `owner-${target.id}`);
+      assert.equal(assigned.emailVerified, true);
+      assert.equal(assigned.ownerPasswordHash, undefined);
+
+      const loginRes = await fetch(`${baseUrl}/api/owner/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'assigned@example.com', password: 'Correct Horse Battery 42' }),
+      });
+      assert.equal(loginRes.status, 200);
+      const ownerLogin = await loginRes.json();
+      assert.equal(ownerLogin.currentUser.businessId, target.id);
+
+      const resetRes = await fetch(`${baseUrl}/api/businesses/${target.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ ownerEmail: 'assigned@example.com', ownerPassword: 'New Correct Horse 43' }),
+      });
+      assert.equal(resetRes.status, 200);
+
+      const oldLoginRes = await fetch(`${baseUrl}/api/owner/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'assigned@example.com', password: 'Correct Horse Battery 42' }),
+      });
+      assert.equal(oldLoginRes.status, 401);
+
+      const newLoginRes = await fetch(`${baseUrl}/api/owner/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'assigned@example.com', password: 'New Correct Horse 43' }),
+      });
+      assert.equal(newLoginRes.status, 200);
     });
   } finally {
     delete process.env.ADMIN_API_TOKEN;

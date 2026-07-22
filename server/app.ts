@@ -394,6 +394,11 @@ export function createApp(options: { dbPath?: string } = {}) {
     }
     return allowed;
   };
+  const stripAdminOwnerAccountFields = (updates: any) => {
+    const { ownerPassword, ownerEmail, ownerAccountEmail, assignOwnerEmail, ...businessUpdates } = updates || {};
+    return businessUpdates;
+  };
+  const resolveOwnerEmail = (body: any, fallback = '') => String(body?.ownerEmail || body?.ownerAccountEmail || body?.assignOwnerEmail || body?.email || fallback || '').trim().toLowerCase();
   const recentRegistrationAttempts = new Map<string, number[]>();
   const checkRegistrationRateLimit = (req: express.Request, email: string) => {
     const now = Date.now();
@@ -687,11 +692,38 @@ export function createApp(options: { dbPath?: string } = {}) {
   });
 
   app.patch("/api/businesses/:id", requireAdminToken, async (req, res) => {
-    const business = await repository.updateBusiness(req.params.id, req.body || {});
+    const body = req.body || {};
+    if (body.ownerPassword !== undefined && String(body.ownerPassword).length > 0 && String(body.ownerPassword).length < 10) {
+      return res.status(400).json({ error: "Owner password must be at least 10 characters." });
+    }
+
+    const business = await repository.updateBusiness(req.params.id, stripAdminOwnerAccountFields(body));
     if (!business) {
       return res.status(404).json({ error: "Business not found" });
     }
-    return res.json(business);
+
+    const shouldManageOwner = body.ownerPassword || body.ownerEmail !== undefined || body.ownerAccountEmail !== undefined || body.assignOwnerEmail !== undefined || body.ownerId !== undefined || body.isUnclaimed !== undefined;
+    if (!shouldManageOwner) return res.json(business);
+
+    if (body.isUnclaimed === true || body.ownerId === '') {
+      const unassigned = await repository.updateBusiness(req.params.id, { ownerId: '', isUnclaimed: true });
+      return res.json(unassigned);
+    }
+
+    const ownerEmail = resolveOwnerEmail(body, business.email);
+    if (!ownerEmail) {
+      return res.status(400).json({ error: "Owner email is required to assign this listing." });
+    }
+
+    const ownerAccount = await repository.updateOwnerAccount(req.params.id, {
+      ownerId: String(body.ownerId || business.ownerId || `owner-${business.id}`),
+      email: ownerEmail,
+      passwordHash: body.ownerPassword ? hashPassword(String(body.ownerPassword)) : undefined,
+      emailVerified: true,
+    });
+    if (!ownerAccount) return res.status(404).json({ error: "Business not found" });
+    const { ownerPasswordHash: _ownerPasswordHash, ...safeBusiness } = ownerAccount;
+    return res.json(safeBusiness);
   });
 
   app.delete("/api/businesses/:id", requireAdminToken, async (req, res) => {
