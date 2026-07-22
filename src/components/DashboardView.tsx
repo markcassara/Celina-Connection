@@ -90,6 +90,10 @@ export function getAdminTabFromDashboardSection(sectionOrHash: DashboardSubTab |
   return sectionOrHash === 'admin-bugs' || sectionOrHash === '#dashboard-admin-bugs' ? 'bugs' : 'listings';
 }
 
+export function shouldFocusAdminListings(hash: string, adminTab: AdminActiveTab) {
+  return adminTab === 'listings' && hash === '#dashboard-admin-listings';
+}
+
 export default function DashboardView({
   currentUser,
   setCurrentUser,
@@ -1890,19 +1894,40 @@ function AdminDashboardView({
   };
   const [adminActiveTab, setAdminActiveTab] = useState<AdminActiveTab>(() => getAdminTabFromDashboardSection(activeDashboardSection));
 
+  const focusAdminListingsPanel = React.useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      document.getElementById('admin-listings-section')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  }, []);
+
+  const syncAdminHash = React.useCallback(() => {
+    const nextTab = getAdminTabFromHash();
+    setAdminActiveTab(nextTab);
+    if (shouldFocusAdminListings(window.location.hash, nextTab)) {
+      focusAdminListingsPanel();
+    }
+  }, [focusAdminListingsPanel]);
+
   React.useEffect(() => {
-    const syncAdminHash = () => setAdminActiveTab(getAdminTabFromHash());
     window.addEventListener('hashchange', syncAdminHash);
     syncAdminHash();
     return () => window.removeEventListener('hashchange', syncAdminHash);
-  }, []);
+  }, [syncAdminHash]);
 
   React.useEffect(() => {
-    setAdminActiveTab(getAdminTabFromDashboardSection(activeDashboardSection));
-  }, [activeDashboardSection]);
+    const nextTab = getAdminTabFromDashboardSection(activeDashboardSection);
+    setAdminActiveTab(nextTab);
+    if (typeof window !== 'undefined' && shouldFocusAdminListings(window.location.hash, nextTab)) {
+      focusAdminListingsPanel();
+    }
+  }, [activeDashboardSection, focusAdminListingsPanel]);
   const setAdminTab = (tab: AdminActiveTab) => {
     window.location.hash = `dashboard-admin-${tab}`;
     setAdminActiveTab(tab);
+    if (shouldFocusAdminListings(`#dashboard-admin-${tab}`, tab)) {
+      focusAdminListingsPanel();
+    }
   };
   const [bugSearch, setBugSearch] = useState('');
   const [bugCategoryFilter, setBugCategoryFilter] = useState<'all' | 'visual' | 'functional' | 'data' | 'other'>('all');
@@ -2465,7 +2490,7 @@ function AdminDashboardView({
       </div>
 
       {/* Directory Management Table Section */}
-      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+      <div id="admin-listings-section" className="scroll-mt-24 bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
         {/* Controls Bar */}
         <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="relative w-full md:w-80">

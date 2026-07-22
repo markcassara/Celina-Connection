@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
 import { getDesktopHeaderTabs, getMobileHeaderTabs, getHeaderTabHref, isHeaderTabActive } from '../src/components/Header.tsx';
-import { getDashboardSectionFromHash, getAdminTabFromDashboardSection } from '../src/components/DashboardView.tsx';
+import { getDashboardSectionFromHash, getAdminTabFromDashboardSection, shouldFocusAdminListings } from '../src/components/DashboardView.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -126,4 +126,10 @@ test('admin dashboard inner tab follows the selected dashboard hash section', ()
   assert.equal(getAdminTabFromDashboardSection('admin-bugs'), 'bugs');
   assert.equal(getAdminTabFromDashboardSection('#dashboard-admin-bugs'), 'bugs');
   assert.equal(getAdminTabFromDashboardSection('reviews'), 'listings');
+});
+
+test('manage listings menu click focuses the listings manager instead of the generic admin top', () => {
+  assert.equal(shouldFocusAdminListings('#dashboard-admin-listings', 'listings'), true);
+  assert.equal(shouldFocusAdminListings('', 'listings'), false);
+  assert.equal(shouldFocusAdminListings('#dashboard-admin-bugs', 'bugs'), false);
 });
