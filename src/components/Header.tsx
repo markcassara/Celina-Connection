@@ -34,7 +34,7 @@ export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserPro
 
   if (user.role === 'admin') {
     return [
-      { id: 'admin-dashboard', label: 'Admin Dashboard', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
+      { id: 'admin-dashboard', label: 'Admin Dashboard', targetTab: 'dashboard' },
       { id: 'admin-listings', label: 'Manage Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
       { id: 'admin-bugs', label: 'Bug Reports', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
       { id: 'public-directory', label: 'View Directory', targetTab: 'directory' },
@@ -60,8 +60,8 @@ export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProf
 
   if (user.role === 'admin') {
     return [
-      { id: 'admin-dashboard', label: 'Dashboard', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
-      { id: 'admin-listings', label: 'Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
+      { id: 'admin-dashboard', label: 'Dashboard', targetTab: 'dashboard' },
+      { id: 'admin-listings', label: 'Manage', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
       { id: 'admin-bugs', label: 'Bugs', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
       { id: 'public-directory', label: 'Directory', targetTab: 'directory' },
     ];

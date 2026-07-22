@@ -949,7 +949,7 @@ export default function DashboardView({
                 { id: 'billing', label: 'Billing & Tiers', icon: <Receipt className="w-4 h-4" /> },
                 ...(currentUser.role === 'admin'
                   ? [
-                      { id: 'admin-listings', label: 'Admin Listings', icon: <ShieldAlert className="w-4 h-4" /> },
+                      { id: 'admin-listings', label: 'Manage Listings', icon: <ShieldAlert className="w-4 h-4" /> },
                       { id: 'admin-bugs', label: 'Bug Reports', icon: <Bug className="w-4 h-4" /> },
                     ]
                   : []),
