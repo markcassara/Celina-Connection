@@ -8,8 +8,16 @@ import { AddressInfo, createServer } from 'node:net';
 
 import { createApp } from '../server/app.ts';
 import { buildOwnerProfilePatch } from '../src/lib/ownerProfilePatch.ts';
+import { resolveDashboardPortalMode } from '../src/lib/navigation.ts';
 
 const ADMIN_TOKEN = 'test-admin-token';
+
+test('public dashboard menu leaves admin-login mode and opens the owner join page', () => {
+  assert.equal(resolveDashboardPortalMode({ activeTab: 'dashboard', currentMode: 'admin', isLoggedIn: false }), 'owner');
+  assert.equal(resolveDashboardPortalMode({ activeTab: 'owner-login', currentMode: 'admin', isLoggedIn: false }), 'owner');
+  assert.equal(resolveDashboardPortalMode({ activeTab: 'admin-login', currentMode: 'owner', isLoggedIn: false }), 'admin');
+  assert.equal(resolveDashboardPortalMode({ activeTab: 'dashboard', currentMode: 'admin', isLoggedIn: true, role: 'admin' }), 'admin');
+});
 
 async function withServer(dbPath: string, run: (baseUrl: string) => Promise<void>) {
   const app = createApp({ dbPath });

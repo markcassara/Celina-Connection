@@ -13,6 +13,7 @@ import BugReportForm from './components/BugReportForm';
 import AiChatWidget from './components/AiChatWidget';
 import SeoHead from './components/SeoHead';
 import { api } from './lib/api';
+import { activeTabFromPath, pathForActiveTab, resolveDashboardPortalMode } from './lib/navigation';
 import { MapPin, Heart, ShieldAlert, Sparkles, Star, CheckCircle, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -54,12 +55,7 @@ export default function App() {
   const location = useLocation();
   const [businesses, setBusinesses] = useState<Business[]>([]);
   
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    const path = location.pathname.replace('/', '');
-    if (path.startsWith('business/')) return 'directory';
-    if (path === 'owner-login' || path === 'admin-login') return path;
-    return path || 'directory';
-  });
+  const [activeTab, setActiveTab] = useState<string>(() => activeTabFromPath(location.pathname));
   
   // Business slug from URL
   const businessSlug = location.pathname.startsWith('/business/') 
@@ -69,12 +65,12 @@ export default function App() {
   // Sync URL when activeTab changes
   useEffect(() => {
     if (businessSlug) return;
-    const path = activeTab === 'directory' ? '/' : `/${activeTab}`;
+    const path = pathForActiveTab(activeTab);
     if (location.pathname !== path) {
       navigate(path, { replace: true });
     }
   }, [activeTab, navigate, location.pathname, businessSlug]);
-  
+
   // Handle business selection via URL
   useEffect(() => {
     if (businessSlug) {
@@ -119,6 +115,21 @@ export default function App() {
     tier: 'basic',
     isLoggedIn: false,
   });
+
+  // Keep dashboard/login route intent in sync with the visible portal.
+  // Without this, clicking "Join as Business" after visiting Admin Login
+  // leaves the dashboard form stuck in admin mode.
+  useEffect(() => {
+    const nextMode = resolveDashboardPortalMode({
+      activeTab,
+      currentMode: dashboardPortalMode,
+      isLoggedIn: currentUser.isLoggedIn,
+      role: currentUser.role,
+    });
+    if (nextMode !== dashboardPortalMode) {
+      setDashboardPortalMode(nextMode);
+    }
+  }, [activeTab, currentUser.isLoggedIn, currentUser.role, dashboardPortalMode]);
 
   const openOwnerLogin = () => {
     setIsGated(false);
