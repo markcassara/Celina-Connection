@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import React from 'react';
+import { renderToString } from 'react-dom/server';
 
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
 import { getDesktopHeaderTabs, getMobileHeaderTabs, getHeaderTabHref, isHeaderTabActive } from '../src/components/Header.tsx';
-import { getDashboardSectionFromHash, getAdminTabFromDashboardSection, shouldFocusAdminListings } from '../src/components/DashboardView.tsx';
+import DashboardView, { getDashboardSectionFromHash, getAdminTabFromDashboardSection, shouldFocusAdminListings } from '../src/components/DashboardView.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -53,7 +55,7 @@ test('logged-in admins get admin-focused navigation without owner-only dead-end 
   assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
   assert.deepEqual(
     desktopTabs.map((tab) => tab.dashboardSection ?? null),
-    [null, 'admin-listings', 'admin-bugs', null],
+    ['admin-listings', 'profile', 'admin-bugs', null],
   );
 
   const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
@@ -69,12 +71,17 @@ test('dashboard navigation highlights only the selected dashboard section', () =
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
-    [false, true, false, false],
+    [true, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-reviews')),
     [false, false, false, false],
+  );
+
+  assert.deepEqual(
+    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
+    [false, true, false, false],
   );
 
   assert.deepEqual(
@@ -95,8 +102,8 @@ test('dashboard hash parser recognizes header menu sections', () => {
 
 test('dashboard hash parser keeps admin and owner menus on populated sections', () => {
   assert.equal(getDashboardSectionFromHash('', 'admin'), 'admin-listings');
-  assert.equal(getDashboardSectionFromHash('#dashboard-profile', 'admin'), 'admin-listings');
-  assert.equal(getDashboardSectionFromHash('#dashboard-reviews', 'admin'), 'admin-listings');
+  assert.equal(getDashboardSectionFromHash('#dashboard-profile', 'admin'), 'profile');
+  assert.equal(getDashboardSectionFromHash('#dashboard-reviews', 'admin'), 'reviews');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings', 'admin'), 'admin-listings');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs', 'admin'), 'admin-bugs');
 
@@ -112,8 +119,8 @@ test('header tabs expose real hrefs including dashboard section links', () => {
   assert.deepEqual(
     adminTabs.map((tab) => getHeaderTabHref(tab)),
     [
-      '/dashboard',
       '/dashboard#dashboard-admin-listings',
+      '/dashboard#dashboard-profile',
       '/dashboard#dashboard-admin-bugs',
       '/',
     ],
@@ -128,8 +135,54 @@ test('admin dashboard inner tab follows the selected dashboard hash section', ()
   assert.equal(getAdminTabFromDashboardSection('reviews'), 'listings');
 });
 
-test('manage listings menu click focuses the listings manager instead of the generic admin top', () => {
+test('admin dashboard menu click focuses the listings manager instead of the generic admin top', () => {
   assert.equal(shouldFocusAdminListings('#dashboard-admin-listings', 'listings'), true);
   assert.equal(shouldFocusAdminListings('', 'listings'), false);
   assert.equal(shouldFocusAdminListings('#dashboard-admin-bugs', 'bugs'), false);
+});
+
+test('admin manage listings route renders the owner-style listing edit page', () => {
+  const business = {
+    id: 'admin-visible-1',
+    name: 'Admin Visible Bakery',
+    category: 'Dining',
+    description: 'A local bakery listing.',
+    phone: '(972) 555-0111',
+    email: 'bakery@example.com',
+    tier: 'basic',
+    ownerId: 'owner-bakery',
+    createdAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+    reviews: [],
+    viewsCount: 12,
+    isUnclaimed: false,
+  };
+
+  const html = renderToString(
+    React.createElement(DashboardView, {
+      currentUser: {
+        id: 'admin',
+        email: 'admin@celinaconnection.com',
+        businessName: 'Celina Connection Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        role: 'admin',
+      },
+      setCurrentUser: () => undefined,
+      businesses: [business],
+      onAddBusiness: () => 'new-business-id',
+      onOwnerRegister: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerLogin: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerUpdateBusiness: async () => undefined,
+      onUpdateBusiness: () => undefined,
+      onUpgradePrompt: () => undefined,
+      reportedBugs: [],
+      portalMode: 'owner',
+      setPortalMode: () => undefined,
+      locationHash: '#dashboard-profile',
+    } as any),
+  );
+
+  assert.match(html, /Listing Edit Page/);
+  assert.match(html, /Admin Visible Bakery/);
+  assert.doesNotMatch(html, /No Listing Selected/);
 });

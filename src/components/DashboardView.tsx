@@ -77,10 +77,6 @@ export function getDashboardSectionFromHash(
   const isAdminOnlySection = hashSection === 'admin-listings' || hashSection === 'admin-bugs';
   if (isAdminOnlySection && role && role !== 'admin') return 'profile';
 
-  // Admin users do not have an owner listing/profile by default. Keep every
-  // admin header/menu click on a populated admin panel instead of a blank owner pane.
-  if (role === 'admin' && !isAdminOnlySection) return 'admin-listings';
-
   return hashSection;
 }
 
@@ -168,9 +164,11 @@ export default function DashboardView({
   }, [defaultOwnerView, portalMode, currentUser.isLoggedIn]);
 
   // Multi-business list and active selection
-  const myBusinesses = businesses.filter(
-    (b) => b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase())
-  );
+  const myBusinesses = currentUser.role === 'admin'
+    ? businesses
+    : businesses.filter(
+        (b) => b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase())
+      );
   
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null);
   const [isAddingListing, setIsAddingListing] = useState(false);
@@ -1114,7 +1112,9 @@ export default function DashboardView({
               {activeSubTab === 'profile' && (
             <form onSubmit={handleProfileSave} className="space-y-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-950">Business Profile Info</h3>
+                <h3 className="font-display text-lg font-bold text-slate-950">
+                  {currentUser.role === 'admin' ? 'Listing Edit Page' : 'Business Profile Info'}
+                </h3>
                 <p className="text-xs text-slate-500 mt-0.5">Edit basic, pro, and premium fields regarding your Celina directory card.</p>
               </div>
 
