@@ -6,6 +6,7 @@ import { renderToString } from 'react-dom/server';
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
 import { getDesktopHeaderTabs, getMobileHeaderTabs, getHeaderTabHref, isHeaderTabActive } from '../src/components/Header.tsx';
 import DashboardView, { getDashboardSectionFromHash, getAdminTabFromDashboardSection, shouldFocusAdminListings, isHiddenFromAdminListings } from '../src/components/DashboardView.tsx';
+import DirectoryView from '../src/components/DirectoryView.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -209,6 +210,37 @@ test('admin manage listings route renders the responsive listings manager, not t
   assert.doesNotMatch(html, /No Listing Selected/);
 });
 
+test('direct admin listings URL asks for admin credentials instead of owner registration when session is missing', () => {
+  const html = renderToString(
+    React.createElement(DashboardView, {
+      currentUser: {
+        id: '',
+        email: '',
+        businessName: '',
+        tier: 'basic',
+        isLoggedIn: false,
+      },
+      setCurrentUser: () => undefined,
+      businesses: [],
+      onAddBusiness: () => 'new-business-id',
+      onOwnerRegister: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerLogin: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerUpdateBusiness: async () => undefined,
+      onUpdateBusiness: () => undefined,
+      onUpgradePrompt: () => undefined,
+      reportedBugs: [],
+      portalMode: 'admin',
+      setPortalMode: () => undefined,
+      locationHash: '#dashboard-admin-listings',
+    } as any),
+  );
+
+  assert.match(html, /Master Admin Dashboard/);
+  assert.match(html, /Enter administrative system credentials/);
+  assert.doesNotMatch(html, /Register Free Spot/);
+  assert.doesNotMatch(html, /Claim Your Spot on the/);
+});
+
 test('admin manage listings route stays in the full admin manager even if admin owns listings', () => {
   const adminOwnedBusiness = {
     id: 'admin-owned-1',
@@ -319,4 +351,26 @@ test('Lucys and Annie Jack stay public but are hidden from the admin listing man
   assert.equal(isHiddenFromAdminListings({ id: 'annie-jack-boutique', isUnclaimed: true }), true);
   assert.equal(isHiddenFromAdminListings({ id: 'little-wooden-penguin', isUnclaimed: true }), false);
   assert.equal(isHiddenFromAdminListings({ id: 'lucys-on-the-square', isUnclaimed: false }), false);
+});
+
+test('directory search renders a blended on-page AI chat box instead of a separate floating-only experience', () => {
+  const html = renderToString(
+    React.createElement(DirectoryView, {
+      businesses: [],
+      onAddReview: () => undefined,
+      selectedBusiness: null,
+      onSelectBusiness: () => undefined,
+      onCloseDetail: () => undefined,
+      onUpgradePrompt: () => undefined,
+      onClaimBusiness: () => undefined,
+      isAiEnabled: true,
+      serverAiAvailable: true,
+      setActiveTab: () => undefined,
+    }),
+  );
+
+  assert.match(html, /directory-inline-ai-chat/);
+  assert.match(html, /Ask Celina AI or search the directory/);
+  assert.match(html, /Ask Celina AI like a local concierge/);
+  assert.doesNotMatch(html, /ai-chat-fab/);
 });

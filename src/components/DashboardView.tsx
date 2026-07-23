@@ -525,16 +525,18 @@ export default function DashboardView({
         {/* Left Side: Welcoming intro */}
         <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 uppercase tracking-wider self-start">
-            <Building2 className="w-3.5 h-3.5" /> Celina Owner Center
+            <Building2 className="w-3.5 h-3.5" /> {portalMode === 'admin' ? 'Celina Admin Center' : 'Celina Owner Center'}
           </span>
           <h2 className="font-display text-3xl sm:text-4.5xl font-extrabold text-slate-950 tracking-tight leading-tight">
-            Claim Your Spot on the{' '}
+            {portalMode === 'admin' ? 'Manage Celina Directory' : 'Claim Your Spot on the'}{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">
-              Celina Directory Map
+              {portalMode === 'admin' ? 'Listings Database' : 'Celina Directory Map'}
             </span>
           </h2>
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            Welcome, Celina business owners! Whether your business is on the historic Downtown Square, Preston Road, or serving our community home-to-home, register in seconds to make sure local families can find you. 
+            {portalMode === 'admin'
+              ? 'Sign in to review, edit, claim, tier, and maintain every active Celina business listing from one admin workspace.'
+              : 'Welcome, Celina business owners! Whether your business is on the historic Downtown Square, Preston Road, or serving our community home-to-home, register in seconds to make sure local families can find you.'}
           </p>
 
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Business, Review, Tier } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
 import FeaturedCarousel from './FeaturedCarousel';
@@ -24,6 +24,7 @@ import {
   Check,
   ShieldAlert,
   Sparkles,
+  Send,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -64,6 +65,18 @@ export default function DirectoryView({
   const [isAiSearching, setIsAiSearching] = useState(false);
   const [aiSearchError, setAiSearchError] = useState<string | null>(null);
   const [isAiFilterActive, setIsAiFilterActive] = useState(false);
+  const [inlineAiMessages, setInlineAiMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; text: string }>>([
+    {
+      id: 'welcome',
+      role: 'assistant',
+      text: 'Ask Celina AI like a local concierge — search the directory, get recommendations, then keep chatting right here.',
+    },
+  ]);
+  const inlineAiEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    inlineAiEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [inlineAiMessages, isAiSearching]);
 
   // Claim Listing states
   const [claimTarget, setClaimTarget] = useState<Business | null>(null);
@@ -86,10 +99,15 @@ export default function DirectoryView({
   const [reviewSuccess, setReviewSuccess] = useState(false);
 
   const handleAiSearch = async () => {
-    if (!searchTerm.trim()) {
-      alert("Please enter a search phrase to get AI search insights.");
+    const query = searchTerm.trim();
+    if (!query || isAiSearching) {
+      if (!query) alert("Please enter a search phrase to get AI search insights.");
       return;
     }
+
+    const userMessage = { id: `user-${Date.now()}`, role: 'user' as const, text: query };
+    const chatMessages = [...inlineAiMessages, userMessage].slice(-8);
+    setInlineAiMessages((prev) => [...prev, userMessage]);
     setIsAiSearching(true);
     setAiSearchError(null);
     setAiSearchInsights(null);
@@ -102,31 +120,53 @@ export default function DirectoryView({
         category: b.category,
         description: b.description,
         address: b.address,
+        hours: b.hours,
+        phone: b.phone,
+        website: b.website,
         tier: b.tier,
+        rating: b.reviews.length
+          ? (b.reviews.reduce((acc, r) => acc + r.rating, 0) / b.reviews.length).toFixed(1)
+          : "No reviews yet",
       }));
 
-      const res = await fetch('/api/ai/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          query: searchTerm,
-          businesses: minimizedBusinesses
+      const [searchRes, chatRes] = await Promise.all([
+        fetch('/api/ai/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, businesses: minimizedBusinesses })
+        }),
+        fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: chatMessages.map((msg) => ({ role: msg.role, text: msg.text })),
+            businesses: minimizedBusinesses,
+          })
         })
-      });
+      ]);
 
-      if (!res.ok) {
-        throw new Error("Failed to retrieve AI search insights");
+      if (!searchRes.ok || !chatRes.ok) {
+        throw new Error("Failed to retrieve AI recommendations");
       }
 
-      const data = await res.json();
-      setAiSearchInsights(data.insights || "No detailed insights found for this search.");
-      setAiMatchingIds(data.matchingIds || []);
+      const searchData = await searchRes.json();
+      const chatData = await chatRes.json();
+      const responseText = chatData.text || searchData.insights || "I found matching Celina listings, but couldn't generate a detailed response.";
+
+      setAiSearchInsights(responseText);
+      setAiMatchingIds(searchData.matchingIds || []);
       setIsAiFilterActive(true);
+      setInlineAiMessages((prev) => [
+        ...prev,
+        { id: `assistant-${Date.now()}`, role: 'assistant', text: responseText },
+      ]);
     } catch (err: any) {
       console.error(err);
-      setAiSearchError("Unable to fetch AI search insights. Standard text search remains active.");
+      setAiSearchError("Unable to fetch AI chat right now. Standard text search remains active.");
+      setInlineAiMessages((prev) => [
+        ...prev,
+        { id: `assistant-error-${Date.now()}`, role: 'assistant', text: "I couldn't reach Celina AI just now. You can still use the regular directory search while we retry." },
+      ]);
     } finally {
       setIsAiSearching(false);
     }
@@ -302,115 +342,118 @@ export default function DirectoryView({
             Explore our rich community directory, discover local treasures on the Square, or register your own business and grow your Celina reach today.
           </motion.p>
 
-          {/* Inline Search Bar */}
+          {/* Blended Search + AI Chat Bar */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className="flex flex-col sm:flex-row items-stretch gap-2 pt-4"
+            className="pt-4"
           >
-            <div className="relative flex-grow">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                id="search-input"
-                placeholder={isAiEnabled ? "Describe what you want (e.g. cozy spot for date, top comfort food)..." : "Search dining, boutique shops, home services..."}
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  if (!e.target.value) {
-                    setIsAiFilterActive(false);
-                    setAiSearchInsights(null);
-                    setAiMatchingIds(null);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && isAiEnabled) {
-                    handleAiSearch();
-                  }
-                }}
-                className="w-full pl-11 pr-4 py-3.5 bg-white text-slate-900 rounded-xl font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-inner text-sm"
-              />
-            </div>
-            <div className="flex gap-2">
+            <div
+              id="directory-inline-ai-chat"
+              className="rounded-2xl border border-white/15 bg-white/95 text-slate-900 shadow-2xl shadow-slate-950/20 backdrop-blur overflow-hidden"
+            >
               {isAiEnabled && (
-                <button
-                  type="button"
-                  id="ai-search-insights-btn"
-                  onClick={handleAiSearch}
-                  disabled={isAiSearching || !searchTerm.trim()}
-                  className={`px-4 py-3.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer flex-shrink-0 ${
-                    searchTerm.trim()
-                      ? 'bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 text-slate-950 hover:opacity-90 shadow-orange-100/30'
-                      : 'bg-slate-700 text-slate-400 cursor-not-allowed shadow-none'
-                  }`}
-                  title="Generate custom AI recommendations and filter listings"
-                >
-                  <Sparkles className={`w-3.5 h-3.5 ${isAiSearching ? 'animate-spin' : 'animate-pulse'}`} />
-                  <span>{isAiSearching ? 'AI Searching...' : 'Ask AI Insights'}</span>
-                </button>
+                <div className="max-h-72 overflow-y-auto px-3 sm:px-4 py-3 space-y-2 bg-gradient-to-b from-white via-white to-orange-50/40">
+                  {inlineAiMessages.map((msg) => {
+                    const isAi = msg.role === 'assistant';
+                    return (
+                      <div key={msg.id} className={`flex ${isAi ? 'justify-start' : 'justify-end'}`}>
+                        <div className={`flex items-start gap-2 max-w-[92%] ${isAi ? '' : 'flex-row-reverse'}`}>
+                          <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 ${isAi ? 'bg-orange-100 text-orange-600' : 'bg-slate-900 text-white'}`}>
+                            {isAi ? <Sparkles className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
+                          </div>
+                          <div className={`rounded-2xl px-3.5 py-2 text-xs font-medium leading-relaxed shadow-sm ${
+                            isAi
+                              ? 'bg-white border border-orange-100 text-slate-700 rounded-tl-md'
+                              : 'bg-slate-900 text-white rounded-tr-md'
+                          }`}>
+                            <p className="whitespace-pre-line">
+                              {msg.text.split('**').map((part, index) =>
+                                index % 2 === 1 ? <strong key={index} className="font-black">{part}</strong> : part
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {isAiSearching && (
+                    <div className="flex items-center gap-2 px-2 py-1 text-[11px] font-bold text-orange-700">
+                      <div className="flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                        <span className="h-1.5 w-1.5 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                        <span className="h-1.5 w-1.5 bg-orange-500 rounded-full animate-bounce" />
+                      </div>
+                      Celina AI is checking local listings...
+                    </div>
+                  )}
+                  <div ref={inlineAiEndRef} />
+                </div>
               )}
+
+              <div className="flex flex-col sm:flex-row items-stretch gap-2 p-2 bg-white border-t border-slate-100">
+                <div className="relative flex-grow">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="text"
+                    id="search-input"
+                    placeholder={isAiEnabled ? "Ask Celina AI or search the directory..." : "Search dining, boutique shops, home services..."}
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      if (!e.target.value) {
+                        setIsAiFilterActive(false);
+                        setAiSearchInsights(null);
+                        setAiMatchingIds(null);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && isAiEnabled) {
+                        handleAiSearch();
+                      }
+                    }}
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 text-slate-900 rounded-xl font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm border border-slate-100"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  {isAiFilterActive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAiFilterActive(false);
+                        setAiSearchInsights(null);
+                        setAiMatchingIds(null);
+                      }}
+                      className="px-3 py-3.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-600 rounded-xl cursor-pointer flex items-center gap-1 transition-all"
+                    >
+                      <X className="w-3 h-3" />
+                      Clear
+                    </button>
+                  )}
+                  {isAiEnabled && (
+                    <button
+                      type="button"
+                      id="ai-search-insights-btn"
+                      onClick={handleAiSearch}
+                      disabled={isAiSearching || !searchTerm.trim()}
+                      className={`px-4 py-3.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0 ${
+                        searchTerm.trim() && !isAiSearching
+                          ? 'bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 text-slate-950 hover:opacity-90 shadow-md shadow-orange-100/50'
+                          : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                      }`}
+                      title="Ask Celina AI and filter matching listings"
+                    >
+                      <Send className={`w-3.5 h-3.5 ${isAiSearching ? 'animate-pulse' : ''}`} />
+                      <span>{isAiSearching ? 'Thinking...' : 'Ask'}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </motion.div>
         </div>
       </div>
-
-      {/* AI Search Insights Box (Now placed directly under the search bar area for better visibility) */}
-      <AnimatePresence>
-        {isAiFilterActive && aiSearchInsights && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-5 rounded-2xl bg-gradient-to-br from-orange-50/70 to-amber-50/40 border border-orange-100 text-slate-800 shadow-sm relative overflow-hidden"
-            id="ai-search-insights-panel"
-          >
-            <div className="absolute top-0 right-0 p-3 flex gap-2">
-              <button
-                onClick={() => {
-                  setIsAiFilterActive(false);
-                  setAiSearchInsights(null);
-                  setAiMatchingIds(null);
-                }}
-                className="px-3 py-1 bg-white hover:bg-slate-100 text-[10px] font-bold text-slate-600 border border-slate-200/80 rounded-lg shadow-sm cursor-pointer flex items-center gap-1 transition-all"
-              >
-                <X className="w-3 h-3 text-slate-500" />
-                <span>Clear AI Filter</span>
-              </button>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-slate-950 flex items-center justify-center flex-shrink-0 shadow-md shadow-orange-100/30">
-                <Sparkles className="w-4 h-4 text-white animate-pulse" />
-              </div>
-              <div className="space-y-2 pr-24">
-                <h4 className="text-xs font-bold text-orange-800 uppercase tracking-wider flex items-center gap-1">
-                  Celina AI Search Insights
-                </h4>
-                <p className="text-xs font-medium leading-relaxed text-slate-700 whitespace-pre-line">
-                  {aiSearchInsights.split('**').map((part, index) => 
-                    index % 2 === 1 ? <strong key={index} className="font-bold text-slate-950">{part}</strong> : part
-                  )}
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* AI Searching Loading Indicator (Now placed directly under the search bar area) */}
-      {isAiSearching && (
-        <div className="p-8 rounded-2xl border border-dashed border-orange-200 bg-orange-50/10 flex flex-col items-center justify-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
-            <span className="h-2 w-2 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
-            <span className="h-2 w-2 bg-orange-500 rounded-full animate-bounce" />
-          </div>
-          <p className="text-xs font-bold text-slate-500 animate-pulse uppercase tracking-wider">
-            Gemini AI is analyzing business profiles for custom recommendations...
-          </p>
-        </div>
-      )}
 
       {aiSearchError && (
         <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-800 text-xs font-semibold flex items-center gap-2">

@@ -13,7 +13,7 @@ import BugReportForm from './components/BugReportForm';
 import AiChatWidget from './components/AiChatWidget';
 import SeoHead from './components/SeoHead';
 import { api } from './lib/api';
-import { activeTabFromPath, pathForActiveTab, resolveDashboardPortalMode } from './lib/navigation';
+import { activeTabFromPath, isAdminDashboardHash, pathForActiveTab, resolveDashboardPortalMode } from './lib/navigation';
 import { MapPin, Heart, ShieldAlert, Sparkles, Star, CheckCircle, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -106,7 +106,7 @@ export default function App() {
   const [isAiEnabled, setIsAiEnabled] = useState<boolean>(true);
   const [serverAiAvailable, setServerAiAvailable] = useState<boolean>(true);
   const [dashboardPortalMode, setDashboardPortalMode] = useState<'owner' | 'admin'>(() => (
-    location.pathname === '/admin-login' ? 'admin' : 'owner'
+    location.pathname === '/admin-login' || (location.pathname === '/dashboard' && isAdminDashboardHash(location.hash)) ? 'admin' : 'owner'
   ));
   const [currentUser, setCurrentUser] = useState<UserProfile>({
     id: '',
@@ -125,11 +125,12 @@ export default function App() {
       currentMode: dashboardPortalMode,
       isLoggedIn: currentUser.isLoggedIn,
       role: currentUser.role,
+      locationHash: location.hash,
     });
     if (nextMode !== dashboardPortalMode) {
       setDashboardPortalMode(nextMode);
     }
-  }, [activeTab, currentUser.isLoggedIn, currentUser.role, dashboardPortalMode]);
+  }, [activeTab, currentUser.isLoggedIn, currentUser.role, dashboardPortalMode, location.hash]);
 
   const openOwnerLogin = () => {
     setIsGated(false);
@@ -860,8 +861,8 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Floating AI Chat Assistant */}
-      <AiChatWidget businesses={businesses} isAiEnabled={isAiEnabled} />
+      {/* Floating AI Chat Assistant: directory has a blended on-page chat/search box. */}
+      {activeTab !== 'directory' && <AiChatWidget businesses={businesses} isAiEnabled={isAiEnabled} />}
     </div>
   );
 }

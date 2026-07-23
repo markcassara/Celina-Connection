@@ -19,6 +19,27 @@ test('public dashboard menu leaves admin-login mode and opens the owner join pag
   assert.equal(resolveDashboardPortalMode({ activeTab: 'dashboard', currentMode: 'admin', isLoggedIn: true, role: 'admin' }), 'admin');
 });
 
+test('direct admin dashboard hash keeps unauthenticated users in admin login intent', () => {
+  assert.equal(
+    resolveDashboardPortalMode({
+      activeTab: 'dashboard',
+      currentMode: 'owner',
+      isLoggedIn: false,
+      locationHash: '#dashboard-admin-listings',
+    }),
+    'admin',
+  );
+  assert.equal(
+    resolveDashboardPortalMode({
+      activeTab: 'dashboard',
+      currentMode: 'owner',
+      isLoggedIn: false,
+      locationHash: '#dashboard-admin-bugs',
+    }),
+    'admin',
+  );
+});
+
 async function withServer(dbPath: string, run: (baseUrl: string) => Promise<void>) {
   const app = createApp({ dbPath });
   const server = app.listen(0);
