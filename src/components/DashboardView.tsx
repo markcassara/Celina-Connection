@@ -60,9 +60,9 @@ interface DashboardViewProps {
   locationHash?: string;
 }
 
-export type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-listings' | 'admin-bugs';
+export type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-dashboard' | 'admin-listings' | 'admin-bugs';
 
-export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-listings', 'admin-bugs'];
+export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-dashboard', 'admin-listings', 'admin-bugs'];
 
 export function getDashboardSectionFromHash(
   hash: string = typeof window === 'undefined' ? '' : window.location.hash,
@@ -74,7 +74,7 @@ export function getDashboardSectionFromHash(
 
   if (!isKnownSection) return fallbackSection;
 
-  const isAdminOnlySection = hashSection === 'admin-listings' || hashSection === 'admin-bugs';
+  const isAdminOnlySection = hashSection === 'admin-dashboard' || hashSection === 'admin-listings' || hashSection === 'admin-bugs';
   if (isAdminOnlySection && role && role !== 'admin') return 'profile';
 
   return hashSection;
@@ -83,6 +83,7 @@ export function getDashboardSectionFromHash(
 export type AdminActiveTab = 'listings' | 'bugs';
 
 export function getAdminTabFromDashboardSection(sectionOrHash: DashboardSubTab | string): AdminActiveTab {
+  if (sectionOrHash === 'admin-dashboard' || sectionOrHash === '#dashboard-admin-dashboard') return 'listings';
   return sectionOrHash === 'admin-bugs' || sectionOrHash === '#dashboard-admin-bugs' ? 'bugs' : 'listings';
 }
 
@@ -800,7 +801,7 @@ export default function DashboardView({
   // Admin dashboard routes should always render the admin workspace directly.
   // Do this before owner-business fallbacks: admins may have listings assigned
   // to them, and that must not trap Manage Listings inside the owner editor.
-  if (currentUser.role === 'admin' && (activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs')) {
+  if (currentUser.role === 'admin' && (activeSubTab === 'admin-dashboard' || activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs')) {
     return (
       <AdminDashboardView
         activeDashboardSection={activeSubTab}

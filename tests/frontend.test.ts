@@ -70,6 +70,11 @@ test('dashboard navigation highlights only the selected dashboard section', () =
   const adminTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' });
 
   assert.deepEqual(
+    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '')),
+    [true, false, false, false],
+  );
+
+  assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
     [false, true, false, false],
   );
@@ -94,6 +99,7 @@ test('dashboard hash parser recognizes header menu sections', () => {
   assert.equal(getDashboardSectionFromHash('#dashboard-profile'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-reviews'), 'reviews');
   assert.equal(getDashboardSectionFromHash('#dashboard-billing'), 'billing');
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-dashboard'), 'admin-dashboard');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings'), 'admin-listings');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs'), 'admin-bugs');
   assert.equal(getDashboardSectionFromHash(''), 'profile');
@@ -104,9 +110,11 @@ test('dashboard hash parser keeps admin and owner menus on populated sections', 
   assert.equal(getDashboardSectionFromHash('', 'admin'), 'admin-listings');
   assert.equal(getDashboardSectionFromHash('#dashboard-profile', 'admin'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-reviews', 'admin'), 'reviews');
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-dashboard', 'admin'), 'admin-dashboard');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings', 'admin'), 'admin-listings');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs', 'admin'), 'admin-bugs');
 
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-dashboard', 'owner'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings', 'owner'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs', 'owner'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-reviews', 'owner'), 'reviews');
@@ -127,7 +135,19 @@ test('header tabs expose real hrefs including dashboard section links', () => {
   );
 });
 
+test('admin dashboard menu opens the admin workspace listings manager instead of the owner profile editor', () => {
+  const adminDashboard = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' })[0];
+
+  assert.equal(adminDashboard.id, 'admin-dashboard');
+  assert.equal(adminDashboard.dashboardSection, undefined);
+  assert.equal(getHeaderTabHref(adminDashboard), '/dashboard');
+  assert.equal(getDashboardSectionFromHash('', 'admin'), 'admin-listings');
+  assert.equal(getAdminTabFromDashboardSection(getDashboardSectionFromHash('', 'admin')), 'listings');
+});
+
 test('admin dashboard inner tab follows the selected dashboard hash section', () => {
+  assert.equal(getAdminTabFromDashboardSection('admin-dashboard'), 'listings');
+  assert.equal(getAdminTabFromDashboardSection('#dashboard-admin-dashboard'), 'listings');
   assert.equal(getAdminTabFromDashboardSection('admin-listings'), 'listings');
   assert.equal(getAdminTabFromDashboardSection('#dashboard-admin-listings'), 'listings');
   assert.equal(getAdminTabFromDashboardSection('admin-bugs'), 'bugs');

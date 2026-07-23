@@ -20,7 +20,7 @@ export interface HeaderTab {
   id: string;
   label: string;
   targetTab: string;
-  dashboardSection?: 'profile' | 'reviews' | 'billing' | 'metrics' | 'media' | 'admin-listings' | 'admin-bugs';
+  dashboardSection?: 'profile' | 'reviews' | 'billing' | 'metrics' | 'media' | 'admin-dashboard' | 'admin-listings' | 'admin-bugs';
 }
 
 export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserProfile['role'] }): HeaderTab[] {
