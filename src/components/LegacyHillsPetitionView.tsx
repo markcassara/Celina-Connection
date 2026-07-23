@@ -247,7 +247,7 @@ export default function LegacyHillsPetitionView() {
                 onPointerCancel={stopSignature}
                 onPointerLeave={stopSignature}
               />
-              <p className="text-xs leading-5 text-slate-500">Use your mouse, trackpad, finger, or stylus. This signature is saved with your GHL petition contact record.</p>
+              <p className="text-xs leading-5 text-slate-500">Use your mouse, trackpad, finger, or stylus.</p>
             </div>
 
             <label className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
