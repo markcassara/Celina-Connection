@@ -189,6 +189,111 @@ test('admin manage listings route renders the responsive listings manager, not t
   assert.doesNotMatch(html, /No Listing Selected/);
 });
 
+test('admin manage listings route stays in the full admin manager even if admin owns listings', () => {
+  const adminOwnedBusiness = {
+    id: 'admin-owned-1',
+    name: 'Admin Owned Consulting',
+    category: 'Professional Services',
+    description: 'A listing assigned to the admin account.',
+    phone: '(972) 555-0188',
+    email: 'admin-owned@example.com',
+    tier: 'basic',
+    ownerId: 'admin',
+    createdAt: new Date('2026-01-02T00:00:00Z').toISOString(),
+    reviews: [],
+    viewsCount: 44,
+    isUnclaimed: false,
+  };
+
+  const html = renderToString(
+    React.createElement(DashboardView, {
+      currentUser: {
+        id: 'admin',
+        email: 'admin@celinaconnection.com',
+        businessName: 'Celina Connection Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        role: 'admin',
+      },
+      setCurrentUser: () => undefined,
+      businesses: [adminOwnedBusiness],
+      onAddBusiness: () => 'new-business-id',
+      onOwnerRegister: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerLogin: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerUpdateBusiness: async () => undefined,
+      onUpdateBusiness: () => undefined,
+      onUpgradePrompt: () => undefined,
+      reportedBugs: [],
+      portalMode: 'admin',
+      setPortalMode: () => undefined,
+      locationHash: '#dashboard-admin-listings',
+    } as any),
+  );
+
+  assert.match(html, /admin-listing-directory-grid/);
+  assert.match(html, /Admin Owned Consulting/);
+  assert.match(html, /Total Directory Listings/);
+  assert.doesNotMatch(html, /owner-active-dashboard/);
+  assert.doesNotMatch(html, /Listing Edit Page/);
+});
+
+test('admin bug reports route stays in the full admin bug manager even if admin owns listings', () => {
+  const adminOwnedBusiness = {
+    id: 'admin-owned-2',
+    name: 'Admin Owned Finance',
+    category: 'Financial Services',
+    description: 'A listing assigned to the admin account.',
+    phone: '(972) 555-0199',
+    email: 'admin-finance@example.com',
+    tier: 'premium',
+    ownerId: 'admin',
+    createdAt: new Date('2026-01-03T00:00:00Z').toISOString(),
+    reviews: [],
+    viewsCount: 55,
+    isUnclaimed: false,
+  };
+
+  const html = renderToString(
+    React.createElement(DashboardView, {
+      currentUser: {
+        id: 'admin',
+        email: 'admin@celinaconnection.com',
+        businessName: 'Celina Connection Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        role: 'admin',
+      },
+      setCurrentUser: () => undefined,
+      businesses: [adminOwnedBusiness],
+      onAddBusiness: () => 'new-business-id',
+      onOwnerRegister: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerLogin: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerUpdateBusiness: async () => undefined,
+      onUpdateBusiness: () => undefined,
+      onUpgradePrompt: () => undefined,
+      reportedBugs: [{
+        id: 'bug-owned-admin-route',
+        title: 'Broken menu route',
+        description: 'Manage listings should not open owner editor.',
+        category: 'functional',
+        severity: 'high',
+        email: 'mark@example.com',
+        createdAt: new Date('2026-01-04T00:00:00Z').toISOString(),
+        status: 'open',
+      }],
+      portalMode: 'admin',
+      setPortalMode: () => undefined,
+      locationHash: '#dashboard-admin-bugs',
+    } as any),
+  );
+
+  assert.match(html, /Broken menu route/);
+  assert.match(html, /admin-bugs-card/);
+  assert.match(html, /Reported Bug Tickets/);
+  assert.doesNotMatch(html, /owner-active-dashboard/);
+  assert.doesNotMatch(html, /Listing Edit Page/);
+});
+
 test('Lucys and Annie Jack stay public but are hidden from the admin listing manager', () => {
   assert.equal(isHiddenFromAdminListings({ id: 'lucys-on-the-square', isUnclaimed: true }), true);
   assert.equal(isHiddenFromAdminListings({ id: 'annie-jack-boutique', isUnclaimed: true }), true);

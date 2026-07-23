@@ -797,6 +797,26 @@ export default function DashboardView({
     );
   }
 
+  // Admin dashboard routes should always render the admin workspace directly.
+  // Do this before owner-business fallbacks: admins may have listings assigned
+  // to them, and that must not trap Manage Listings inside the owner editor.
+  if (currentUser.role === 'admin' && (activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs')) {
+    return (
+      <AdminDashboardView
+        activeDashboardSection={activeSubTab}
+        businesses={businesses}
+        onUpdateBusiness={onUpdateBusiness}
+        onAddBusiness={onAddBusiness}
+        onDeleteBusiness={onDeleteBusiness}
+        onResetDatabase={onResetDatabase}
+        setCurrentUser={setCurrentUser}
+        reportedBugs={reportedBugs}
+        onUpdateBugStatus={onUpdateBugStatus}
+        onDeleteBugStatus={onDeleteBugStatus}
+      />
+    );
+  }
+
   // Safe Guard: Ensure owner users have a business; admins can still access admin tools if no owned listing exists.
   if (!myBusiness && currentUser.role !== 'admin') {
     return (
@@ -811,23 +831,6 @@ export default function DashboardView({
           Reset and Retry
         </button>
       </div>
-    );
-  }
-
-  if (!myBusiness && currentUser.role === 'admin') {
-    return (
-      <AdminDashboardView
-        activeDashboardSection={activeSubTab}
-        businesses={businesses}
-        onUpdateBusiness={onUpdateBusiness}
-        onAddBusiness={onAddBusiness}
-        onDeleteBusiness={onDeleteBusiness}
-        onResetDatabase={onResetDatabase}
-        setCurrentUser={setCurrentUser}
-        reportedBugs={reportedBugs}
-        onUpdateBugStatus={onUpdateBugStatus}
-        onDeleteBugStatus={onDeleteBugStatus}
-      />
     );
   }
 
