@@ -121,8 +121,8 @@ async function withHangingTcpServer(run: (port: number) => Promise<void>) {
   }
 }
 
-async function withFakeGhl(run: (baseUrl: string, requests: Array<{ url: string; body: any; authorization?: string; version?: string }>) => Promise<void>) {
-  const requests: Array<{ url: string; body: any; authorization?: string; version?: string }> = [];
+async function withFakeGhl(run: (baseUrl: string, requests: Array<{ method: string; url: string; body: any; authorization?: string; version?: string }>) => Promise<void>) {
+  const requests: Array<{ method: string; url: string; body: any; authorization?: string; version?: string }> = [];
   const server = createHttpServer((req, res) => {
     let raw = '';
     req.setEncoding('utf8');
@@ -132,6 +132,7 @@ async function withFakeGhl(run: (baseUrl: string, requests: Array<{ url: string;
     req.on('end', () => {
       const body = raw ? JSON.parse(raw) : {};
       requests.push({
+        method: req.method || 'GET',
         url: req.url || '',
         body,
         authorization: req.headers.authorization,
@@ -139,6 +140,10 @@ async function withFakeGhl(run: (baseUrl: string, requests: Array<{ url: string;
       });
       res.setHeader('content-type', 'application/json');
       if (req.url === '/contacts/upsert') {
+        res.end(JSON.stringify({ contact: { id: 'contact-123' } }));
+        return;
+      }
+      if (req.url === '/contacts/contact-123') {
         res.end(JSON.stringify({ contact: { id: 'contact-123' } }));
         return;
       }
@@ -206,6 +211,114 @@ test('owner verification email can be delivered through GoHighLevel contact mess
       });
     } finally {
       for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL', 'GHL_WELCOME_TAGS', 'CELINA_EXPOSE_VERIFICATION_LINK']) {
+        delete process.env[key];
+      }
+    }
+  });
+});
+
+test('legacy hills petition signature is captured as a tagged GoHighLevel contact', async () => {
+  const dbPath = makeDbPath('legacy-hills-petition');
+
+  await withFakeGhl(async (ghlBaseUrl, requests) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+    process.env.GHL_LEGACY_HILLS_PETITION_TAGS = 'celina-connection,legacy-hills-petition,petition-signature';
+    process.env.GHL_LEGACY_HILLS_NEIGHBORHOOD_FIELD_ID = 'field-neighborhood';
+    process.env.GHL_LEGACY_HILLS_COMMENTS_FIELD_ID = 'field-comments';
+    process.env.GHL_LEGACY_HILLS_SIGNATURE_FIELD_ID = 'field-signature';
+    process.env.GHL_LEGACY_HILLS_SIGNED_AT_FIELD_ID = 'field-signed-at';
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/api/petitions/legacy-hills/signatures`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            firstName: 'Jane',
+            lastName: 'Neighbor',
+            email: 'jane.neighbor@example.com',
+            phone: '(972) 555-0112',
+            streetAddress: '123 Legacy Hills Dr',
+            neighborhood: 'Legacy Hills',
+            comments: 'Please keep neighbors informed.',
+            signatureDataUrl: 'data:image/png;base64,aGVsbG8=',
+            consent: true,
+            company: '',
+          }),
+        });
+
+        assert.equal(res.status, 201);
+        const json = await res.json();
+        assert.equal(json.ok, true);
+        assert.equal(json.contactId, 'contact-123');
+        assert.equal(requests.length, 2);
+        assert.equal(requests[0].method, 'POST');
+        assert.equal(requests[0].url, '/contacts/upsert');
+        assert.equal(requests[0].authorization, 'Bearer test-ghl-key');
+        assert.equal(requests[0].body.locationId, 'test-location-id');
+        assert.equal(requests[0].body.firstName, 'Jane');
+        assert.equal(requests[0].body.lastName, 'Neighbor');
+        assert.equal(requests[0].body.email, 'jane.neighbor@example.com');
+        assert.equal(requests[0].body.address1, '123 Legacy Hills Dr');
+        assert.deepEqual(requests[0].body.tags, ['celina-connection', 'legacy-hills-petition', 'petition-signature']);
+        assert.equal(requests[1].method, 'PUT');
+        assert.equal(requests[1].url, '/contacts/contact-123');
+        assert.deepEqual(requests[1].body.customFields.slice(0, 2), [
+          { id: 'field-neighborhood', value: 'Legacy Hills' },
+          { id: 'field-comments', value: 'Please keep neighbors informed.' },
+        ]);
+        assert.deepEqual(requests[1].body.customFields[2], { id: 'field-signature', value: 'data:image/png;base64,aGVsbG8=' });
+        assert.equal(requests[1].body.customFields[3].id, 'field-signed-at');
+      });
+    } finally {
+      for (const key of [
+        'GHL_API_KEY',
+        'GHL_LOCATION_ID',
+        'GHL_API_BASE_URL',
+        'GHL_LEGACY_HILLS_PETITION_TAGS',
+        'GHL_LEGACY_HILLS_NEIGHBORHOOD_FIELD_ID',
+        'GHL_LEGACY_HILLS_COMMENTS_FIELD_ID',
+        'GHL_LEGACY_HILLS_SIGNATURE_FIELD_ID',
+        'GHL_LEGACY_HILLS_SIGNED_AT_FIELD_ID',
+      ]) {
+        delete process.env[key];
+      }
+    }
+  });
+});
+
+test('legacy hills petition requires neighbor consent before GHL sync', async () => {
+  const dbPath = makeDbPath('legacy-hills-petition-consent');
+
+  await withFakeGhl(async (ghlBaseUrl, requests) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/api/petitions/legacy-hills/signatures`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            firstName: 'No',
+            lastName: 'Consent',
+            email: 'noconsent@example.com',
+            phone: '(972) 555-0113',
+            streetAddress: '456 Legacy Hills Dr',
+            signatureDataUrl: 'data:image/png;base64,aGVsbG8=',
+            consent: false,
+            company: '',
+          }),
+        });
+
+        assert.equal(res.status, 400);
+        assert.equal(requests.length, 0);
+      });
+    } finally {
+      for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL']) {
         delete process.env[key];
       }
     }
@@ -477,6 +590,17 @@ test('pricing keeps paid Basic tier while adding separate free launch tier', () 
   assert.doesNotMatch(checkoutSource, /targetTier === 'basic'\) \{\n\s+onPaymentSuccess\('basic', 0\)/);
 });
 
+test('pricing and checkout copy keep free limited while Basic includes website and hours with no sandbox language', () => {
+  const pricingSource = fs.readFileSync(path.join(process.cwd(), 'src/components/PricingView.tsx'), 'utf8');
+  const checkoutSource = fs.readFileSync(path.join(process.cwd(), 'src/components/CheckoutModal.tsx'), 'utf8');
+
+  assert.match(pricingSource, /notIncluded:[\s\S]*'Website link'[\s\S]*'Hours of operation'/);
+  assert.match(pricingSource, /id: 'basic'[\s\S]*'Website link'[\s\S]*'Hours of operation'/);
+  assert.match(checkoutSource, /Website link/);
+  assert.match(checkoutSource, /Business hours/);
+  assert.doesNotMatch(checkoutSource, /Or run in Simulated Sandbox Mode|Stripe Sandbox Active|Simulation Mode|simulated sandbox|test credit card/i);
+});
+
 test('pricing and navigation reflect post-launch tier and events changes', () => {
   const pricingSource = fs.readFileSync(path.join(process.cwd(), 'src/components/PricingView.tsx'), 'utf8');
   const headerSource = fs.readFileSync(path.join(process.cwd(), 'src/components/Header.tsx'), 'utf8');
@@ -518,6 +642,33 @@ test('basic owner profile patches include address website and hours but keep pre
     sat: '8:00 AM - 2:00 PM',
     sun: 'Closed',
   });
+  assert.equal(patch.ctaText, undefined);
+  assert.equal(patch.socialLinks, undefined);
+});
+
+test('free owner profile patches exclude website and hours while keeping public basics editable', () => {
+  const patch = buildOwnerProfilePatch('free', {
+    name: 'Free Celina Listing',
+    description: 'Starter directory presence.',
+    phone: '(972) 555-0101',
+    email: 'free@celinalisting.com',
+    category: 'Professional Services',
+    address: 'Celina, TX',
+    website: 'https://free-should-not-save.example',
+    hours: {
+      monFri: '9:00 AM - 5:00 PM',
+      sat: 'Closed',
+      sun: 'Closed',
+    },
+    ctaText: 'Book Now',
+    socialLinks: {
+      facebook: 'https://facebook.com/free',
+    },
+  });
+
+  assert.equal(patch.address, 'Celina, TX');
+  assert.equal(patch.website, undefined);
+  assert.equal(patch.hours, undefined);
   assert.equal(patch.ctaText, undefined);
   assert.equal(patch.socialLinks, undefined);
 });
@@ -584,7 +735,7 @@ test('POST /api/businesses creates and persists a business', async () => {
   });
 });
 
-test('self registration creates a basic listing but requires email verification before login or public listing', async () => {
+test('self registration creates a free listing but requires email verification before login or public listing', async () => {
   const dbPath = makeDbPath('self-registration');
   process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
   process.env.PUBLIC_SITE_URL = 'https://www.celinaconnection.com';
@@ -613,7 +764,7 @@ test('self registration creates a basic listing but requires email verification 
       const body = await registerRes.json();
       assert.equal(body.requiresEmailVerification, true);
       assert.equal(body.business.emailVerified, false);
-      assert.equal(body.business.tier, 'basic');
+      assert.equal(body.business.tier, 'free');
       assert.equal(body.business.website, '');
       assert.equal(body.business.isUnclaimed, false);
       assert.ok(body.business.ownerId);
@@ -715,7 +866,7 @@ test('owner login supports password sign-in and owner-only safe profile updates'
     assert.equal(updated.name, 'Safe Update HVAC & Plumbing');
     assert.equal(updated.address, '123 Main St, Celina, TX 75009');
     assert.equal(updated.website, '');
-    assert.equal(updated.tier, 'basic');
+    assert.equal(updated.tier, 'free');
     assert.equal(updated.featured, false);
     assert.equal(updated.logoUrl, 'data:image/png;base64,logo');
     assert.deepEqual(updated.images, ['data:image/png;base64,one']);
@@ -728,6 +879,79 @@ test('owner login supports password sign-in and owner-only safe profile updates'
     });
   } finally {
     delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
+  }
+});
+
+test('paid basic owner can save website and hours after upgrading from free', async () => {
+  const dbPath = makeDbPath('paid-basic-owner-update');
+  process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const registerRes = await fetch(`${baseUrl}/api/owner/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Basic Hours Shop',
+          category: 'Shopping & Retail',
+          description: 'Retail shop with paid basic directory features.',
+          phone: '(972) 555-3030',
+          email: 'owner@basichoursshop.com',
+          password: 'Correct Horse Battery 42',
+          startedAt: Date.now() - 5000,
+          company: '',
+        }),
+      });
+      assert.equal(registerRes.status, 201);
+      const registered = await registerRes.json();
+      assert.equal(registered.business.tier, 'free');
+      const verificationToken = new URL(registered.verificationUrl).searchParams.get('token');
+      assert.ok(verificationToken);
+      assert.equal((await fetch(`${baseUrl}/api/owner/verify-email?token=${verificationToken}`)).status, 200);
+
+      const upgradeRes = await fetch(`${baseUrl}/api/businesses/${registered.business.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ tier: 'basic' }),
+      });
+      assert.equal(upgradeRes.status, 200);
+
+      const loginRes = await fetch(`${baseUrl}/api/owner/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'owner@basichoursshop.com', password: 'Correct Horse Battery 42' }),
+      });
+      assert.equal(loginRes.status, 200);
+      const cookie = loginRes.headers.get('set-cookie') || '';
+
+      const updateRes = await fetch(`${baseUrl}/api/owner/businesses/${registered.business.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({
+          website: 'https://basichoursshop.example',
+          hours: {
+            monFri: '8:00 AM - 6:00 PM',
+            sat: '9:00 AM - 3:00 PM',
+            sun: 'Closed',
+          },
+          socialLinks: { facebook: 'https://facebook.com/should-still-lock' },
+        }),
+      });
+      assert.equal(updateRes.status, 200);
+      const updated = await updateRes.json();
+      assert.equal(updated.tier, 'basic');
+      assert.equal(updated.website, 'https://basichoursshop.example');
+      assert.deepEqual(updated.hours, {
+        monFri: '8:00 AM - 6:00 PM',
+        sat: '9:00 AM - 3:00 PM',
+        sun: 'Closed',
+      });
+      assert.deepEqual(updated.socialLinks, {});
+    });
+  } finally {
+    delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
+    delete process.env.ADMIN_API_TOKEN;
   }
 });
 

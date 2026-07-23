@@ -837,9 +837,12 @@ export default function DashboardView({
     );
   }
 
-  const isBasic = myBusiness.tier === 'free' || myBusiness.tier === 'basic';
+  const isFree = myBusiness.tier === 'free';
+  const isBasic = myBusiness.tier === 'basic';
   const isPro = myBusiness.tier === 'pro';
   const isPremium = myBusiness.tier === 'premium';
+  const isEntryLevel = isFree || isBasic;
+  const canUseWebsiteHours = isBasic || isPro || isPremium;
 
   return (
     <div className="py-4 space-y-6" id="owner-active-dashboard">
@@ -1243,13 +1246,20 @@ export default function DashboardView({
                 </div>
               </div>
 
-              {/* Website & Hours Fields (Available for Basic) */}
-              <div className="space-y-4 border-t border-slate-100 pt-5 relative">
+              {/* Website & Hours Fields (Available for Basic and above) */}
+              <div className={`space-y-4 border-t border-slate-100 pt-5 relative ${!canUseWebsiteHours ? 'opacity-50' : ''}`}>
                 <div className="flex items-center justify-between">
                   <span className="block text-xs font-bold uppercase tracking-wider text-slate-400">Website & Hours</span>
-                  {isBasic && (
+                  {canUseWebsiteHours ? (
                     <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded flex items-center gap-0.5">
                       <Globe className="w-2.5 h-2.5" /> Included with Basic
+                    </span>
+                  ) : (
+                    <span
+                      onClick={() => onUpgradePrompt('basic')}
+                      className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded cursor-pointer flex items-center gap-0.5"
+                    >
+                      <Lock className="w-2.5 h-2.5" /> Unlock with Basic ($6/m)
                     </span>
                   )}
                 </div>
@@ -1263,6 +1273,7 @@ export default function DashboardView({
                       <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                       <input
                         type="url"
+                        disabled={!canUseWebsiteHours}
                         placeholder="https://www.yourbusiness.com"
                         value={editWebsite}
                         onChange={(e) => setEditWebsite(e.target.value)}
@@ -1280,6 +1291,7 @@ export default function DashboardView({
                       <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Monday - Friday</span>
                       <input
                         type="text"
+                        disabled={!canUseWebsiteHours}
                         value={editMonFri}
                         onChange={(e) => setEditMonFri(e.target.value)}
                         className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
@@ -1289,6 +1301,7 @@ export default function DashboardView({
                       <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Saturday</span>
                       <input
                         type="text"
+                        disabled={!canUseWebsiteHours}
                         value={editSat}
                         onChange={(e) => setEditSat(e.target.value)}
                         className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
@@ -1298,6 +1311,7 @@ export default function DashboardView({
                       <span className="block text-[9px] text-slate-400 font-semibold mb-0.5">Sunday</span>
                       <input
                         type="text"
+                        disabled={!canUseWebsiteHours}
                         value={editSun}
                         onChange={(e) => setEditSun(e.target.value)}
                         className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium"
@@ -1449,7 +1463,7 @@ export default function DashboardView({
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Listing Photo Gallery</h4>
                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                    {myBusiness.images?.length || 0} / {isBasic ? 1 : isPro ? 5 : 10} Images
+                    {myBusiness.images?.length || 0} / {isEntryLevel ? 1 : isPro ? 5 : 10} Images
                   </span>
                 </div>
 
@@ -1543,10 +1557,10 @@ export default function DashboardView({
 
                       {/* Reply field or lock */}
                       <div className="border-t border-slate-100 pt-3">
-                        {isBasic ? (
+                        {isEntryLevel ? (
                           <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-[11px] text-slate-400 flex items-center justify-between">
                             <span className="flex items-center gap-1">
-                              <Lock className="w-3 h-3" /> Basic owners cannot reply to customer reviews.
+                              <Lock className="w-3 h-3" /> Free and Basic owners cannot reply to customer reviews.
                             </span>
                             <button
                               type="button"
@@ -1674,7 +1688,7 @@ export default function DashboardView({
                 </h4>
                 
                 <div className="border border-slate-150 rounded-2xl divide-y divide-slate-150 text-xs">
-                  {isBasic ? (
+                  {isFree ? (
                     <p className="p-4 text-center text-slate-400 italic">No paid invoices recorded for free tier members.</p>
                   ) : (
                     <>
@@ -1765,9 +1779,9 @@ export default function DashboardView({
                     <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Website Clicks</span>
                       <span className="font-display text-2.5xl font-extrabold block">
-                        {isBasic ? '0' : Math.floor(myBusiness.viewsCount * 0.22)}
+                        {isEntryLevel ? '0' : Math.floor(myBusiness.viewsCount * 0.22)}
                       </span>
-                      {isBasic ? (
+                      {isEntryLevel ? (
                         <span onClick={() => onUpgradePrompt('pro')} className="text-[9px] text-orange-600 font-bold hover:underline cursor-pointer block">
                           Requires Pro tier
                         </span>
@@ -1781,9 +1795,9 @@ export default function DashboardView({
                     <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Leads Generated</span>
                       <span className="font-display text-2.5xl font-extrabold block">
-                        {isBasic ? '0' : Math.floor(myBusiness.viewsCount * 0.08)}
+                        {isEntryLevel ? '0' : Math.floor(myBusiness.viewsCount * 0.08)}
                       </span>
-                      {isBasic ? (
+                      {isEntryLevel ? (
                         <span onClick={() => onUpgradePrompt('pro')} className="text-[9px] text-orange-600 font-bold hover:underline cursor-pointer block">
                           Requires Pro tier
                         </span>

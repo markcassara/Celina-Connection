@@ -31,10 +31,10 @@ export default function CheckoutModal({
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
 
-  // Stripe Mode States
+  // Payment flow states
   const [stripeEnabled, setStripeEnabled] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
-  const [useSimulationMode, setUseSimulationMode] = useState(false);
+  const [useManualEntryMode, setUseManualEntryMode] = useState(false);
 
   // Multi-listing billing add-on state
   const [addonQuantity, setAddonQuantity] = useState(0);
@@ -110,7 +110,7 @@ export default function CheckoutModal({
           price: targetInterval === 'year' ? '$60.00' : '$6.00',
           frequency: targetInterval === 'year' ? 'billed annually' : 'billed monthly',
           accent: 'from-slate-500 to-slate-600 text-white',
-          benefits: ['Standard paid directory listing', 'Basic monthly page views counter'],
+          benefits: ['Standard paid directory listing', 'Website link', 'Business hours', 'Basic monthly page views counter'],
         };
       default:
         return {
@@ -262,7 +262,7 @@ export default function CheckoutModal({
                   <Shield className="w-3.5 h-3.5" /> Secure token recorded.
                 </div>
               </motion.div>
-            ) : stripeEnabled && !useSimulationMode ? (
+            ) : stripeEnabled && !useManualEntryMode ? (
               /* REAL STRIPE CHECKOUT SCREEN */
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -416,20 +416,13 @@ export default function CheckoutModal({
                     )}
                   </button>
 
-                  <div className="flex justify-between items-center text-[10px] text-slate-400">
-                    <button
-                      type="button"
-                      onClick={() => setUseSimulationMode(true)}
-                      className="hover:text-slate-600 underline text-left cursor-pointer"
-                    >
-                      Or run in Simulated Sandbox Mode
-                    </button>
+                  <div className="flex justify-end items-center text-[10px] text-slate-400">
                     <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> PCI Compliant</span>
                   </div>
                 </div>
               </motion.div>
             ) : (
-              /* SIMULATED SANDBOX SCREEN */
+              /* Card entry screen */
               <motion.form
                 onSubmit={handleSubmit}
                 className="p-6 space-y-5"
@@ -531,27 +524,27 @@ export default function CheckoutModal({
                   )}
                 </div>
 
-                {/* Stripe Not Connected Banner / Notice */}
+                {/* Payment setup notice */}
                 {!stripeEnabled ? (
                   <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-orange-50 text-slate-700 text-xs border border-orange-100">
                     <div className="flex items-center gap-1.5 text-orange-700 font-bold">
                       <Sparkles className="w-4 h-4 text-orange-500 flex-shrink-0" />
-                      Stripe Sandbox Active
+                      Card Checkout Setup Required
                     </div>
                     <p className="leading-relaxed text-slate-600 text-[11px]">
-                      Enter any test credit card details to upgrade. To connect live Stripe payments, add the <code className="font-mono bg-orange-100/50 px-1 py-0.5 rounded text-orange-800 font-semibold">STRIPE_SECRET_KEY</code> to your secrets in the Settings panel!
+                      Card checkout is being finalized. Please contact support if you need this upgrade activated right away.
                     </p>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-slate-50 text-slate-700 text-xs border border-slate-200">
                     <div className="flex items-center gap-1.5 text-slate-700 font-bold">
                       <Sparkles className="w-4 h-4 text-slate-500 flex-shrink-0" />
-                      Simulation Mode
+                      Secure Card Entry
                     </div>
                     <p className="leading-relaxed text-slate-500 text-[11px]">
-                      You are in simulated sandbox mode.{' '}
-                      <button type="button" onClick={() => setUseSimulationMode(false)} className="text-orange-600 underline font-bold hover:text-orange-700 cursor-pointer">
-                        Switch back to Stripe live payments
+                      Prefer Stripe Checkout?{' '}
+                      <button type="button" onClick={() => setUseManualEntryMode(false)} className="text-orange-600 underline font-bold hover:text-orange-700 cursor-pointer">
+                        Return to Stripe Checkout
                       </button>
                     </p>
                   </div>

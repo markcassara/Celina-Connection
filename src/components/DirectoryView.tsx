@@ -508,6 +508,8 @@ export default function DirectoryView({
             {filteredBusinesses.map((b) => {
               const isPremium = b.tier === 'premium';
               const isPro = b.tier === 'pro';
+              const isBasic = b.tier === 'basic';
+              const canShowWebsiteHours = isBasic || isPro || isPremium;
               const ratingSum = b.reviews.reduce((sum, r) => sum + r.rating, 0);
               const avgRating = b.reviews.length ? (ratingSum / b.reviews.length).toFixed(1) : null;
 
@@ -616,11 +618,11 @@ export default function DirectoryView({
                         <span>{b.phone}</span>
                       </div>
 
-                      {/* Display locked indicator on basic tier for Web and Hours */}
-                      {!isPremium && !isPro && (
+                      {/* Display locked indicator on free tier for Web and Hours */}
+                      {!canShowWebsiteHours && (
                         <div className="flex items-center gap-1.5 text-slate-600 text-[11px] pt-1 border-t border-slate-100">
                           <Lock className="w-3 h-3 text-slate-500" />
-                          <span>Unlock website & hours with Pro</span>
+                          <span>Unlock website & hours with Basic</span>
                         </div>
                       )}
                     </div>
@@ -667,7 +669,7 @@ export default function DirectoryView({
                         <span>Show on Map</span>
                       </button>
 
-                      {(isPro || isPremium) && b.website && !b.isUnclaimed && (
+                      {canShowWebsiteHours && b.website && !b.isUnclaimed && (
                         <span className="text-slate-400 hover:text-slate-600 flex items-center gap-0.5">
                           <Globe className="w-3.5 h-3.5" /> Website
                         </span>
@@ -854,7 +856,7 @@ export default function DirectoryView({
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                       )}
-                      {selectedBusiness.website ? (
+                      {(selectedBusiness.tier === 'basic' || selectedBusiness.tier === 'pro' || selectedBusiness.tier === 'premium') && selectedBusiness.website ? (
                         <a
                           href={selectedBusiness.website}
                           target="_blank"
@@ -969,7 +971,7 @@ export default function DirectoryView({
 
                         </div>
 
-                        {selectedBusiness.hours ? (
+                        {(selectedBusiness.tier === 'basic' || selectedBusiness.tier === 'pro' || selectedBusiness.tier === 'premium') && selectedBusiness.hours ? (
                           <div className="space-y-1 text-slate-700 text-xs font-medium">
                             <div className="flex justify-between">
                               <span className="text-slate-500">Mon - Fri:</span>

@@ -6,6 +6,8 @@ const SITE_NAME = 'Celina Connection';
 const DEFAULT_TITLE = 'Celina Connection | Celina TX Local Business Directory';
 const DEFAULT_DESCRIPTION = 'Find local restaurants, shops, services, events, and featured small businesses in Celina, Texas. Claim a free Celina business listing on Celina Connection.';
 const DEFAULT_IMAGE = `${SITE_URL}/celina-water-tower-bg.jpg`;
+const LEGACY_HILLS_TITLE = 'Legacy Hills Community Petition | Celina Connection';
+const LEGACY_HILLS_DESCRIPTION = 'Sign the Legacy Hills community petition and receive neighbor updates through Celina Connection.';
 
 type SeoHeadProps = {
   activeTab: string;
@@ -181,6 +183,8 @@ export default function SeoHead({ activeTab, selectedBusiness, businessCount }: 
       ? `${selectedBusiness!.name} | Celina TX ${selectedBusiness!.category} | Celina Connection`
       : activeTab === 'pricing'
         ? 'Claim Your Celina Business Listing | Celina Connection Plans'
+        : activeTab === 'legacyhillspetition'
+          ? LEGACY_HILLS_TITLE
         : activeTab === 'dashboard'
           ? 'Add or Claim a Celina Business Listing | Celina Connection'
           : DEFAULT_TITLE;
@@ -189,6 +193,8 @@ export default function SeoHead({ activeTab, selectedBusiness, businessCount }: 
       ? `${selectedBusiness!.description} View phone, address, reviews, and details for ${selectedBusiness!.name} in Celina, Texas.`
       : activeTab === 'pricing'
         ? 'Compare free, pro, and premium Celina Connection listing options for local businesses in Celina, Texas.'
+        : activeTab === 'legacyhillspetition'
+          ? LEGACY_HILLS_DESCRIPTION
         : activeTab === 'dashboard'
           ? 'Claim a free Celina Connection listing, update business details, and help local customers find your Celina, TX business.'
           : DEFAULT_DESCRIPTION;

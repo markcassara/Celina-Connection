@@ -375,7 +375,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     isLoggedIn: true,
     role: 'owner',
   }) : null;
-  const imageLimitForTier = (tier: string) => tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
+  const imageLimitForTier = (tier: string) => tier === 'free' || tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
   const sanitizeOwnerBusinessUpdates = (tier: string, updates: any) => {
     const allowed: any = {};
     for (const key of ['name', 'description', 'phone', 'email', 'category', 'address', 'logoUrl', 'reviews']) {
@@ -384,7 +384,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     if (Array.isArray(updates.images)) {
       allowed.images = updates.images.slice(0, imageLimitForTier(tier));
     }
-    if (tier === 'pro' || tier === 'premium') {
+    if (tier === 'basic' || tier === 'pro' || tier === 'premium') {
       if (updates.website !== undefined) allowed.website = updates.website;
       if (updates.hours !== undefined) allowed.hours = updates.hours;
     }
@@ -407,6 +407,99 @@ export function createApp(options: { dbPath?: string } = {}) {
     attempts.push(now);
     recentRegistrationAttempts.set(key, attempts);
     return attempts.length <= 5;
+  };
+  const recentPetitionAttempts = new Map<string, number[]>();
+  const checkPetitionRateLimit = (req: express.Request, email: string) => {
+    const now = Date.now();
+    const key = `${req.ip}:${email.toLowerCase()}`;
+    const attempts = (recentPetitionAttempts.get(key) || []).filter((ts) => now - ts < 1000 * 60 * 15);
+    attempts.push(now);
+    recentPetitionAttempts.set(key, attempts);
+    return attempts.length <= 4;
+  };
+  const parsePetitionTags = () => (process.env.GHL_LEGACY_HILLS_PETITION_TAGS || "celina-connection,legacy-hills-petition,petition-signature")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  const normalizeRequiredString = (value: unknown) => String(value || "").trim();
+  const defaultLegacyHillsFieldId = (locationId: string, field: "comments" | "signature") => {
+    if (locationId !== "mKLGHZ4PHVm0iun7B9TH") return "";
+    return field === "signature" ? "zbXdd33Q0TyHo8i27cdu" : "NSeTHniy0jmywbasoLjy";
+  };
+  const isSignatureDataUrl = (value: string) => /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value);
+  const syncLegacyHillsPetitionSignatureViaGhl = async (signature: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    streetAddress: string;
+    neighborhood: string;
+    comments: string;
+    signatureDataUrl: string;
+  }) => {
+    const apiKey = process.env.GHL_API_KEY || process.env.GOHIGHLEVEL_API_KEY || process.env.LEADCONNECTOR_API_KEY;
+    const locationId = process.env.GHL_LOCATION_ID || process.env.GOHIGHLEVEL_LOCATION_ID || process.env.LEADCONNECTOR_LOCATION_ID;
+    if (!apiKey || !locationId) {
+      throw new Error("GoHighLevel integration is not configured.");
+    }
+
+    const baseUrl = (process.env.GHL_API_BASE_URL || "https://services.leadconnectorhq.com").replace(/\/$/, "");
+    const headers = {
+      authorization: `Bearer ${apiKey}`,
+      version: process.env.GHL_API_VERSION || "2021-07-28",
+      "content-type": "application/json",
+      accept: "application/json",
+    };
+    const source = "Celina Connection - Legacy Hills Petition";
+    const upsertResponse = await fetchWithEmailTimeout(`${baseUrl}/contacts/upsert`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        locationId,
+        firstName: signature.firstName,
+        lastName: signature.lastName,
+        name: `${signature.firstName} ${signature.lastName}`.trim(),
+        email: signature.email,
+        phone: signature.phone,
+        address1: signature.streetAddress,
+        city: "Celina",
+        state: "TX",
+        tags: parsePetitionTags(),
+        source,
+      }),
+    });
+    if (!upsertResponse.ok) {
+      const body = await upsertResponse.text().catch(() => "");
+      throw new Error(`GHL contact upsert failed: ${upsertResponse.status} ${body}`.trim());
+    }
+    const upsertJson: any = await upsertResponse.json().catch(() => ({}));
+    const contactId = upsertJson?.contact?.id || upsertJson?.id || upsertJson?.contactId;
+    if (!contactId) {
+      throw new Error("GHL contact upsert did not return a contact id.");
+    }
+
+    const customFieldPayload = [
+      [process.env.GHL_LEGACY_HILLS_NEIGHBORHOOD_FIELD_ID, signature.neighborhood],
+      [process.env.GHL_LEGACY_HILLS_COMMENTS_FIELD_ID || defaultLegacyHillsFieldId(locationId, "comments"), signature.comments],
+      [process.env.GHL_LEGACY_HILLS_SIGNATURE_FIELD_ID || defaultLegacyHillsFieldId(locationId, "signature"), signature.signatureDataUrl],
+      [process.env.GHL_LEGACY_HILLS_SIGNED_AT_FIELD_ID, new Date().toISOString()],
+    ]
+      .filter(([id, value]) => id && value)
+      .map(([id, value]) => ({ id, value }));
+
+    if (customFieldPayload.length > 0) {
+      const updateResponse = await fetchWithEmailTimeout(`${baseUrl}/contacts/${contactId}`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ customFields: customFieldPayload }),
+      });
+      if (!updateResponse.ok) {
+        const body = await updateResponse.text().catch(() => "");
+        throw new Error(`GHL custom field update failed: ${updateResponse.status} ${body}`.trim());
+      }
+    }
+
+    return contactId;
   };
   const requireOwnerSession: express.RequestHandler = async (req, res, next) => {
     const ownerId = readOwnerSession(req);
@@ -461,6 +554,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     const staticPages: SitemapPage[] = [
       { loc: siteUrl, priority: "1.0", changefreq: "daily" },
       { loc: `${siteUrl}/pricing`, priority: "0.8", changefreq: "weekly" },
+      { loc: `${siteUrl}/legacyhillspetition`, priority: "0.8", changefreq: "weekly" },
       { loc: `${siteUrl}/dashboard`, priority: "0.7", changefreq: "weekly" },
       { loc: `${siteUrl}/launch`, priority: "0.5", changefreq: "monthly" },
     ];
@@ -524,6 +618,58 @@ export function createApp(options: { dbPath?: string } = {}) {
     });
   });
 
+  app.post("/api/petitions/legacy-hills/signatures", async (req, res) => {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      streetAddress,
+      neighborhood = "Legacy Hills",
+      comments = "",
+      signatureDataUrl = "",
+      consent,
+      company,
+    } = req.body || {};
+
+    if (company) return res.status(400).json({ error: "Signature failed spam validation." });
+
+    const signature = {
+      firstName: normalizeRequiredString(firstName),
+      lastName: normalizeRequiredString(lastName),
+      email: normalizeRequiredString(email).toLowerCase(),
+      phone: normalizeRequiredString(phone),
+      streetAddress: normalizeRequiredString(streetAddress),
+      neighborhood: normalizeRequiredString(neighborhood) || "Legacy Hills",
+      comments: normalizeRequiredString(comments).slice(0, 1200),
+      signatureDataUrl: normalizeRequiredString(signatureDataUrl),
+    };
+
+    if (!signature.firstName || !signature.lastName || !signature.email || !signature.phone || !signature.streetAddress) {
+      return res.status(400).json({ error: "First name, last name, email, phone, and street address are required." });
+    }
+    if (!/^\S+@\S+\.\S+$/.test(signature.email)) {
+      return res.status(400).json({ error: "A valid email address is required." });
+    }
+    if (!consent) {
+      return res.status(400).json({ error: "Consent is required to record your petition signature." });
+    }
+    if (!signature.signatureDataUrl || signature.signatureDataUrl.length > 250000 || !isSignatureDataUrl(signature.signatureDataUrl)) {
+      return res.status(400).json({ error: "A drawn signature is required to record your petition signature." });
+    }
+    if (!checkPetitionRateLimit(req, signature.email)) {
+      return res.status(429).json({ error: "Too many petition submissions. Please try again later." });
+    }
+
+    try {
+      const contactId = await syncLegacyHillsPetitionSignatureViaGhl(signature);
+      return res.status(201).json({ ok: true, contactId });
+    } catch (error) {
+      console.error("Legacy Hills petition GHL sync failed:", error);
+      return res.status(503).json({ error: "Petition signature could not be saved to GoHighLevel. Please try again shortly." });
+    }
+  });
+ 
   app.post("/api/owner/register", async (req, res) => {
     const { name, category, description, phone, email, password, startedAt, company } = req.body || {};
     if (company) return res.status(400).json({ error: "Registration failed spam validation." });
@@ -552,7 +698,7 @@ export function createApp(options: { dbPath?: string } = {}) {
       description,
       phone,
       email,
-      tier: 'basic',
+      tier: 'free',
       address: req.body.address || '',
       logoUrl: req.body.logoUrl || '',
       images: Array.isArray(req.body.images) ? req.body.images.slice(0, 1) : [],

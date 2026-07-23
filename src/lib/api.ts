@@ -129,4 +129,21 @@ export const api = {
       method: 'POST',
     });
   },
+  signLegacyHillsPetition(payload: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    streetAddress: string;
+    neighborhood?: string;
+    comments?: string;
+    signatureDataUrl: string;
+    consent: boolean;
+    company?: string;
+  }) {
+    return request<{ ok: true; contactId?: string }>('/api/petitions/legacy-hills/signatures', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };

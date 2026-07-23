@@ -8,6 +8,7 @@ import PricingView from './components/PricingView';
 import LaunchView from './components/LaunchView';
 import DashboardView from './components/DashboardView';
 import EventsView from './components/EventsView';
+import LegacyHillsPetitionView from './components/LegacyHillsPetitionView';
 import CheckoutModal from './components/CheckoutModal';
 import BugReportForm from './components/BugReportForm';
 import AiChatWidget from './components/AiChatWidget';
@@ -92,6 +93,7 @@ export default function App() {
   const [isGated, setIsGated] = useState<boolean>(() => {
     if (!FORCE_SPLASH_LANDING) return false;
     if (location.pathname.startsWith('/business/')) return false;
+    if (location.pathname === '/legacyhillspetition') return false;
     if (location.pathname === '/owner-login' || location.pathname === '/admin-login') return false;
     const now = new Date().getTime();
     if (now >= launchCampaignTargetDate) return false;
@@ -749,6 +751,10 @@ export default function App() {
           <EventsView />
         )}
 
+        {activeTab === 'legacyhillspetition' && (
+          <LegacyHillsPetitionView />
+        )}
+
         {activeTab === 'pricing' && (
           <PricingView
             currentUser={currentUser}
@@ -792,7 +798,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Payment Gateway Checkout Modal Simulation */}
+      {/* Payment Gateway Checkout Modal */}
       <CheckoutModal
         targetTier={targetTier}
         targetInterval={targetInterval}

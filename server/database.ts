@@ -381,7 +381,7 @@ export class CelinaRepository implements CelinaDataStore {
   createOwnedBusiness(input: CreateBusinessInput, passwordHash: string, verification: { tokenHash: string; expiresAt: string }) {
     const business = makeBusiness({
       ...input,
-      tier: 'basic',
+      tier: input.tier || 'free',
       ownerId: input.ownerId || randomId('owner'),
       featured: false,
       website: '',

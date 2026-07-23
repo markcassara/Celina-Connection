@@ -56,7 +56,7 @@ test('logged-in admins get admin-focused navigation without owner-only dead-end 
   assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
   assert.deepEqual(
     desktopTabs.map((tab) => tab.dashboardSection ?? null),
-    [null, 'admin-listings', 'admin-bugs', null],
+    [null, 'profile', 'admin-bugs', null],
   );
 
   const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
@@ -76,7 +76,7 @@ test('dashboard navigation highlights only the selected dashboard section', () =
   );
 
   assert.deepEqual(
-    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
+    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
     [false, true, false, false],
   );
 
@@ -86,7 +86,7 @@ test('dashboard navigation highlights only the selected dashboard section', () =
   );
 
   assert.deepEqual(
-    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
+    adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
     [false, false, false, false],
   );
 
@@ -129,7 +129,7 @@ test('header tabs expose real hrefs including dashboard section links', () => {
     adminTabs.map((tab) => getHeaderTabHref(tab)),
     [
       '/dashboard',
-      '/dashboard#dashboard-admin-listings',
+      '/dashboard#dashboard-profile',
       '/dashboard#dashboard-admin-bugs',
       '/',
     ],
@@ -241,7 +241,7 @@ test('direct admin listings URL asks for admin credentials instead of owner regi
   assert.doesNotMatch(html, /Claim Your Spot on the/);
 });
 
-test('admin manage listings route stays in the full admin manager even if admin owns listings', () => {
+test('admin manage menu opens the personally owned admin listing customization page', () => {
   const adminOwnedBusiness = {
     id: 'admin-owned-1',
     name: 'Admin Owned Consulting',
@@ -278,15 +278,16 @@ test('admin manage listings route stays in the full admin manager even if admin 
       reportedBugs: [],
       portalMode: 'admin',
       setPortalMode: () => undefined,
-      locationHash: '#dashboard-admin-listings',
+      locationHash: '#dashboard-profile',
     } as any),
   );
 
-  assert.match(html, /admin-listing-directory-grid/);
+  assert.match(html, /owner-active-dashboard/);
   assert.match(html, /Admin Owned Consulting/);
-  assert.match(html, /Total Directory Listings/);
-  assert.doesNotMatch(html, /owner-active-dashboard/);
-  assert.doesNotMatch(html, /Listing Edit Page/);
+  assert.match(html, /Listing Edit Page/);
+  assert.match(html, /Standard Fields/);
+  assert.doesNotMatch(html, /admin-listing-directory-grid/);
+  assert.doesNotMatch(html, /Total Directory Listings/);
 });
 
 test('admin bug reports route stays in the full admin bug manager even if admin owns listings', () => {
