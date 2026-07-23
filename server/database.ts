@@ -355,7 +355,7 @@ export class CelinaRepository implements CelinaDataStore {
       this.db.prepare(`
         UPDATE businesses
         SET featured = 1, tier = ?, is_unclaimed = 0, email_verified = 1,
-            owner_id = CASE WHEN owner_id IS NULL OR owner_id = '' THEN ? ELSE owner_id END
+            owner_id = ?
         WHERE lower(name) = lower(?) OR lower(email) = lower(?)
       `).run(legacyWealth.tier, legacyWealth.ownerId || 'admin', legacyWealth.name, legacyWealth.email);
     } else {
@@ -725,7 +725,7 @@ class PostgresRepository implements CelinaDataStore {
       await this.sql`
         UPDATE businesses
         SET featured = TRUE, tier = ${legacyWealth.tier}, is_unclaimed = FALSE, email_verified = TRUE,
-            owner_id = CASE WHEN owner_id IS NULL OR owner_id = '' THEN ${legacyWealth.ownerId || 'admin'} ELSE owner_id END
+            owner_id = ${legacyWealth.ownerId || 'admin'}
         WHERE lower(name) = lower(${legacyWealth.name}) OR lower(email) = lower(${legacyWealth.email})
       `;
     } else {

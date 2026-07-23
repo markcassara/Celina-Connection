@@ -528,7 +528,7 @@ test('seed data includes demo featured listings for Celina Bistro and Legacy Wea
   });
 });
 
-test('existing databases promote demo placeholders without replacing owned Legacy account data', async () => {
+test('existing databases promote demo placeholders and connect Legacy plus Bistro to admin management', async () => {
   const dbPath = makeDbPath('existing-featured-placeholders');
 
   await withServer(dbPath, async (baseUrl) => {
@@ -559,7 +559,11 @@ test('existing databases promote demo placeholders without replacing owned Legac
     assert.ok(legacyWealth);
     assert.equal(legacyWealth.featured, true);
     assert.equal(legacyWealth.tier, 'premium');
-    assert.equal(legacyWealth.ownerId, 'owner-existing-admin');
+    assert.equal(legacyWealth.ownerId, 'admin');
+
+    const celinaBistro = body.businesses.find((business: any) => business.name === 'CELINA Bistro');
+    assert.ok(celinaBistro);
+    assert.equal(celinaBistro.ownerId, 'admin');
   });
 });
 
