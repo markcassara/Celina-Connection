@@ -423,7 +423,7 @@ export default function DirectoryView({
       )}
 
       {/* Search and Hero Area */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 text-white p-5 sm:p-7 md:p-9 shadow-md min-h-[410px] flex">
+      <div className={`${isInlineAiExpanded ? 'min-h-[410px]' : ''} relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 text-white p-5 sm:p-7 md:p-9 shadow-md flex`}>
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
         <div className="relative z-10 w-full flex flex-col space-y-4">
           <motion.div
