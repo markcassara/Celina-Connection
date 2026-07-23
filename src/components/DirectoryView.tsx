@@ -42,6 +42,8 @@ interface DirectoryViewProps {
   setActiveTab?: (tab: string) => void;
 }
 
+const INLINE_AI_AUTO_COLLAPSE_MS = 30000;
+
 export default function DirectoryView({
   businesses,
   onAddReview,
@@ -72,11 +74,69 @@ export default function DirectoryView({
       text: 'Ask Celina AI for local recommendations, or search the directory.',
     },
   ]);
+  const [isInlineAiExpanded, setIsInlineAiExpanded] = useState(false);
   const inlineAiEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!isInlineAiExpanded || isAiSearching) return;
+
+    const timer = window.setTimeout(() => {
+      setIsInlineAiExpanded(false);
+    }, INLINE_AI_AUTO_COLLAPSE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [isInlineAiExpanded, isAiSearching, inlineAiMessages.length]);
+
+  useEffect(() => {
+    if (!isInlineAiExpanded) return;
     inlineAiEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [inlineAiMessages, isAiSearching]);
+  }, [isInlineAiExpanded, inlineAiMessages, isAiSearching]);
+
+  const renderFormattedAiText = (text: string) => {
+    const renderInline = (value: string) =>
+      value
+        .replace(/`/g, '')
+        .split('**')
+        .map((part, index) =>
+          index % 2 === 1 ? <strong key={index} className="font-black text-white">{part}</strong> : part
+        );
+
+    const lines = text
+      .replace(/\r/g, '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length <= 1) {
+      return <p>{renderInline(lines[0] || text)}</p>;
+    }
+
+    return (
+      <div className="space-y-1.5">
+        {lines.map((line, index) => {
+          const heading = line.match(/^#{1,6}\s+(.+)/);
+          const bullet = line.match(/^[-*•]\s+(.+)/);
+          const numbered = line.match(/^\d+[.)]\s+(.+)/);
+          const copy = heading?.[1] || bullet?.[1] || numbered?.[1] || line;
+
+          if (heading || (!bullet && !numbered && copy.endsWith(':') && copy.length < 90)) {
+            return <p key={index} className="pt-1 text-[12px] font-black text-white">{renderInline(copy.replace(/:$/, ''))}</p>;
+          }
+
+          if (bullet || numbered) {
+            return (
+              <p key={index} className="flex gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-orange-300 flex-shrink-0" />
+                <span>{renderInline(copy)}</span>
+              </p>
+            );
+          }
+
+          return <p key={index}>{renderInline(copy)}</p>;
+        })}
+      </div>
+    );
+  };
 
   // Claim Listing states
   const [claimTarget, setClaimTarget] = useState<Business | null>(null);
@@ -107,6 +167,7 @@ export default function DirectoryView({
 
     const userMessage = { id: `user-${Date.now()}`, role: 'user' as const, text: query };
     const chatMessages = [...inlineAiMessages, userMessage].slice(-8);
+    setIsInlineAiExpanded(true);
     setInlineAiMessages((prev) => [...prev, userMessage]);
     setIsAiSearching(true);
     setAiSearchError(null);
@@ -313,7 +374,7 @@ export default function DirectoryView({
       )}
 
       {/* Search and Hero Area */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 text-white p-6 sm:p-8 md:p-12 shadow-md min-h-[520px] flex">
+      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 text-white p-5 sm:p-7 md:p-9 shadow-md min-h-[410px] flex">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
         <div className="relative z-10 w-full flex flex-col space-y-4">
           <motion.div
@@ -347,14 +408,25 @@ export default function DirectoryView({
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className="w-full flex-1 min-h-[240px] pt-4 flex"
+            className={`${isInlineAiExpanded ? 'min-h-[220px] flex-1' : 'flex-none'} w-full pt-2 sm:pt-3 flex transition-all duration-300`}
           >
             <div
               id="directory-inline-ai-chat"
-              className="w-full flex min-h-full flex-col overflow-hidden rounded-[2rem] bg-white/10 text-white ring-1 ring-white/10 backdrop-blur-md"
+              className={`${isInlineAiExpanded ? 'min-h-full' : ''} w-full flex flex-col overflow-hidden rounded-[1.65rem] bg-white/10 text-white ring-1 ring-white/10 backdrop-blur-md`}
             >
-              {isAiEnabled && (
-                <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-4 space-y-2 bg-transparent">
+              {isAiEnabled && isInlineAiExpanded && (
+                <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-3 space-y-2 bg-transparent">
+                  <div className="mb-1 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-widest text-orange-200/90">
+                    <span>Celina AI</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsInlineAiExpanded(false)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                      aria-label="Close Celina AI chat"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   {inlineAiMessages.map((msg) => {
                     const isAi = msg.role === 'assistant';
                     const isWelcome = msg.id === 'welcome';
@@ -379,11 +451,7 @@ export default function DirectoryView({
                               ? 'bg-white/10 text-slate-100 rounded-tl-md'
                               : 'bg-orange-500 text-white rounded-tr-md shadow-sm shadow-orange-950/20'
                           }`}>
-                            <p className="whitespace-pre-line">
-                              {msg.text.split('**').map((part, index) =>
-                                index % 2 === 1 ? <strong key={index} className="font-black">{part}</strong> : part
-                              )}
-                            </p>
+                            {isAi ? renderFormattedAiText(msg.text) : <p>{msg.text}</p>}
                           </div>
                         </div>
                       </div>

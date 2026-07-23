@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 
@@ -484,11 +485,22 @@ test('directory search renders a blended on-page AI chat box instead of a separa
 
   assert.match(html, /directory-inline-ai-chat/);
   assert.match(html, /Ask Celina AI or search the directory/);
-  assert.match(html, /Ask Celina AI for local recommendations/);
-  assert.match(html, /min-h-\[520px\] flex/);
-  assert.match(html, /w-full flex-1 min-h-\[240px\] pt-4 flex/);
+  assert.match(html, /min-h-\[410px\] flex/);
   assert.match(html, /bg-white\/10 text-white ring-1 ring-white\/10/);
+  assert.doesNotMatch(html, /Ask Celina AI for local recommendations/);
+  assert.doesNotMatch(html, /min-h-\[520px\] flex/);
   assert.doesNotMatch(html, /rounded-2xl border border-white\/15 bg-white\/95/);
   assert.doesNotMatch(html, /Ask Celina AI like a local concierge/);
   assert.doesNotMatch(html, /ai-chat-fab/);
+});
+
+test('directory inline AI chat can collapse and formats markdown-like responses into cleaner text', () => {
+  const source = fs.readFileSync(new URL('../src/components/DirectoryView.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /INLINE_AI_AUTO_COLLAPSE_MS = 30000/);
+  assert.match(source, /setIsInlineAiExpanded\(false\)/);
+  assert.match(source, /aria-label="Close Celina AI chat"/);
+  assert.match(source, /const renderFormattedAiText/);
+  assert.match(source, /line\.match\(\/\^\[-\*•\]\\s\+\(\.\+\)\//);
+  assert.doesNotMatch(source, /msg\.text\.split\('\*\*'\)/);
 });
