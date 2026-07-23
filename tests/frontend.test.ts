@@ -31,7 +31,7 @@ test('logged-in owners see an owner-focused desktop menu instead of the public m
 
   assert.deepEqual(
     getDesktopHeaderTabs({ isLoggedIn: true, role: 'owner' }).map((tab) => tab.label),
-    ['Owner Dashboard', 'My Listing', 'Reviews', 'Upgrade Plan'],
+    ['My Listing', 'Reviews', 'Upgrade Plan'],
   );
 });
 
@@ -43,7 +43,25 @@ test('logged-in mobile users see owner-focused navigation instead of public navi
 
   assert.deepEqual(
     getMobileHeaderTabs({ isLoggedIn: true, role: 'owner' }).map((tab) => tab.label),
-    ['Dashboard', 'Listing', 'Reviews', 'Plan'],
+    ['Listing', 'Reviews', 'Plan'],
+  );
+});
+
+test('owner menu removes redundant dashboard item and defaults to My Listing', () => {
+  const ownerTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'owner' });
+
+  assert.equal(ownerTabs.some((tab) => tab.id === 'owner-dashboard' || tab.label === 'Owner Dashboard'), false);
+  assert.deepEqual(
+    ownerTabs.map((tab) => getHeaderTabHref(tab)),
+    ['/dashboard#dashboard-profile', '/dashboard#dashboard-reviews', '/dashboard#dashboard-billing'],
+  );
+  assert.deepEqual(
+    ownerTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '')),
+    [true, false, false],
+  );
+  assert.deepEqual(
+    ownerTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
+    [true, false, false],
   );
 });
 

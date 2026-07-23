@@ -42,7 +42,6 @@ export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserPro
   }
 
   return [
-    { id: 'owner-dashboard', label: 'Owner Dashboard', targetTab: 'dashboard' },
     { id: 'owner-listing', label: 'My Listing', targetTab: 'dashboard', dashboardSection: 'profile' },
     { id: 'owner-reviews', label: 'Reviews', targetTab: 'dashboard', dashboardSection: 'reviews' },
     { id: 'owner-upgrade', label: 'Upgrade Plan', targetTab: 'dashboard', dashboardSection: 'billing' },
@@ -68,7 +67,6 @@ export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProf
   }
 
   return [
-    { id: 'owner-dashboard', label: 'Dashboard', targetTab: 'dashboard' },
     { id: 'owner-listing', label: 'Listing', targetTab: 'dashboard', dashboardSection: 'profile' },
     { id: 'owner-reviews', label: 'Reviews', targetTab: 'dashboard', dashboardSection: 'reviews' },
     { id: 'owner-upgrade', label: 'Plan', targetTab: 'dashboard', dashboardSection: 'billing' },
@@ -85,7 +83,7 @@ export function isHeaderTabActive(tab: HeaderTab, activeTab: string, locationHas
     : undefined;
 
   if (tab.dashboardSection) {
-    return activeDashboardSection ? activeDashboardSection === tab.dashboardSection : tab.id === 'owner-dashboard';
+    return activeDashboardSection ? activeDashboardSection === tab.dashboardSection : tab.id === 'owner-listing';
   }
 
   return !activeDashboardSection;
