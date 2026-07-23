@@ -347,6 +347,37 @@ test('admin bug reports route stays in the full admin bug manager even if admin 
   assert.doesNotMatch(html, /Listing Edit Page/);
 });
 
+test('admin dashboard profile hash does not crash when admin has no owned listing', () => {
+  const html = renderToString(
+    React.createElement(DashboardView, {
+      currentUser: {
+        id: 'admin',
+        email: 'admin@celinaconnection.com',
+        businessName: 'Celina Connection Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        role: 'admin',
+      },
+      setCurrentUser: () => undefined,
+      businesses: [],
+      onAddBusiness: () => 'new-business-id',
+      onOwnerRegister: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerLogin: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerUpdateBusiness: async () => undefined,
+      onUpdateBusiness: () => undefined,
+      onUpgradePrompt: () => undefined,
+      reportedBugs: [],
+      portalMode: 'admin',
+      setPortalMode: () => undefined,
+      locationHash: '#dashboard-profile',
+    } as any),
+  );
+
+  assert.match(html, /No Listing Selected/);
+  assert.match(html, /Manage Listings/);
+  assert.doesNotMatch(html, /Claim Your Spot on the/);
+});
+
 test('Lucys and Annie Jack stay public but are hidden from the admin listing manager', () => {
   assert.equal(isHiddenFromAdminListings({ id: 'lucys-on-the-square', isUnclaimed: true }), true);
   assert.equal(isHiddenFromAdminListings({ id: 'annie-jack-boutique', isUnclaimed: true }), true);

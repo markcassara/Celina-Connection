@@ -820,8 +820,28 @@ export default function DashboardView({
     );
   }
 
-  // Safe Guard: Ensure owner users have a business; admins can still access admin tools if no owned listing exists.
-  if (!myBusiness && currentUser.role !== 'admin') {
+  // Safe Guard: ensure profile/editor routes never dereference a missing listing.
+  // Admins can still reach admin-only dashboard sections via the early return above.
+  if (!myBusiness) {
+    if (currentUser.role === 'admin') {
+      return (
+        <div className="py-12 text-center max-w-md mx-auto space-y-4">
+          <ShieldAlert className="w-12 h-12 text-orange-500 mx-auto" />
+          <h3 className="font-display text-xl font-bold">No Listing Selected</h3>
+          <p className="text-slate-500 text-xs">This admin account does not have a personal listing selected. Use Manage Listings for the full directory manager.</p>
+          <button
+            onClick={() => {
+              setActiveSubTab('admin-listings');
+              window.location.hash = 'dashboard-admin-listings';
+            }}
+            className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg cursor-pointer"
+          >
+            Manage Listings
+          </button>
+        </div>
+      );
+    }
+
     return (
       <div className="py-12 text-center max-w-md mx-auto space-y-4">
         <ShieldAlert className="w-12 h-12 text-orange-500 mx-auto" />
