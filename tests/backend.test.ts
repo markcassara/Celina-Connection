@@ -510,6 +510,7 @@ test('seed data includes demo featured listings for Celina Bistro and Legacy Wea
     assert.equal(celinaBistro.featured, true);
     assert.equal(celinaBistro.tier, 'premium');
     assert.equal(celinaBistro.isUnclaimed, false);
+    assert.equal(celinaBistro.ownerId, 'admin');
     assert.ok(celinaBistro.images[0].includes('photo-1514933651103'));
 
     const featuredNames = body.businesses

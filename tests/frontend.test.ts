@@ -290,6 +290,69 @@ test('admin manage menu opens the personally owned admin listing customization p
   assert.doesNotMatch(html, /Total Directory Listings/);
 });
 
+test('admin profile manage listings includes Legacy Wealth Academy and demo Celina Bistro when both are assigned to admin', () => {
+  const legacyWealthAcademy = {
+    id: 'legacy-wealth-academy-llc',
+    name: 'Legacy Wealth Academy LLC',
+    category: 'Home & Professional Services',
+    description: 'Financial education and legacy planning resources.',
+    phone: '(972) 555-1000',
+    email: 'mark@legacywealthco.com',
+    tier: 'premium',
+    ownerId: 'admin',
+    createdAt: new Date('2026-07-01T11:00:00Z').toISOString(),
+    reviews: [],
+    viewsCount: 305,
+    isUnclaimed: false,
+  };
+
+  const demoCelinaBistro = {
+    id: 'celina-bistro-demo',
+    name: 'CELINA Bistro',
+    category: 'Dining',
+    description: 'A polished demo restaurant profile.',
+    phone: '(972) 555-0200',
+    email: 'demo@celinaconnection.com',
+    tier: 'premium',
+    ownerId: 'admin',
+    createdAt: new Date('2026-07-01T10:00:00Z').toISOString(),
+    reviews: [],
+    viewsCount: 310,
+    isUnclaimed: false,
+  };
+
+  const html = renderToString(
+    React.createElement(DashboardView, {
+      currentUser: {
+        id: 'admin',
+        email: 'admin@celinaconnection.com',
+        businessName: 'Celina Connection Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        role: 'admin',
+      },
+      setCurrentUser: () => undefined,
+      businesses: [legacyWealthAcademy, demoCelinaBistro],
+      onAddBusiness: () => 'new-business-id',
+      onOwnerRegister: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerLogin: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerUpdateBusiness: async () => undefined,
+      onUpdateBusiness: () => undefined,
+      onUpgradePrompt: () => undefined,
+      reportedBugs: [],
+      portalMode: 'admin',
+      setPortalMode: () => undefined,
+      locationHash: '#dashboard-profile',
+    } as any),
+  );
+
+  assert.match(html, /owner-active-dashboard/);
+  assert.match(html, /Legacy Wealth Academy LLC/);
+  assert.match(html, /CELINA Bistro/);
+  assert.match(html, /Listing Edit Page/);
+  assert.doesNotMatch(html, /No Listing Selected/);
+});
+
 test('admin bug reports route stays in the full admin bug manager even if admin owns listings', () => {
   const adminOwnedBusiness = {
     id: 'admin-owned-2',

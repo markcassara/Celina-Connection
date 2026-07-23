@@ -342,9 +342,9 @@ export class CelinaRepository implements CelinaDataStore {
       this.db.prepare(`
         UPDATE businesses
         SET name = ?, slug = ?, featured = 1, tier = ?, is_unclaimed = 0, email_verified = 1,
-            logo_url = ?, images_json = ?, cta_text = ?
+            owner_id = ?, logo_url = ?, images_json = ?, cta_text = ?
         WHERE id = ?
-      `).run(celinaBistro.name, celinaBistro.slug, celinaBistro.tier, celinaBistro.logoUrl, JSON.stringify(celinaBistro.images || []), celinaBistro.ctaText || 'View Demo', existingBistro.id);
+      `).run(celinaBistro.name, celinaBistro.slug, celinaBistro.tier, celinaBistro.ownerId || 'admin', celinaBistro.logoUrl, JSON.stringify(celinaBistro.images || []), celinaBistro.ctaText || 'View Demo', existingBistro.id);
     } else {
       this.upsertBusiness(celinaBistro);
     }
@@ -710,7 +710,7 @@ class PostgresRepository implements CelinaDataStore {
       await this.sql`
         UPDATE businesses
         SET name = ${celinaBistro.name}, slug = ${celinaBistro.slug}, featured = TRUE, tier = ${celinaBistro.tier}, is_unclaimed = FALSE, email_verified = TRUE,
-            logo_url = ${celinaBistro.logoUrl}, images_json = ${JSON.stringify(celinaBistro.images || [])}, cta_text = ${celinaBistro.ctaText || 'View Demo'}
+            owner_id = ${celinaBistro.ownerId || 'admin'}, logo_url = ${celinaBistro.logoUrl}, images_json = ${JSON.stringify(celinaBistro.images || [])}, cta_text = ${celinaBistro.ctaText || 'View Demo'}
         WHERE id = ${existingBistro[0].id}
       `;
     } else {

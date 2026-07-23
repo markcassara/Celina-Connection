@@ -77,7 +77,7 @@ export const INITIAL_BUSINESSES: Business[] = [
     featured: true,
     ctaText: "View Demo",
     tier: "premium",
-    ownerId: "demo-owner",
+    ownerId: "admin",
     isUnclaimed: false,
     createdAt: "2026-07-01T10:00:00Z",
     viewsCount: 310,
