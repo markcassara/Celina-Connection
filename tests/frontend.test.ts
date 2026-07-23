@@ -466,6 +466,8 @@ test('directory search renders a blended on-page AI chat box instead of a separa
 
   assert.match(html, /directory-inline-ai-chat/);
   assert.match(html, /Ask Celina AI or search the directory/);
-  assert.match(html, /Ask Celina AI like a local concierge/);
+  assert.match(html, /Ask Celina AI for local recommendations/);
+  assert.match(html, /text-slate-500/);
+  assert.doesNotMatch(html, /Ask Celina AI like a local concierge/);
   assert.doesNotMatch(html, /ai-chat-fab/);
 });
