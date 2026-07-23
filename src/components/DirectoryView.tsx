@@ -313,9 +313,9 @@ export default function DirectoryView({
       )}
 
       {/* Search and Hero Area */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 text-white p-8 md:p-12 shadow-md">
+      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 text-white p-6 sm:p-8 md:p-12 shadow-md min-h-[520px] flex">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
-        <div className="max-w-3xl space-y-4">
+        <div className="relative z-10 w-full flex flex-col space-y-4">
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -347,22 +347,22 @@ export default function DirectoryView({
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className="pt-4"
+            className="w-full flex-1 min-h-[240px] pt-4 flex"
           >
             <div
               id="directory-inline-ai-chat"
-              className="rounded-2xl border border-white/15 bg-white/95 text-slate-900 shadow-2xl shadow-slate-950/20 backdrop-blur overflow-hidden"
+              className="w-full flex min-h-full flex-col overflow-hidden rounded-[2rem] bg-white/10 text-white ring-1 ring-white/10 backdrop-blur-md"
             >
               {isAiEnabled && (
-                <div className="max-h-72 overflow-y-auto px-3 sm:px-4 py-3 space-y-2 bg-white">
+                <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-4 space-y-2 bg-transparent">
                   {inlineAiMessages.map((msg) => {
                     const isAi = msg.role === 'assistant';
                     const isWelcome = msg.id === 'welcome';
 
                     if (isWelcome) {
                       return (
-                        <div key={msg.id} className="flex items-center gap-2 px-1.5 py-0.5 text-[11px] font-medium leading-relaxed text-slate-500">
-                          <Sparkles className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                        <div key={msg.id} className="flex items-center gap-2 px-1.5 py-0.5 text-[11px] font-medium leading-relaxed text-slate-300">
+                          <Sparkles className="h-3.5 w-3.5 text-orange-300 flex-shrink-0" />
                           <span>{msg.text}</span>
                         </div>
                       );
@@ -371,13 +371,13 @@ export default function DirectoryView({
                     return (
                       <div key={msg.id} className={`flex ${isAi ? 'justify-start' : 'justify-end'}`}>
                         <div className={`flex items-start gap-2 max-w-[92%] ${isAi ? '' : 'flex-row-reverse'}`}>
-                          <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 ${isAi ? 'bg-slate-100 text-slate-500' : 'bg-slate-900 text-white'}`}>
+                          <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 ${isAi ? 'bg-white/10 text-orange-200' : 'bg-orange-500 text-white'}`}>
                             {isAi ? <Sparkles className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
                           </div>
-                          <div className={`rounded-2xl px-3.5 py-2 text-xs font-medium leading-relaxed shadow-sm ${
+                          <div className={`rounded-2xl px-3.5 py-2 text-xs font-medium leading-relaxed ${
                             isAi
-                              ? 'bg-white border border-slate-100 text-slate-700 rounded-tl-md'
-                              : 'bg-slate-900 text-white rounded-tr-md'
+                              ? 'bg-white/10 text-slate-100 rounded-tl-md'
+                              : 'bg-orange-500 text-white rounded-tr-md shadow-sm shadow-orange-950/20'
                           }`}>
                             <p className="whitespace-pre-line">
                               {msg.text.split('**').map((part, index) =>
@@ -390,7 +390,7 @@ export default function DirectoryView({
                     );
                   })}
                   {isAiSearching && (
-                    <div className="flex items-center gap-2 px-2 py-1 text-[11px] font-bold text-orange-700">
+                    <div className="flex items-center gap-2 px-2 py-1 text-[11px] font-bold text-orange-200">
                       <div className="flex items-center gap-1">
                         <span className="h-1.5 w-1.5 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.3s]" />
                         <span className="h-1.5 w-1.5 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
@@ -403,9 +403,9 @@ export default function DirectoryView({
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row items-stretch gap-2 p-2 bg-white border-t border-slate-100">
+              <div className="flex flex-col sm:flex-row items-stretch gap-2 p-2 bg-white/10 border-t border-white/10">
                 <div className="relative flex-grow">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-200" />
                   <input
                     type="text"
                     id="search-input"
@@ -424,7 +424,7 @@ export default function DirectoryView({
                         handleAiSearch();
                       }
                     }}
-                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 text-slate-900 rounded-xl font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm border border-slate-100"
+                    className="w-full pl-11 pr-4 py-3.5 bg-white/90 text-slate-950 rounded-[1.35rem] font-medium placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm border border-white/20"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -436,7 +436,7 @@ export default function DirectoryView({
                         setAiSearchInsights(null);
                         setAiMatchingIds(null);
                       }}
-                      className="px-3 py-3.5 bg-slate-100 hover:bg-slate-200 text-[10px] font-bold text-slate-600 rounded-xl cursor-pointer flex items-center gap-1 transition-all"
+                      className="px-3 py-3.5 bg-white/15 hover:bg-white/25 text-[10px] font-bold text-white rounded-[1.35rem] cursor-pointer flex items-center gap-1 transition-all"
                     >
                       <X className="w-3 h-3" />
                       Clear
@@ -448,10 +448,10 @@ export default function DirectoryView({
                       id="ai-search-insights-btn"
                       onClick={handleAiSearch}
                       disabled={isAiSearching || !searchTerm.trim()}
-                      className={`px-4 py-3.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0 ${
+                      className={`px-4 py-3.5 rounded-[1.35rem] font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0 ${
                         searchTerm.trim() && !isAiSearching
-                          ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm'
-                          : 'bg-slate-100 text-slate-400 cursor-not-allowed shadow-none'
+                          ? 'bg-orange-500 text-white hover:bg-orange-400 shadow-sm shadow-orange-950/20'
+                          : 'bg-white/15 text-slate-300 cursor-not-allowed shadow-none'
                       }`}
                       title="Ask Celina AI and filter matching listings"
                     >

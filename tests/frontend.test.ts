@@ -485,7 +485,10 @@ test('directory search renders a blended on-page AI chat box instead of a separa
   assert.match(html, /directory-inline-ai-chat/);
   assert.match(html, /Ask Celina AI or search the directory/);
   assert.match(html, /Ask Celina AI for local recommendations/);
-  assert.match(html, /text-slate-500/);
+  assert.match(html, /min-h-\[520px\] flex/);
+  assert.match(html, /w-full flex-1 min-h-\[240px\] pt-4 flex/);
+  assert.match(html, /bg-white\/10 text-white ring-1 ring-white\/10/);
+  assert.doesNotMatch(html, /rounded-2xl border border-white\/15 bg-white\/95/);
   assert.doesNotMatch(html, /Ask Celina AI like a local concierge/);
   assert.doesNotMatch(html, /ai-chat-fab/);
 });
