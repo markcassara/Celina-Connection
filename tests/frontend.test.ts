@@ -501,6 +501,10 @@ test('directory inline AI chat can collapse and formats markdown-like responses 
   assert.match(source, /setIsInlineAiExpanded\(false\)/);
   assert.match(source, /aria-label="Close Celina AI chat"/);
   assert.match(source, /const renderFormattedAiText/);
+  assert.match(source, /const tokenPattern = \/\(\\\*\\\*/);
+  assert.match(source, /const isRealLink = \/\^https\?:/);
+  assert.match(source, /rounded-xl bg-white\/\[0\.07\]/);
+  assert.match(source, /const isIntroBullet/);
   assert.match(source, /line\.match\(\/\^\[-\*•\]\\s\+\(\.\+\)\//);
   assert.doesNotMatch(source, /msg\.text\.split\('\*\*'\)/);
 });

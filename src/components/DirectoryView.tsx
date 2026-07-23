@@ -93,13 +93,50 @@ export default function DirectoryView({
   }, [isInlineAiExpanded, inlineAiMessages, isAiSearching]);
 
   const renderFormattedAiText = (text: string) => {
-    const renderInline = (value: string) =>
-      value
+    const renderInline = (value: string): React.ReactNode[] => {
+      const cleaned = value
         .replace(/`/g, '')
-        .split('**')
-        .map((part, index) =>
-          index % 2 === 1 ? <strong key={index} className="font-black text-white">{part}</strong> : part
-        );
+        .replace(/\[([^\]]+)\]\{([^}]+)\}/g, '[$1]($2)');
+      const nodes: React.ReactNode[] = [];
+      const tokenPattern = /(\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\))/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = tokenPattern.exec(cleaned))) {
+        if (match.index > lastIndex) nodes.push(cleaned.slice(lastIndex, match.index));
+
+        const boldText = match[2];
+        const linkText = match[3];
+        const href = match[4];
+
+        if (boldText) {
+          nodes.push(<strong key={`strong-${match.index}`} className="font-black text-white">{renderInline(boldText)}</strong>);
+        } else if (linkText) {
+          const safeHref = href?.trim();
+          const isRealLink = /^https?:\/\/\S+\.\S+$/i.test(safeHref || '');
+          nodes.push(
+            isRealLink ? (
+              <a
+                key={`link-${match.index}`}
+                href={safeHref}
+                target="_blank"
+                rel="noreferrer"
+                className="font-black text-white underline decoration-orange-300/70 underline-offset-2 hover:text-orange-100"
+              >
+                {linkText}
+              </a>
+            ) : (
+              <strong key={`link-label-${match.index}`} className="font-black text-white">{linkText}</strong>
+            )
+          );
+        }
+
+        lastIndex = match.index + match[0].length;
+      }
+
+      if (lastIndex < cleaned.length) nodes.push(cleaned.slice(lastIndex));
+      return nodes;
+    };
 
     const lines = text
       .replace(/\r/g, '')
@@ -112,21 +149,33 @@ export default function DirectoryView({
     }
 
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-2.5 leading-relaxed">
         {lines.map((line, index) => {
           const heading = line.match(/^#{1,6}\s+(.+)/);
           const bullet = line.match(/^[-*•]\s+(.+)/);
-          const numbered = line.match(/^\d+[.)]\s+(.+)/);
-          const copy = heading?.[1] || bullet?.[1] || numbered?.[1] || line;
+          const numbered = line.match(/^(\d+)[.)]\s+(.+)/);
+          const copy = heading?.[1] || bullet?.[1] || numbered?.[2] || line;
+          const isIntroBullet = index === 0 && Boolean(bullet) && /^(howdy|hi|hey|hello|sure|absolutely)\b/i.test(copy);
 
           if (heading || (!bullet && !numbered && copy.endsWith(':') && copy.length < 90)) {
-            return <p key={index} className="pt-1 text-[12px] font-black text-white">{renderInline(copy.replace(/:$/, ''))}</p>;
+            return <p key={index} className="pt-1 text-[12px] font-black tracking-wide text-white">{renderInline(copy.replace(/:$/, ''))}</p>;
           }
 
-          if (bullet || numbered) {
+          if (numbered && !isIntroBullet) {
             return (
-              <p key={index} className="flex gap-2">
-                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-orange-300 flex-shrink-0" />
+              <div key={index} className="flex gap-2.5 rounded-xl bg-white/[0.07] px-3 py-2 ring-1 ring-white/10">
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-orange-400 text-[11px] font-black text-slate-950 shadow-sm shadow-orange-950/20">
+                  {numbered[1]}
+                </span>
+                <p className="min-w-0">{renderInline(copy)}</p>
+              </div>
+            );
+          }
+
+          if (bullet && !isIntroBullet) {
+            return (
+              <p key={index} className="flex gap-2.5 rounded-lg bg-white/[0.04] px-3 py-2">
+                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-orange-300 flex-shrink-0" />
                 <span>{renderInline(copy)}</span>
               </p>
             );
