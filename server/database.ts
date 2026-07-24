@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { neon } from '@neondatabase/serverless';
 
 import { INITIAL_BUSINESSES } from '../src/data/mockBusinesses.js';
-import type { Business, ClaimRequest, ReportedBug, Review, Tier, UserProfile } from '../src/types.js';
+import type { Business, ClaimRequest, LegacyHillsPetitionSignature, ReportedBug, Review, Tier, UserProfile } from '../src/types.js';
 
 export interface CreateBusinessInput {
   name: string;
@@ -41,6 +41,18 @@ export interface CreateBugInput {
   email: string;
 }
 
+export interface CreateLegacyHillsPetitionSignatureInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  streetAddress: string;
+  neighborhood: string;
+  comments?: string;
+  signatureDataUrl: string;
+  contactId?: string;
+}
+
 export interface CreateClaimRequestInput {
   businessId: string;
   requesterName: string;
@@ -69,6 +81,8 @@ export interface CelinaDataStore {
   createBug(input: CreateBugInput): ReportedBug | Promise<ReportedBug>;
   updateBug(id: string, updates: Partial<ReportedBug>): ReportedBug | null | Promise<ReportedBug | null>;
   deleteBug(id: string): boolean | Promise<boolean>;
+  createLegacyHillsPetitionSignature(input: CreateLegacyHillsPetitionSignatureInput): LegacyHillsPetitionSignature | Promise<LegacyHillsPetitionSignature>;
+  listLegacyHillsPetitionSignatures(): LegacyHillsPetitionSignature[] | Promise<LegacyHillsPetitionSignature[]>;
   createClaimRequest(input: CreateClaimRequestInput): ClaimRequest | null | Promise<ClaimRequest | null>;
   listClaimRequests(): ClaimRequest[] | Promise<ClaimRequest[]>;
   updateClaimRequest(id: string, updates: Partial<ClaimRequest>): ClaimRequest | null | Promise<ClaimRequest | null>;
@@ -150,6 +164,22 @@ function rowToBug(row: any): ReportedBug {
   };
 }
 
+function rowToLegacyHillsPetitionSignature(row: any): LegacyHillsPetitionSignature {
+  return {
+    id: row.id,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    email: row.email,
+    phone: row.phone,
+    streetAddress: row.street_address,
+    neighborhood: row.neighborhood,
+    comments: row.comments || '',
+    signatureDataUrl: row.signature_data_url,
+    contactId: row.contact_id || '',
+    signedAt: row.signed_at,
+  };
+}
+
 function rowToClaimRequest(row: any): ClaimRequest {
   return {
     id: row.id,
@@ -211,6 +241,22 @@ function makeBusiness(input: CreateBusinessInput): Business {
     isRegistryOnly: input.isRegistryOnly ?? false,
     emailVerified: input.emailVerified ?? true,
     emailVerifiedAt: input.emailVerifiedAt || '',
+  };
+}
+
+function makeLegacyHillsPetitionSignature(input: CreateLegacyHillsPetitionSignatureInput): LegacyHillsPetitionSignature {
+  return {
+    id: randomId('petition'),
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+    phone: input.phone,
+    streetAddress: input.streetAddress,
+    neighborhood: input.neighborhood || 'Legacy Hills',
+    comments: input.comments || '',
+    signatureDataUrl: input.signatureDataUrl,
+    contactId: input.contactId || '',
+    signedAt: new Date().toISOString(),
   };
 }
 
@@ -299,6 +345,20 @@ export class CelinaRepository implements CelinaDataStore {
         created_at TEXT NOT NULL,
         reviewed_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS legacy_hills_petition_signatures (
+        id TEXT PRIMARY KEY,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        street_address TEXT NOT NULL,
+        neighborhood TEXT NOT NULL,
+        comments TEXT,
+        signature_data_url TEXT NOT NULL,
+        contact_id TEXT,
+        signed_at TEXT NOT NULL
+      );
     `);
     for (const statement of [
       'ALTER TABLE businesses ADD COLUMN owner_password_hash TEXT',
@@ -322,7 +382,7 @@ export class CelinaRepository implements CelinaDataStore {
   }
 
   seedInitialData() {
-    this.db.exec('DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM claim_requests;');
+    this.db.exec('DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM claim_requests; DELETE FROM legacy_hills_petition_signatures;');
     for (const business of INITIAL_BUSINESSES) {
       this.upsertBusiness(makeBusiness(business as CreateBusinessInput));
     }
@@ -524,6 +584,34 @@ export class CelinaRepository implements CelinaDataStore {
     return this.db.prepare('SELECT * FROM reported_bugs ORDER BY created_at DESC').all().map(rowToBug);
   }
 
+  createLegacyHillsPetitionSignature(input: CreateLegacyHillsPetitionSignatureInput) {
+    const signature = makeLegacyHillsPetitionSignature(input);
+    this.db.prepare(`
+      INSERT INTO legacy_hills_petition_signatures (
+        id, first_name, last_name, email, phone, street_address, neighborhood, comments, signature_data_url, contact_id, signed_at
+      ) VALUES (
+        @id, @first_name, @last_name, @email, @phone, @street_address, @neighborhood, @comments, @signature_data_url, @contact_id, @signed_at
+      )
+    `).run({
+      id: signature.id,
+      first_name: signature.firstName,
+      last_name: signature.lastName,
+      email: signature.email,
+      phone: signature.phone,
+      street_address: signature.streetAddress,
+      neighborhood: signature.neighborhood,
+      comments: signature.comments || '',
+      signature_data_url: signature.signatureDataUrl,
+      contact_id: signature.contactId || '',
+      signed_at: signature.signedAt,
+    });
+    return signature;
+  }
+
+  listLegacyHillsPetitionSignatures() {
+    return this.db.prepare('SELECT * FROM legacy_hills_petition_signatures ORDER BY signed_at DESC').all().map(rowToLegacyHillsPetitionSignature);
+  }
+
   createBug(input: CreateBugInput) {
     const bug: ReportedBug = { id: randomId('bug'), ...input, createdAt: new Date().toISOString(), status: 'open' };
     this.db.prepare(`
@@ -678,6 +766,21 @@ class PostgresRepository implements CelinaDataStore {
         reviewed_at TEXT
       )
     `;
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS legacy_hills_petition_signatures (
+        id TEXT PRIMARY KEY,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        street_address TEXT NOT NULL,
+        neighborhood TEXT NOT NULL,
+        comments TEXT,
+        signature_data_url TEXT NOT NULL,
+        contact_id TEXT,
+        signed_at TEXT NOT NULL
+      )
+    `;
     const rows = await this.sql`SELECT COUNT(*)::int AS count FROM businesses` as any[];
     if (Number(rows[0]?.count || 0) === 0) {
       await this.seedInitialData();
@@ -689,6 +792,7 @@ class PostgresRepository implements CelinaDataStore {
     await this.sql`DELETE FROM businesses`;
     await this.sql`DELETE FROM reported_bugs`;
     await this.sql`DELETE FROM claim_requests`;
+    await this.sql`DELETE FROM legacy_hills_petition_signatures`;
     for (const business of INITIAL_BUSINESSES) {
       await this.upsertBusiness(makeBusiness(business as CreateBusinessInput), false);
     }
@@ -902,6 +1006,25 @@ class PostgresRepository implements CelinaDataStore {
     await this.ensureInitialized();
     const rows = await this.sql`SELECT * FROM reported_bugs ORDER BY created_at DESC` as any[];
     return rows.map(rowToBug);
+  }
+
+  async createLegacyHillsPetitionSignature(input: CreateLegacyHillsPetitionSignatureInput) {
+    await this.ensureInitialized();
+    const signature = makeLegacyHillsPetitionSignature(input);
+    await this.sql`
+      INSERT INTO legacy_hills_petition_signatures (
+        id, first_name, last_name, email, phone, street_address, neighborhood, comments, signature_data_url, contact_id, signed_at
+      ) VALUES (
+        ${signature.id}, ${signature.firstName}, ${signature.lastName}, ${signature.email}, ${signature.phone}, ${signature.streetAddress}, ${signature.neighborhood}, ${signature.comments || ''}, ${signature.signatureDataUrl}, ${signature.contactId || ''}, ${signature.signedAt}
+      )
+    `;
+    return signature;
+  }
+
+  async listLegacyHillsPetitionSignatures() {
+    await this.ensureInitialized();
+    const rows = await this.sql`SELECT * FROM legacy_hills_petition_signatures ORDER BY signed_at DESC` as any[];
+    return rows.map(rowToLegacyHillsPetitionSignature);
   }
 
   async createBug(input: CreateBugInput) {

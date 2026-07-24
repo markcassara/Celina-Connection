@@ -1,7 +1,7 @@
 export type DashboardPortalMode = 'owner' | 'admin';
 
 export function isAdminDashboardHash(hash?: string) {
-  return hash === '#dashboard-admin-listings' || hash === '#dashboard-admin-bugs';
+  return hash === '#dashboard-admin-listings' || hash === '#dashboard-admin-bugs' || hash === '#dashboard-admin-petition';
 }
 
 export function activeTabFromPath(pathname: string) {

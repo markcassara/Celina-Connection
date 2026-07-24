@@ -69,6 +69,20 @@ export interface ReportedBug {
   status: 'open' | 'in-progress' | 'resolved';
 }
 
+export interface LegacyHillsPetitionSignature {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  streetAddress: string;
+  neighborhood: string;
+  comments?: string;
+  signatureDataUrl: string;
+  contactId?: string;
+  signedAt: string;
+}
+
 export interface ClaimRequest {
   id: string;
   businessId: string;

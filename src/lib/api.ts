@@ -1,4 +1,4 @@
-import type { Business, ClaimRequest, ReportedBug, Review, UserProfile } from '../types';
+import type { Business, ClaimRequest, LegacyHillsPetitionSignature, ReportedBug, Review, UserProfile } from '../types';
 
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -124,6 +124,9 @@ export const api = {
       method: 'DELETE',
     });
   },
+  listLegacyHillsPetitionSignatures() {
+    return request<{ signatures: LegacyHillsPetitionSignature[] }>('/api/admin/petitions/legacy-hills/signatures');
+  },
   resetDatabase() {
     return request<{ businesses: Business[]; reportedBugs: ReportedBug[] }>('/api/admin/reset', {
       method: 'POST',
@@ -141,7 +144,7 @@ export const api = {
     consent: boolean;
     company?: string;
   }) {
-    return request<{ ok: true; contactId?: string }>('/api/petitions/legacy-hills/signatures', {
+    return request<{ ok: true; contactId?: string; signature?: LegacyHillsPetitionSignature }>('/api/petitions/legacy-hills/signatures', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

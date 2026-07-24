@@ -70,18 +70,18 @@ test('logged-in admins get admin-focused navigation without owner-only dead-end 
   const desktopTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' });
   assert.deepEqual(
     desktopTabs.map((tab) => tab.label),
-    ['Admin Dashboard', 'Manage Listings', 'Bug Reports', 'View Directory'],
+    ['Admin Dashboard', 'Manage Listings', 'Bug Reports', 'Petition Signatures', 'View Directory'],
   );
   assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
   assert.deepEqual(
     desktopTabs.map((tab) => tab.dashboardSection ?? null),
-    [null, 'profile', 'admin-bugs', null],
+    [null, 'profile', 'admin-bugs', 'admin-petition', null],
   );
 
   const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
   assert.deepEqual(
     mobileTabs.map((tab) => tab.label),
-    ['Dashboard', 'Manage', 'Bugs', 'Directory'],
+    ['Dashboard', 'Manage', 'Bugs', 'Petition', 'Directory'],
   );
   assert.equal(mobileTabs.some((tab) => tab.label === 'Metrics'), false);
 });
@@ -91,27 +91,27 @@ test('dashboard navigation highlights only the selected dashboard section', () =
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '')),
-    [true, false, false, false],
+    [true, false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
-    [false, true, false, false],
+    [false, true, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-reviews')),
-    [false, false, false, false],
+    [false, false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
-    [false, false, false, false],
+    [false, false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'directory', '#dashboard-admin-listings')),
-    [false, false, false, true],
+    [false, false, false, false, true],
   );
 });
 
@@ -122,6 +122,7 @@ test('dashboard hash parser recognizes header menu sections', () => {
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-dashboard'), 'admin-dashboard');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings'), 'admin-listings');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs'), 'admin-bugs');
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-petition'), 'admin-petition');
   assert.equal(getDashboardSectionFromHash(''), 'profile');
   assert.equal(getDashboardSectionFromHash('#unknown'), 'profile');
 });
@@ -133,10 +134,12 @@ test('dashboard hash parser keeps admin and owner menus on populated sections', 
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-dashboard', 'admin'), 'admin-dashboard');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings', 'admin'), 'admin-listings');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs', 'admin'), 'admin-bugs');
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-petition', 'admin'), 'admin-petition');
 
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-dashboard', 'owner'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-listings', 'owner'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-admin-bugs', 'owner'), 'profile');
+  assert.equal(getDashboardSectionFromHash('#dashboard-admin-petition', 'owner'), 'profile');
   assert.equal(getDashboardSectionFromHash('#dashboard-reviews', 'owner'), 'reviews');
   assert.equal(getDashboardSectionFromHash('#dashboard-billing', 'owner'), 'billing');
 });
@@ -150,6 +153,7 @@ test('header tabs expose real hrefs including dashboard section links', () => {
       '/dashboard',
       '/dashboard#dashboard-profile',
       '/dashboard#dashboard-admin-bugs',
+      '/dashboard#dashboard-admin-petition',
       '/directory',
     ],
   );
@@ -172,6 +176,7 @@ test('admin dashboard inner tab follows the selected dashboard hash section', ()
   assert.equal(getAdminTabFromDashboardSection('#dashboard-admin-listings'), 'listings');
   assert.equal(getAdminTabFromDashboardSection('admin-bugs'), 'bugs');
   assert.equal(getAdminTabFromDashboardSection('#dashboard-admin-bugs'), 'bugs');
+  assert.equal(getAdminTabFromDashboardSection('#dashboard-admin-petition'), 'petition');
   assert.equal(getAdminTabFromDashboardSection('reviews'), 'listings');
 });
 
@@ -179,6 +184,39 @@ test('admin dashboard menu click focuses the listings manager instead of the gen
   assert.equal(shouldFocusAdminListings('#dashboard-admin-listings', 'listings'), true);
   assert.equal(shouldFocusAdminListings('', 'listings'), false);
   assert.equal(shouldFocusAdminListings('#dashboard-admin-bugs', 'bugs'), false);
+});
+
+
+test('admin petition signatures route renders petition export workspace', () => {
+  const html = renderToString(
+    React.createElement(DashboardView, {
+      currentUser: {
+        id: 'admin',
+        email: 'admin@celinaconnection.com',
+        businessName: 'Celina Connection Admin',
+        tier: 'premium',
+        isLoggedIn: true,
+        role: 'admin',
+      },
+      setCurrentUser: () => undefined,
+      businesses: [],
+      onAddBusiness: () => 'new-business-id',
+      onOwnerRegister: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerLogin: async () => ({ currentUser: {} as any, business: {} as any }),
+      onOwnerUpdateBusiness: async () => undefined,
+      onUpdateBusiness: () => undefined,
+      onUpgradePrompt: () => undefined,
+      reportedBugs: [],
+      portalMode: 'admin',
+      setPortalMode: () => undefined,
+      locationHash: '#dashboard-admin-petition',
+    } as any),
+  );
+
+  assert.match(html, /admin-petition-card/);
+  assert.match(html, /Legacy Hills Petition Signatures/);
+  assert.match(html, /City Packet \/ PDF/);
+  assert.match(html, /\/api\/admin\/petitions\/legacy-hills\/export\.csv/);
 });
 
 test('admin manage listings route renders the responsive listings manager, not the owner edit page', () => {

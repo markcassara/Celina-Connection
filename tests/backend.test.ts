@@ -38,6 +38,15 @@ test('direct admin dashboard hash keeps unauthenticated users in admin login int
     }),
     'admin',
   );
+  assert.equal(
+    resolveDashboardPortalMode({
+      activeTab: 'dashboard',
+      currentMode: 'owner',
+      isLoggedIn: false,
+      locationHash: '#dashboard-admin-petition',
+    }),
+    'admin',
+  );
 });
 
 async function withServer(dbPath: string, run: (baseUrl: string) => Promise<void>) {
@@ -283,6 +292,70 @@ test('legacy hills petition signature is captured as a tagged GoHighLevel contac
         'GHL_LEGACY_HILLS_SIGNATURE_FIELD_ID',
         'GHL_LEGACY_HILLS_SIGNED_AT_FIELD_ID',
       ]) {
+        delete process.env[key];
+      }
+    }
+  });
+});
+
+
+test('admin can view and export locally captured Legacy Hills petition signatures', async () => {
+  const dbPath = makeDbPath('legacy-hills-petition-admin-export');
+
+  await withFakeGhl(async (ghlBaseUrl) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+    process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const submit = await fetch(`${baseUrl}/api/petitions/legacy-hills/signatures`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            firstName: 'City',
+            lastName: 'Packet',
+            email: 'city.packet@example.com',
+            phone: '(972) 555-0177',
+            streetAddress: '789 Legacy Hills Dr',
+            neighborhood: 'Legacy Hills',
+            comments: 'Please include me in the packet.',
+            signatureDataUrl: 'data:image/png;base64,aGVsbG8=',
+            consent: true,
+            company: '',
+          }),
+        });
+        assert.equal(submit.status, 201);
+
+        const list = await fetch(`${baseUrl}/api/admin/petitions/legacy-hills/signatures`, {
+          headers: { 'x-admin-token': ADMIN_TOKEN },
+        });
+        assert.equal(list.status, 200);
+        const payload = await list.json();
+        assert.equal(payload.signatures.length, 1);
+        assert.equal(payload.signatures[0].firstName, 'City');
+        assert.equal(payload.signatures[0].streetAddress, '789 Legacy Hills Dr');
+        assert.equal(payload.signatures[0].signatureDataUrl, 'data:image/png;base64,aGVsbG8=');
+
+        const csv = await fetch(`${baseUrl}/api/admin/petitions/legacy-hills/export.csv`, {
+          headers: { 'x-admin-token': ADMIN_TOKEN },
+        });
+        assert.equal(csv.status, 200);
+        assert.match(csv.headers.get('content-disposition') || '', /legacy-hills-petition-signatures\.csv/);
+        assert.match(await csv.text(), /City","Packet/);
+
+        const doc = await fetch(`${baseUrl}/api/admin/petitions/legacy-hills/export`, {
+          headers: { 'x-admin-token': ADMIN_TOKEN },
+        });
+        assert.equal(doc.status, 200);
+        const html = await doc.text();
+        assert.match(html, /Legacy Hills Petition Signature Packet/);
+        assert.match(html, /Print \/ Save as PDF/);
+        assert.match(html, /data:image\/png;base64,aGVsbG8=/);
+      });
+    } finally {
+      for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL', 'ADMIN_API_TOKEN']) {
         delete process.env[key];
       }
     }

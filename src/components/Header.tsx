@@ -20,7 +20,7 @@ export interface HeaderTab {
   id: string;
   label: string;
   targetTab: string;
-  dashboardSection?: 'profile' | 'reviews' | 'billing' | 'metrics' | 'media' | 'admin-dashboard' | 'admin-listings' | 'admin-bugs';
+  dashboardSection?: 'profile' | 'reviews' | 'billing' | 'metrics' | 'media' | 'admin-dashboard' | 'admin-listings' | 'admin-bugs' | 'admin-petition';
 }
 
 export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserProfile['role'] }): HeaderTab[] {
@@ -38,6 +38,7 @@ export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserPro
       { id: 'admin-dashboard', label: 'Admin Dashboard', targetTab: 'dashboard' },
       { id: 'admin-listing-profile', label: 'Manage Listings', targetTab: 'dashboard', dashboardSection: 'profile' },
       { id: 'admin-bugs', label: 'Bug Reports', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
+      { id: 'admin-petition', label: 'Petition Signatures', targetTab: 'dashboard', dashboardSection: 'admin-petition' },
       { id: 'public-directory', label: 'View Directory', targetTab: 'directory' },
     ];
   }
@@ -64,6 +65,7 @@ export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProf
       { id: 'admin-dashboard', label: 'Dashboard', targetTab: 'dashboard' },
       { id: 'admin-listing-profile', label: 'Manage', targetTab: 'dashboard', dashboardSection: 'profile' },
       { id: 'admin-bugs', label: 'Bugs', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
+      { id: 'admin-petition', label: 'Petition', targetTab: 'dashboard', dashboardSection: 'admin-petition' },
       { id: 'public-directory', label: 'Directory', targetTab: 'directory' },
     ];
   }

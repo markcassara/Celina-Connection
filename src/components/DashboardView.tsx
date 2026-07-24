@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Business, Review, Tier, UserProfile, ReportedBug } from '../types';
+import { Business, Review, Tier, UserProfile, ReportedBug, LegacyHillsPetitionSignature } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
 import {
   Building2,
@@ -30,7 +30,10 @@ import {
   LogOut,
   Filter,
   ShieldCheck,
-  Upload
+  Upload,
+  FileText,
+  Download,
+  ExternalLink
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { api } from '../lib/api';
@@ -60,9 +63,9 @@ interface DashboardViewProps {
   locationHash?: string;
 }
 
-export type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-dashboard' | 'admin-listings' | 'admin-bugs';
+export type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-dashboard' | 'admin-listings' | 'admin-bugs' | 'admin-petition';
 
-export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-dashboard', 'admin-listings', 'admin-bugs'];
+export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-dashboard', 'admin-listings', 'admin-bugs', 'admin-petition'];
 
 export function getDashboardSectionFromHash(
   hash: string = typeof window === 'undefined' ? '' : window.location.hash,
@@ -74,16 +77,17 @@ export function getDashboardSectionFromHash(
 
   if (!isKnownSection) return fallbackSection;
 
-  const isAdminOnlySection = hashSection === 'admin-dashboard' || hashSection === 'admin-listings' || hashSection === 'admin-bugs';
+  const isAdminOnlySection = hashSection === 'admin-dashboard' || hashSection === 'admin-listings' || hashSection === 'admin-bugs' || hashSection === 'admin-petition';
   if (isAdminOnlySection && role && role !== 'admin') return 'profile';
 
   return hashSection;
 }
 
-export type AdminActiveTab = 'listings' | 'bugs';
+export type AdminActiveTab = 'listings' | 'bugs' | 'petition';
 
 export function getAdminTabFromDashboardSection(sectionOrHash: DashboardSubTab | string): AdminActiveTab {
   if (sectionOrHash === 'admin-dashboard' || sectionOrHash === '#dashboard-admin-dashboard') return 'listings';
+  if (sectionOrHash === 'admin-petition' || sectionOrHash === '#dashboard-admin-petition') return 'petition';
   return sectionOrHash === 'admin-bugs' || sectionOrHash === '#dashboard-admin-bugs' ? 'bugs' : 'listings';
 }
 
@@ -803,7 +807,7 @@ export default function DashboardView({
   // Admin dashboard routes should always render the admin workspace directly.
   // Do this before owner-business fallbacks: admins may have listings assigned
   // to them, and that must not trap Manage Listings inside the owner editor.
-  if (currentUser.role === 'admin' && (activeSubTab === 'admin-dashboard' || activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs')) {
+  if (currentUser.role === 'admin' && (activeSubTab === 'admin-dashboard' || activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs' || activeSubTab === 'admin-petition')) {
     return (
       <AdminDashboardView
         activeDashboardSection={activeSubTab}
@@ -979,6 +983,7 @@ export default function DashboardView({
                 ...(currentUser.role === 'admin'
                   ? [
                       { id: 'admin-listings', label: 'Manage Listings', icon: <ShieldAlert className="w-4 h-4" /> },
+                      { id: 'admin-petition', label: 'Petition Signatures', icon: <FileText className="w-4 h-4" /> },
                       { id: 'admin-bugs', label: 'Bug Reports', icon: <Bug className="w-4 h-4" /> },
                     ]
                   : []),
@@ -989,7 +994,7 @@ export default function DashboardView({
                     key={tab.id}
                     onClick={() => {
                       setActiveSubTab(tab.id as DashboardSubTab);
-                      if (tab.id === 'admin-listings' || tab.id === 'admin-bugs') {
+                      if (tab.id === 'admin-listings' || tab.id === 'admin-bugs' || tab.id === 'admin-petition') {
                         window.location.hash = `dashboard-${tab.id}`;
                       }
                     }}
@@ -1120,7 +1125,7 @@ export default function DashboardView({
                 </button>
               </div>
             </form>
-          ) : (activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs') && currentUser.role === 'admin' ? (
+          ) : (activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs' || activeSubTab === 'admin-petition') && currentUser.role === 'admin' ? (
             <AdminDashboardView
               activeDashboardSection={activeSubTab}
               businesses={businesses}
@@ -1977,6 +1982,9 @@ function AdminDashboardView({
   const [bugCategoryFilter, setBugCategoryFilter] = useState<'all' | 'visual' | 'functional' | 'data' | 'other'>('all');
   const [bugSeverityFilter, setBugSeverityFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [bugStatusFilter, setBugStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'resolved'>('all');
+  const [petitionSignatures, setPetitionSignatures] = useState<LegacyHillsPetitionSignature[]>([]);
+  const [petitionLoading, setPetitionLoading] = useState(false);
+  const [petitionError, setPetitionError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [tierFilter, setTierFilter] = useState<'all' | 'free' | 'premium' | 'pro' | 'basic' | 'unclaimed'>('all');
@@ -2361,6 +2369,25 @@ function AdminDashboardView({
     }
   };
 
+  const loadPetitionSignatures = React.useCallback(async () => {
+    setPetitionLoading(true);
+    setPetitionError('');
+    try {
+      const payload = await api.listLegacyHillsPetitionSignatures();
+      setPetitionSignatures(payload.signatures);
+    } catch (error) {
+      setPetitionError(error instanceof Error ? error.message : 'Unable to load petition signatures.');
+    } finally {
+      setPetitionLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (adminActiveTab === 'petition') {
+      loadPetitionSignatures();
+    }
+  }, [adminActiveTab, loadPetitionSignatures]);
+
   const handleLocalLogout = () => {
     setCurrentUser({
       id: '',
@@ -2418,6 +2445,17 @@ function AdminDashboardView({
         >
           <Building2 className="w-4 h-4" />
           <span>Directory Listings ({adminListings.length})</span>
+        </button>
+        <button
+          onClick={() => setAdminTab('petition')}
+          className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            adminActiveTab === 'petition'
+              ? 'border-orange-500 text-orange-600 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-orange-500" />
+          <span>Petition Signatures ({petitionSignatures.length})</span>
         </button>
         <button
           onClick={() => setAdminTab('bugs')}
@@ -2831,6 +2869,110 @@ function AdminDashboardView({
         )}
       </div>
         </>
+      ) : adminActiveTab === 'petition' ? (
+        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in" id="admin-petition-card">
+          <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-display text-xl font-black text-slate-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-orange-500" /> Legacy Hills Petition Signatures
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Review every captured signer, then export a city-ready packet or CSV backup.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href="/legacyhillspetition"
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-slate-100"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Open Petition Link
+              </a>
+              <button
+                onClick={loadPetitionSignatures}
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-slate-100 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+              <a
+                href="/api/admin/petitions/legacy-hills/export.csv"
+                className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-slate-100"
+              >
+                <Download className="w-3.5 h-3.5" /> Export CSV
+              </a>
+              <a
+                href="/api/admin/petitions/legacy-hills/export"
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> City Packet / PDF
+              </a>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-5 border-b border-slate-100 bg-white">
+            <div className="rounded-2xl bg-orange-50 border border-orange-100 p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-orange-600">Total signatures</span>
+              <div className="font-display text-3xl font-black text-slate-900">{petitionSignatures.length}</div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Latest signer</span>
+              <div className="font-bold text-slate-900 text-sm mt-1">
+                {petitionSignatures[0] ? `${petitionSignatures[0].firstName} ${petitionSignatures[0].lastName}` : 'None yet'}
+              </div>
+            </div>
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Export status</span>
+              <div className="font-bold text-slate-900 text-sm mt-1">Ready for print/save-as-PDF</div>
+            </div>
+          </div>
+
+          {petitionError && (
+            <div className="m-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">{petitionError}</div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600 border-collapse">
+              <thead>
+                <tr className="bg-slate-100/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <th className="p-4 pl-6">Signer</th>
+                  <th className="p-4">Contact</th>
+                  <th className="p-4">Address</th>
+                  <th className="p-4">Signed</th>
+                  <th className="p-4 pr-6">Signature</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {petitionLoading ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Loading petition signatures…</td></tr>
+                ) : petitionSignatures.length === 0 ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">No Legacy Hills petition signatures have been captured yet.</td></tr>
+                ) : petitionSignatures.map((signature) => (
+                  <tr key={signature.id} className="hover:bg-slate-50/70">
+                    <td className="p-4 pl-6">
+                      <div className="font-black text-slate-900">{signature.firstName} {signature.lastName}</div>
+                      <div className="text-[10px] text-slate-400">{signature.neighborhood}</div>
+                    </td>
+                    <td className="p-4">
+                      <div>{signature.email}</div>
+                      <div className="text-[10px] text-slate-400">{signature.phone}</div>
+                    </td>
+                    <td className="p-4 max-w-xs">
+                      <div className="font-semibold">{signature.streetAddress}</div>
+                      {signature.comments && <div className="mt-1 text-[10px] text-slate-400 line-clamp-2">“{signature.comments}”</div>}
+                    </td>
+                    <td className="p-4 whitespace-nowrap">{new Date(signature.signedAt).toLocaleString()}</td>
+                    <td className="p-4 pr-6">
+                      <img src={signature.signatureDataUrl} alt={`Signature for ${signature.firstName} ${signature.lastName}`} className="h-12 max-w-40 rounded-lg border border-slate-200 bg-white object-contain" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
         /* Bug Tickets Section */
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in" id="admin-bugs-card">
