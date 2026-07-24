@@ -8,11 +8,12 @@ export function activeTabFromPath(pathname: string) {
   const path = pathname.replace(/^\//, '');
   if (path.startsWith('business/')) return 'directory';
   if (path === 'owner-login' || path === 'admin-login') return path;
-  return path || 'directory';
+  return path || 'home';
 }
 
 export function pathForActiveTab(activeTab: string) {
-  return activeTab === 'directory' ? '/' : `/${activeTab}`;
+  if (activeTab === 'home') return '/';
+  return `/${activeTab}`;
 }
 
 export function resolveDashboardPortalMode({

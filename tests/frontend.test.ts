@@ -27,7 +27,7 @@ test('listing category choices include generic professional service categories',
 test('logged-in owners see an owner-focused desktop menu instead of the public menu', () => {
   assert.deepEqual(
     getDesktopHeaderTabs({ isLoggedIn: false, role: undefined }).map((tab) => tab.label),
-    ['Explore Directory', 'Local Events', 'Membership Tiers'],
+    ['Home', 'Explore Directory', 'Local Events', 'Membership Tiers'],
   );
 
   assert.deepEqual(
@@ -39,7 +39,7 @@ test('logged-in owners see an owner-focused desktop menu instead of the public m
 test('logged-in mobile users see owner-focused navigation instead of public navigation', () => {
   assert.deepEqual(
     getMobileHeaderTabs({ isLoggedIn: false, role: undefined }).map((tab) => tab.label),
-    ['Explore', 'Events', 'Pricing'],
+    ['Home', 'Explore', 'Events', 'Pricing'],
   );
 
   assert.deepEqual(
@@ -150,7 +150,7 @@ test('header tabs expose real hrefs including dashboard section links', () => {
       '/dashboard',
       '/dashboard#dashboard-profile',
       '/dashboard#dashboard-admin-bugs',
-      '/',
+      '/directory',
     ],
   );
 });
@@ -507,4 +507,48 @@ test('directory inline AI chat can collapse and formats markdown-like responses 
   assert.match(source, /const isIntroBullet/);
   assert.match(source, /line\.match\(\/\^\[-\*•\]\\s\+\(\.\+\)\//);
   assert.doesNotMatch(source, /msg\.text\.split\('\*\*'\)/);
+});
+
+
+test('home mode keeps category browse near the fold but removes the full listing grid', () => {
+  const html = renderToString(
+    React.createElement(DirectoryView, {
+      businesses: [{
+        id: 'test-bakery',
+        name: 'Test Bakery',
+        slug: 'test-bakery',
+        category: 'Dining',
+        description: 'A local bakery used to prove home does not dump listing cards.',
+        phone: '(555) 123-4567',
+        email: 'owner@testbakery.com',
+        address: '1 Celina Square',
+        website: 'https://example.com',
+        hours: '9 AM - 5 PM',
+        tier: 'premium',
+        featured: true,
+        images: [],
+        reviews: [],
+        viewsCount: 0,
+        isUnclaimed: false,
+        ownerId: 'owner-test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+      onAddReview: () => undefined,
+      selectedBusiness: null,
+      onSelectBusiness: () => undefined,
+      onCloseDetail: () => undefined,
+      onUpgradePrompt: () => undefined,
+      onClaimBusiness: () => undefined,
+      isAiEnabled: true,
+      serverAiAvailable: true,
+      setActiveTab: () => undefined,
+      homeMode: true,
+    } as any),
+  );
+
+  assert.match(html, /Browse by Category/);
+  assert.match(html, /home-platform-story/);
+  assert.match(html, /Browse the full directory/);
+  assert.doesNotMatch(html, /id="directory-grid"/);
+  assert.doesNotMatch(html, /Showing <span/);
 });

@@ -151,7 +151,7 @@ export default function App() {
   const handleHeaderNavigate = (tab: string, hash?: string) => {
     setIsGated(false);
     sessionStorage.setItem('celina_connection_gated_bypass', 'true');
-    const pathname = tab === 'directory' ? '/' : `/${tab}`;
+    const pathname = tab === 'home' ? '/' : `/${tab}`;
     navigate({ pathname, hash: hash ? `#${hash}` : '' });
     setActiveTab(tab);
   };
@@ -722,7 +722,7 @@ export default function App() {
 
       {/* Dynamic Tab Pane Render */}
       <main className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pb-16">
-        {activeTab === 'directory' && (
+        {activeTab === 'home' && (
           <DirectoryView
             businesses={businesses}
             onAddReview={handleAddReview}
@@ -735,6 +735,32 @@ export default function App() {
             onCloseDetail={() => {
               setSelectedBusinessId(null);
               navigate('/');
+            }}
+            onUpgradePrompt={(tier) => {
+              setSelectedBusinessId(null);
+              setTargetTier(tier);
+            }}
+            onClaimBusiness={handleClaimBusiness}
+            isAiEnabled={isAiEnabled}
+            serverAiAvailable={serverAiAvailable}
+            setActiveTab={setActiveTab}
+            homeMode={true}
+          />
+        )}
+
+        {activeTab === 'directory' && (
+          <DirectoryView
+            businesses={businesses}
+            onAddReview={handleAddReview}
+            selectedBusiness={selectedBusiness}
+            onSelectBusiness={(b) => {
+              handleUpdateBusiness(b.id, { viewsCount: b.viewsCount + 1 });
+              setSelectedBusinessId(b.id);
+              navigate(`/business/${b.slug || b.id}`);
+            }}
+            onCloseDetail={() => {
+              setSelectedBusinessId(null);
+              navigate('/directory');
             }}
             onUpgradePrompt={(tier) => {
               setSelectedBusinessId(null);

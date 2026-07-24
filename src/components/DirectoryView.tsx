@@ -40,6 +40,7 @@ interface DirectoryViewProps {
   isAiEnabled: boolean;
   serverAiAvailable: boolean;
   setActiveTab?: (tab: string) => void;
+  homeMode?: boolean;
 }
 
 const INLINE_AI_AUTO_COLLAPSE_MS = 30000;
@@ -55,6 +56,7 @@ export default function DirectoryView({
   isAiEnabled,
   serverAiAvailable,
   setActiveTab,
+  homeMode = false,
 }: DirectoryViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -615,261 +617,362 @@ export default function DirectoryView({
         </div>
       </div>
 
-      {/* Primary Directory List Grid */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-          <p className="text-sm font-medium text-slate-500">
-            Showing <span className="font-bold text-slate-900">{filteredBusinesses.length}</span>{' '}
-            {filteredBusinesses.length === 1 ? 'business' : 'businesses'} in Celina
-          </p>
-        </div>
-
-        {/* Results indicator and listing info */}
-
-        {filteredBusinesses.length === 0 ? (
-          <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 p-8">
-            <p className="text-slate-500 text-base mb-2">No matching businesses found.</p>
-            <p className="text-slate-400 text-xs">Try searching for different terms or selecting "All" categories.</p>
+      {homeMode ? (
+        <div id="home-platform-story" className="space-y-8">
+          <div className="rounded-3xl bg-white border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-0">
+              <div className="p-6 sm:p-8 lg:p-10 space-y-5">
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200">
+                  <Sparkles className="h-3.5 w-3.5" /> Local discovery, cleaned up
+                </span>
+                <div className="space-y-3">
+                  <h3 className="font-display text-2xl sm:text-4xl font-black tracking-tight text-slate-950 leading-tight">
+                    A more useful front door for Celina than another endless list.
+                  </h3>
+                  <p className="text-sm sm:text-base leading-relaxed text-slate-600 max-w-2xl">
+                    Celina Connection helps residents find trusted local spots quickly, while giving business owners a polished profile they can actually use to get discovered.
+                  </p>
+                </div>
+                <div className="grid sm:grid-cols-3 gap-3 pt-2">
+                  {[
+                    ['Discover', 'Restaurants, shops, services, and local favorites.'],
+                    ['Compare', 'Reviews, hours, photos, locations, and contact details.'],
+                    ['Support', 'Keep local dollars moving through Celina businesses.'],
+                  ].map(([title, copy]) => (
+                    <div key={title} className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
+                      <p className="text-xs font-black uppercase tracking-wider text-orange-700">{title}</p>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-600">{copy}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab?.('directory')}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-md transition-colors hover:bg-orange-600"
+                  >
+                    Browse the full directory <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab?.('dashboard')}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-800 transition-colors hover:border-orange-200 hover:bg-orange-50"
+                  >
+                    Claim your listing
+                  </button>
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950 p-6 sm:p-8 lg:p-10 text-white flex flex-col justify-between gap-8">
+                <div className="space-y-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-200">For business owners</p>
+                  <h4 className="font-display text-2xl font-black tracking-tight">Your listing should work harder than a Facebook post.</h4>
+                  <p className="text-sm leading-relaxed text-slate-300">
+                    Claim the profile, keep the details current, add trust signals, and upgrade visibility when you want more placement.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    'Lifetime free launch listing while early slots remain',
+                    'Premium placement paths for serious local visibility',
+                    'AI-powered search that recommends businesses by intent',
+                  ].map((item) => (
+                    <div key={item} className="flex items-start gap-3 rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
+                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-300" />
+                      <span className="text-xs font-semibold leading-relaxed text-slate-100">{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="directory-grid">
-            {filteredBusinesses.map((b) => {
-              const isPremium = b.tier === 'premium';
-              const isPro = b.tier === 'pro';
-              const isBasic = b.tier === 'basic';
-              const canShowWebsiteHours = isBasic || isPro || isPremium;
-              const ratingSum = b.reviews.reduce((sum, r) => sum + r.rating, 0);
-              const avgRating = b.reviews.length ? (ratingSum / b.reviews.length).toFixed(1) : null;
 
-              return (
-                <motion.div
-                  key={b.id}
-                  layout
-                  onClick={() => onSelectBusiness(b)}
-                  id={`business-card-${b.id}`}
-                  className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-white border cursor-pointer hover:shadow-xl transition-all duration-300 ${
-                    isPremium
-                      ? 'ring-2 ring-amber-400 shadow-md shadow-amber-50/50 border-amber-300'
-                      : isPro
-                      ? 'border-orange-200 shadow-sm'
-                      : 'border-slate-150'
-                  }`}
-                  whileHover={{ y: -4 }}
-                >
-                  {/* Card Premium Shimmer Top Overlay */}
-                  {isPremium && (
-                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500" />
-                  )}
+          <div className="grid md:grid-cols-3 gap-4" id="home-info-sections">
+            {[
+              {
+                icon: <MapPin className="h-5 w-5" />,
+                title: 'Find what is nearby',
+                copy: 'Use category browsing, AI search, and maps to move from “what should we do?” to a local answer fast.',
+              },
+              {
+                icon: <ShieldCheck className="h-5 w-5" />,
+                title: 'Built for trust',
+                copy: 'Verified owner access, claim requests, reviews, and clean profiles make the directory feel curated instead of random.',
+              },
+              {
+                icon: <Star className="h-5 w-5" />,
+                title: 'Made for visibility',
+                copy: 'Featured partners and upgraded profiles create a monetization path without cluttering the front page with every listing.',
+              },
+            ].map((section) => (
+              <div key={section.title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 text-orange-700">
+                  {section.icon}
+                </div>
+                <h3 className="font-display text-lg font-black text-slate-950">{section.title}</h3>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">{section.copy}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Primary Directory List Grid */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <p className="text-sm font-medium text-slate-500">
+                Showing <span className="font-bold text-slate-900">{filteredBusinesses.length}</span>{' '}
+                {filteredBusinesses.length === 1 ? 'business' : 'businesses'} in Celina
+              </p>
+            </div>
 
-                  {/* Body Content */}
-                  <div className="p-5 space-y-4">
-                    {/* Header line: Category & Badge */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-orange-800 bg-orange-100 px-2 py-0.5 rounded-md">
-                        {b.category}
-                      </span>
-                      {b.isUnclaimed ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-900 text-white uppercase tracking-wide shadow-sm border border-rose-950">
-                          ⚠️ Unclaimed Listing
-                        </span>
-                      ) : (
-                        getTierBadge(b.tier)
+            {/* Results indicator and listing info */}
+
+            {filteredBusinesses.length === 0 ? (
+              <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 p-8">
+                <p className="text-slate-500 text-base mb-2">No matching businesses found.</p>
+                <p className="text-slate-400 text-xs">Try searching for different terms or selecting "All" categories.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="directory-grid">
+                {filteredBusinesses.map((b) => {
+                  const isPremium = b.tier === 'premium';
+                  const isPro = b.tier === 'pro';
+                  const isBasic = b.tier === 'basic';
+                  const canShowWebsiteHours = isBasic || isPro || isPremium;
+                  const ratingSum = b.reviews.reduce((sum, r) => sum + r.rating, 0);
+                  const avgRating = b.reviews.length ? (ratingSum / b.reviews.length).toFixed(1) : null;
+
+                  return (
+                    <motion.div
+                      key={b.id}
+                      layout
+                      onClick={() => onSelectBusiness(b)}
+                      id={`business-card-${b.id}`}
+                      className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-white border cursor-pointer hover:shadow-xl transition-all duration-300 ${
+                        isPremium
+                          ? 'ring-2 ring-amber-400 shadow-md shadow-amber-50/50 border-amber-300'
+                          : isPro
+                          ? 'border-orange-200 shadow-sm'
+                          : 'border-slate-150'
+                      }`}
+                      whileHover={{ y: -4 }}
+                    >
+                      {/* Card Premium Shimmer Top Overlay */}
+                      {isPremium && (
+                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500" />
                       )}
-                    </div>
 
-                    {/* Business Name & rating */}
-                    <div>
-                      <h4 className="font-display font-bold text-slate-900 group-hover:text-orange-600 transition-colors text-lg leading-snug truncate">
-                        {b.name}
-                      </h4>
-                      {avgRating && (
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <div className="flex text-amber-400">
-                            {[...Array(5)].map((_, i) => (
-                              <Star
-                                key={i}
-                                className={`w-3 h-3 ${
-                                  i < Math.floor(Number(avgRating))
-                                    ? 'fill-amber-400'
-                                    : 'text-slate-200'
-                                  }`}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-xs font-bold text-slate-700">{avgRating}</span>
-                          <span className="text-[10px] text-slate-600">({b.reviews.length})</span>
+                      {/* Body Content */}
+                      <div className="p-5 space-y-4">
+                        {/* Header line: Category & Badge */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-orange-800 bg-orange-100 px-2 py-0.5 rounded-md">
+                            {b.category}
+                          </span>
+                          {b.isUnclaimed ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-900 text-white uppercase tracking-wide shadow-sm border border-rose-950">
+                              ⚠️ Unclaimed Listing
+                            </span>
+                          ) : (
+                            getTierBadge(b.tier)
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    {/* Image / Banner - Only if Pro/Premium, else we show a clean card placeholder */}
-                    {(isPro || isPremium) && b.images && b.images.length > 0 ? (
-                      <div className="h-32 w-full rounded-xl overflow-hidden relative">
-                        <img
-                          src={b.images[0]}
-                          alt={b.name}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        />
-                      </div>
-                    ) : (
-                      <div className="h-1 bg-slate-50 rounded-xl" /> // Small visual spacing
-                    )}
-
-                    {/* Description */}
-                    <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">
-                      {b.description}
-                    </p>
-
-                    {/* Active claim notice banner inside card body if unclaimed */}
-                    {b.isUnclaimed && (
-                      <div className="p-2.5 bg-rose-50/70 border border-rose-100 rounded-xl flex items-start gap-1.5 text-[10px] leading-relaxed text-rose-900">
-                        <ShieldAlert className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5 animate-pulse" />
+                        {/* Business Name & rating */}
                         <div>
-                          <p className="font-extrabold text-rose-800">⚠️ Unclaimed Profile</p>
-                          <p className="text-rose-700 font-medium">Secure ownership verification is being connected before instant claiming is enabled.</p>
+                          <h4 className="font-display font-bold text-slate-900 group-hover:text-orange-600 transition-colors text-lg leading-snug truncate">
+                            {b.name}
+                          </h4>
+                          {avgRating && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <div className="flex text-amber-400">
+                                {[...Array(5)].map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    className={`w-3 h-3 ${
+                                      i < Math.floor(Number(avgRating))
+                                        ? 'fill-amber-400'
+                                        : 'text-slate-200'
+                                      }`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-xs font-bold text-slate-700">{avgRating}</span>
+                              <span className="text-[10px] text-slate-600">({b.reviews.length})</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Image / Banner - Only if Pro/Premium, else we show a clean card placeholder */}
+                        {(isPro || isPremium) && b.images && b.images.length > 0 ? (
+                          <div className="h-32 w-full rounded-xl overflow-hidden relative">
+                            <img
+                              src={b.images[0]}
+                              alt={b.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-1 bg-slate-50 rounded-xl" /> // Small visual spacing
+                        )}
+
+                        {/* Description */}
+                        <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">
+                          {b.description}
+                        </p>
+
+                        {/* Active claim notice banner inside card body if unclaimed */}
+                        {b.isUnclaimed && (
+                          <div className="p-2.5 bg-rose-50/70 border border-rose-100 rounded-xl flex items-start gap-1.5 text-[10px] leading-relaxed text-rose-900">
+                            <ShieldAlert className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5 animate-pulse" />
+                            <div>
+                              <p className="font-extrabold text-rose-800">⚠️ Unclaimed Profile</p>
+                              <p className="text-rose-700 font-medium">Secure ownership verification is being connected before instant claiming is enabled.</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Meta details */}
+                        <div className="space-y-1.5 text-slate-500 text-xs pt-2">
+                          {b.address ? (
+                            <div className="flex items-center gap-1.5">
+                              <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                              <span className="truncate">{b.address}</span>
+                            </div>
+                          ) : null}
+
+                          <div className="flex items-center gap-1.5">
+                            <Phone className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+                            <span>{b.phone}</span>
+                          </div>
+
+                          {/* Display locked indicator on free tier for Web and Hours */}
+                          {!canShowWebsiteHours && (
+                            <div className="flex items-center gap-1.5 text-slate-600 text-[11px] pt-1 border-t border-slate-100">
+                              <Lock className="w-3 h-3 text-slate-500" />
+                              <span>Unlock website & hours with Basic</span>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
 
-                    {/* Meta details */}
-                    <div className="space-y-1.5 text-slate-500 text-xs pt-2">
-                      {b.address ? (
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                          <span className="truncate">{b.address}</span>
+                      {/* Card Actions Footer */}
+                      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 text-xs font-semibold text-slate-700">
+                        {b.isUnclaimed ? (
+                          <div className="flex flex-col gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setClaimTarget(b);
+                              }}
+                              className="text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-0.5 cursor-pointer font-bold text-left"
+                            >
+                              Claim this listing <ChevronRight className="w-3 h-3" />
+                            </button>
+                            <a
+                              href={removalRequestMailto(b)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
+                            >
+                              <Mail className="w-3 h-3" /> Request to remove this listing
+                            </a>
+                          </div>
+                        ) : (
+                          <span className="text-orange-600 group-hover:underline flex items-center gap-0.5">
+                            View Profile <ChevronRight className="w-3 h-3" />
+                          </span>
+                        )}
+
+                        <div className="flex items-center gap-3">
+                          <button
+                            id={`show-map-btn-${b.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMapBusiness(b);
+                            }}
+                            className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer font-bold"
+                            title="Show location on map"
+                          >
+                            <MapPin className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                            <span>Show on Map</span>
+                          </button>
+
+                          {canShowWebsiteHours && b.website && !b.isUnclaimed && (
+                            <span className="text-slate-400 hover:text-slate-600 flex items-center gap-0.5">
+                              <Globe className="w-3.5 h-3.5" /> Website
+                            </span>
+                          )}
                         </div>
-                      ) : null}
-
-                      <div className="flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                        <span>{b.phone}</span>
                       </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-                      {/* Display locked indicator on free tier for Web and Hours */}
-                      {!canShowWebsiteHours && (
-                        <div className="flex items-center gap-1.5 text-slate-600 text-[11px] pt-1 border-t border-slate-100">
-                          <Lock className="w-3 h-3 text-slate-500" />
-                          <span>Unlock website & hours with Basic</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Card Actions Footer */}
-                  <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 text-xs font-semibold text-slate-700">
-                    {b.isUnclaimed ? (
-                      <div className="flex flex-col gap-1.5">
+          {/* Community Registry Entries (Unclaimed Profiles) */}
+          {businesses.some((b) => b.isUnclaimed) && (
+            <div id="unclaimed-listings-registry" className="bg-slate-50 border border-slate-200/80 rounded-3xl p-6 space-y-6 shadow-sm mt-8">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="font-display text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-orange-500" />
+                    Celina Local Business Registry
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Active community profile placeholders awaiting secure owner verification. Instant claiming is paused until verified login is connected.
+                  </p>
+                </div>
+              </div>
+    
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {businesses
+                  .filter((b) => b.isUnclaimed)
+                  .map((b) => (
+                    <div
+                      key={b.id}
+                      onClick={() => onSelectBusiness(b)}
+                      className="group flex flex-col gap-3 p-3 bg-white border border-slate-150 hover:border-orange-300 rounded-xl transition-all duration-200 cursor-pointer shadow-xs hover:shadow-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-800 text-xs truncate pr-2 group-hover:text-orange-600 transition-colors">
+                          {b.name}
+                        </span>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setClaimTarget(b);
                           }}
-                          className="text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-0.5 cursor-pointer font-bold text-left"
+                          className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 hover:text-rose-950 font-bold text-[10px] rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer"
                         >
-                          Claim this listing <ChevronRight className="w-3 h-3" />
+                          Claim this listing
                         </button>
-                        <a
-                          href={removalRequestMailto(b)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
-                        >
-                          <Mail className="w-3 h-3" /> Request to remove this listing
-                        </a>
                       </div>
-                    ) : (
-                      <span className="text-orange-600 group-hover:underline flex items-center gap-0.5">
-                        View Profile <ChevronRight className="w-3 h-3" />
-                      </span>
-                    )}
-
-                    <div className="flex items-center gap-3">
-                      <button
-                        id={`show-map-btn-${b.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedMapBusiness(b);
-                        }}
-                        className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer font-bold"
-                        title="Show location on map"
+                      <a
+                        href={removalRequestMailto(b)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
                       >
-                        <MapPin className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                        <span>Show on Map</span>
-                      </button>
-
-                      {canShowWebsiteHours && b.website && !b.isUnclaimed && (
-                        <span className="text-slate-400 hover:text-slate-600 flex items-center gap-0.5">
-                          <Globe className="w-3.5 h-3.5" /> Website
-                        </span>
-                      )}
+                        <Mail className="w-3 h-3" /> Request to remove this listing
+                      </a>
                     </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                  ))}
+              </div>
 
-      {/* Community Registry Entries (Unclaimed Profiles) */}
-      {businesses.some((b) => b.isUnclaimed) && (
-        <div id="unclaimed-listings-registry" className="bg-slate-50 border border-slate-200/80 rounded-3xl p-6 space-y-6 shadow-sm mt-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h3 className="font-display text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-orange-500" />
-                Celina Local Business Registry
-              </h3>
-              <p className="text-xs text-slate-500 font-medium">
-                Active community profile placeholders awaiting secure owner verification. Instant claiming is paused until verified login is connected.
-              </p>
-            </div>
-          </div>
- 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {businesses
-              .filter((b) => b.isUnclaimed)
-              .map((b) => (
-                <div
-                  key={b.id}
-                  onClick={() => onSelectBusiness(b)}
-                  className="group flex flex-col gap-3 p-3 bg-white border border-slate-150 hover:border-orange-300 rounded-xl transition-all duration-200 cursor-pointer shadow-xs hover:shadow-sm"
+              <div className="flex justify-center pt-4 border-t border-slate-200/60">
+                <button
+                  onClick={() => setActiveTab && setActiveTab('dashboard')}
+                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-1.5"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-bold text-slate-800 text-xs truncate pr-2 group-hover:text-orange-600 transition-colors">
-                      {b.name}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setClaimTarget(b);
-                      }}
-                      className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 hover:text-rose-950 font-bold text-[10px] rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer"
-                    >
-                      Claim this listing
-                    </button>
-                  </div>
-                  <a
-                    href={removalRequestMailto(b)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
-                  >
-                    <Mail className="w-3 h-3" /> Request to remove this listing
-                  </a>
-                </div>
-              ))}
-          </div>
-
-          <div className="flex justify-center pt-4 border-t border-slate-200/60">
-            <button
-              onClick={() => setActiveTab && setActiveTab('dashboard')}
-              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4 text-orange-400" />
-              <span>Don't see your business, submit a free listing now</span>
-            </button>
-          </div>
-        </div>
+                  <Plus className="w-4 h-4 text-orange-400" />
+                  <span>Don't see your business, submit a free listing now</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Detailed Profile Drawer/Modal */}

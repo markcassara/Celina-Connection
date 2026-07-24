@@ -26,6 +26,7 @@ export interface HeaderTab {
 export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserProfile['role'] }): HeaderTab[] {
   if (!user.isLoggedIn) {
     return [
+      { id: 'home', label: 'Home', targetTab: 'home' },
       { id: 'directory', label: 'Explore Directory', targetTab: 'directory' },
       { id: 'events', label: 'Local Events', targetTab: 'events' },
       { id: 'pricing', label: 'Membership Tiers', targetTab: 'pricing' },
@@ -51,6 +52,7 @@ export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserPro
 export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProfile['role'] }): HeaderTab[] {
   if (!user.isLoggedIn) {
     return [
+      { id: 'home', label: 'Home', targetTab: 'home' },
       { id: 'directory', label: 'Explore', targetTab: 'directory' },
       { id: 'events', label: 'Events', targetTab: 'events' },
       { id: 'pricing', label: 'Pricing', targetTab: 'pricing' },
@@ -90,7 +92,7 @@ export function isHeaderTabActive(tab: HeaderTab, activeTab: string, locationHas
 }
 
 export function getHeaderTabHref(tab: HeaderTab) {
-  const path = tab.targetTab === 'directory' ? '/' : `/${tab.targetTab}`;
+  const path = tab.targetTab === 'home' ? '/' : `/${tab.targetTab}`;
   return tab.dashboardSection ? `${path}#dashboard-${tab.dashboardSection}` : path;
 }
 
@@ -163,7 +165,7 @@ export default function Header({
     setIsMobileMenuOpen(false);
     // If we're on the dashboard, switch to directory
     if (activeTab === 'dashboard') {
-      setActiveTab('directory');
+      setActiveTab('home');
     }
   };
 
@@ -188,7 +190,7 @@ export default function Header({
         {/* Logo and Brand */}
         <div 
           onClick={() => {
-            setActiveTab('directory');
+            setActiveTab('home');
             setIsMobileMenuOpen(false);
           }} 
           className="flex cursor-pointer items-center gap-2.5 group"
