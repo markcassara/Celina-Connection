@@ -1284,7 +1284,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     ].join("\n"));
   });
 
-  app.get("/sitemap.xml", async (_req, res) => {
+  app.get(["/sitemap.xml", "/api/sitemap.xml"], async (_req, res) => {
     const businesses = await repository.listBusinesses();
     type SitemapPage = { loc: string; priority: string; changefreq: string; lastmod?: string };
     const staticPages: SitemapPage[] = [
