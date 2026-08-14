@@ -5,7 +5,7 @@ import Stripe from "stripe";
 import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createRepository } from "./database.js";
-import { CATEGORY_LANDING_PAGES, categoryLandingForSlug } from "../src/lib/categoryRoutes.ts";
+import { CATEGORY_LANDING_PAGES, categoryLandingForSlug } from "../src/lib/categoryRoutes.js";
 import {
   DEFAULT_DESCRIPTION,
   DEFAULT_SOCIAL_IMAGE,
@@ -15,7 +15,7 @@ import {
   SITE_URL,
   isPublicPageKey,
   publicPagePath,
-} from "../src/lib/seoMetadata.ts";
+} from "../src/lib/seoMetadata.js";
 
 dotenv.config({ path: [".env.local", ".env"] });
 
