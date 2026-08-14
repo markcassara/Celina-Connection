@@ -5,6 +5,11 @@ Celina Connection is a Vite + React directory site with server-side API endpoint
 - Stripe Checkout session creation
 - Google Maps client-side embeds
 
+## Source of truth
+
+Use `/Users/markcassara/src/Celina-Connection` as the only active local project folder.
+Older local copies were moved to `/Users/markcassara/Archive/obsolete-celina-connection-2026-08-14` to prevent accidental edits or deployments from stale builds.
+
 ## Local development
 
 ```bash
