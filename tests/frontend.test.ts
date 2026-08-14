@@ -8,6 +8,7 @@ import { CATEGORIES } from '../src/data/mockBusinesses.ts';
 import { getDesktopHeaderTabs, getMobileHeaderTabs, getHeaderTabHref, isHeaderTabActive } from '../src/components/Header.tsx';
 import DashboardView, { getDashboardSectionFromHash, getAdminTabFromDashboardSection, shouldFocusAdminListings, isHiddenFromAdminListings } from '../src/components/DashboardView.tsx';
 import DirectoryView from '../src/components/DirectoryView.tsx';
+import PricingView from '../src/components/PricingView.tsx';
 
 test('listing category choices include generic professional service categories', () => {
   for (const category of [
@@ -27,7 +28,7 @@ test('listing category choices include generic professional service categories',
 test('logged-in owners see an owner-focused desktop menu instead of the public menu', () => {
   assert.deepEqual(
     getDesktopHeaderTabs({ isLoggedIn: false, role: undefined }).map((tab) => tab.label),
-    ['Home', 'Explore Directory', 'Local Events', 'Membership Tiers'],
+    ['Home', 'Directory', 'Local Events', 'Pricing'],
   );
 
   assert.deepEqual(
@@ -70,18 +71,18 @@ test('logged-in admins get admin-focused navigation without owner-only dead-end 
   const desktopTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' });
   assert.deepEqual(
     desktopTabs.map((tab) => tab.label),
-    ['Admin Dashboard', 'Manage Listings', 'Bug Reports', 'Petition Signatures', 'View Directory'],
+    ['Listings', 'Petition', 'Bugs', 'Directory'],
   );
   assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
   assert.deepEqual(
     desktopTabs.map((tab) => tab.dashboardSection ?? null),
-    [null, 'profile', 'admin-bugs', 'admin-petition', null],
+    ['admin-listings', 'admin-petition', 'admin-bugs', null],
   );
 
   const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
   assert.deepEqual(
     mobileTabs.map((tab) => tab.label),
-    ['Dashboard', 'Manage', 'Bugs', 'Petition', 'Directory'],
+    ['Listings', 'Petition', 'Bugs', 'Directory'],
   );
   assert.equal(mobileTabs.some((tab) => tab.label === 'Metrics'), false);
 });
@@ -91,27 +92,27 @@ test('dashboard navigation highlights only the selected dashboard section', () =
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '')),
-    [true, false, false, false, false],
+    [true, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
-    [false, true, false, false, false],
+    [false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-reviews')),
-    [false, false, false, false, false],
+    [false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
-    [false, false, false, false, false],
+    [true, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'directory', '#dashboard-admin-listings')),
-    [false, false, false, false, true],
+    [false, false, false, true],
   );
 });
 
@@ -150,21 +151,20 @@ test('header tabs expose real hrefs including dashboard section links', () => {
   assert.deepEqual(
     adminTabs.map((tab) => getHeaderTabHref(tab)),
     [
-      '/dashboard',
-      '/dashboard#dashboard-profile',
-      '/dashboard#dashboard-admin-bugs',
+      '/dashboard#dashboard-admin-listings',
       '/dashboard#dashboard-admin-petition',
+      '/dashboard#dashboard-admin-bugs',
       '/directory',
     ],
   );
 });
 
-test('admin dashboard menu opens the admin workspace listings manager instead of the owner profile editor', () => {
+test('admin listings menu opens the admin workspace listings manager instead of the owner profile editor', () => {
   const adminDashboard = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' })[0];
 
-  assert.equal(adminDashboard.id, 'admin-dashboard');
-  assert.equal(adminDashboard.dashboardSection, undefined);
-  assert.equal(getHeaderTabHref(adminDashboard), '/dashboard');
+  assert.equal(adminDashboard.id, 'admin-listings');
+  assert.equal(adminDashboard.dashboardSection, 'admin-listings');
+  assert.equal(getHeaderTabHref(adminDashboard), '/dashboard#dashboard-admin-listings');
   assert.equal(getDashboardSectionFromHash('', 'admin'), 'admin-listings');
   assert.equal(getAdminTabFromDashboardSection(getDashboardSectionFromHash('', 'admin')), 'listings');
 });
@@ -532,6 +532,85 @@ test('directory search renders a blended on-page AI chat box instead of a separa
   assert.doesNotMatch(html, /ai-chat-fab/);
 });
 
+test('directory page does not duplicate the home featured partners spotlight', () => {
+  const html = renderToString(
+    React.createElement(DirectoryView, {
+      businesses: [{
+        id: 'test-bakery',
+        name: 'Test Bakery',
+        slug: 'test-bakery',
+        category: 'Dining',
+        description: 'A local bakery used to prove featured spotlight is home-only.',
+        phone: '(555) 123-4567',
+        email: 'owner@testbakery.com',
+        address: '1 Celina Square',
+        website: 'https://example.com',
+        hours: '9 AM - 5 PM',
+        tier: 'premium',
+        featured: true,
+        images: [],
+        reviews: [],
+        viewsCount: 0,
+        isUnclaimed: false,
+        ownerId: 'owner-test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+      onAddReview: () => undefined,
+      selectedBusiness: null,
+      onSelectBusiness: () => undefined,
+      onCloseDetail: () => undefined,
+      onUpgradePrompt: () => undefined,
+      onClaimBusiness: () => undefined,
+      isAiEnabled: true,
+      serverAiAvailable: true,
+      setActiveTab: () => undefined,
+    }),
+  );
+
+  assert.doesNotMatch(html, /Featured Partners Spotlight/);
+});
+
+test('directory category URLs render a category-specific intro and selected filter', () => {
+  const html = renderToString(
+    React.createElement(DirectoryView, {
+      businesses: [{
+        id: 'test-bakery',
+        name: 'Test Bakery',
+        slug: 'test-bakery',
+        category: 'Dining',
+        description: 'A local bakery used to prove category landing content renders.',
+        phone: '(555) 123-4567',
+        email: 'owner@testbakery.com',
+        address: '1 Celina Square',
+        website: 'https://example.com',
+        hours: '9 AM - 5 PM',
+        tier: 'basic',
+        images: [],
+        reviews: [],
+        viewsCount: 0,
+        isUnclaimed: false,
+        ownerId: 'owner-test',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+      onAddReview: () => undefined,
+      selectedBusiness: null,
+      onSelectBusiness: () => undefined,
+      onCloseDetail: () => undefined,
+      onUpgradePrompt: () => undefined,
+      onClaimBusiness: () => undefined,
+      isAiEnabled: true,
+      serverAiAvailable: true,
+      setActiveTab: () => undefined,
+      initialCategory: 'Dining',
+    }),
+  );
+
+  assert.match(html, /directory-category-intro/);
+  assert.match(html, /Celina Restaurants &amp; Dining/);
+  assert.match(html, /Browse Celina restaurants, bakeries, coffee shops/);
+  assert.match(html, /Showing <span class="font-bold text-slate-900">1<\/span>/);
+});
+
 test('directory inline AI chat can collapse and formats markdown-like responses into cleaner text', () => {
   const source = fs.readFileSync(new URL('../src/components/DirectoryView.tsx', import.meta.url), 'utf8');
 
@@ -586,7 +665,48 @@ test('home mode keeps category browse near the fold but removes the full listing
 
   assert.match(html, /Browse by Category/);
   assert.match(html, /home-platform-story/);
+  assert.match(html, /home-directory-faq/);
+  assert.match(html, /Quick answers about Celina Connection/);
+  assert.match(html, /Where can I find local businesses in Celina, Texas\?/);
   assert.match(html, /Browse the full directory/);
   assert.doesNotMatch(html, /id="directory-grid"/);
   assert.doesNotMatch(html, /Showing <span/);
+});
+
+test('pricing page renders business-owner FAQ content for answer engines', () => {
+  const html = renderToString(
+    React.createElement(PricingView, {
+      currentUser: {
+        id: '',
+        email: '',
+        businessName: '',
+        tier: 'free',
+        isLoggedIn: false,
+      },
+      onSelectTier: () => undefined,
+      onOpenLogin: () => undefined,
+    } as any),
+  );
+
+  assert.match(html, /<h1/);
+  assert.match(html, /pricing-faq/);
+  assert.match(html, /Choosing a Celina Connection listing plan/);
+  assert.match(html, /Which paid plan adds a website link and hours\?/);
+});
+
+test('SEO head defines route-specific canonicals, noindex private routes, and social-safe business images', () => {
+  const source = fs.readFileSync(new URL('../src/components/SeoHead.tsx', import.meta.url), 'utf8');
+  const appSource = fs.readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+  const metadataSource = fs.readFileSync(new URL('../src/lib/seoMetadata.ts', import.meta.url), 'utf8');
+
+  assert.match(metadataSource, /path: '\/directory'/);
+  assert.match(metadataSource, /Celina TX Events \| Local Community Calendar/);
+  assert.match(source, /activeTab === 'dashboard' \|\| activeTab === 'owner-login' \|\| activeTab === 'admin-login'/);
+  assert.match(source, /api\/social-image\/business/);
+  assert.match(source, /og:image:secure_url/);
+  assert.match(source, /PRICING_FAQ/);
+  assert.match(metadataSource, /Which paid plan adds a website link and hours/);
+  assert.match(source, /categoryLandingForName/);
+  assert.match(appSource, /directoryCategorySlug/);
+  assert.match(appSource, /\/directory\/\$\{categoryLanding\.slug\}/);
 });

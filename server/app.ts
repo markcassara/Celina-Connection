@@ -5,6 +5,17 @@ import Stripe from "stripe";
 import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createRepository } from "./database.js";
+import { CATEGORY_LANDING_PAGES, categoryLandingForSlug } from "../src/lib/categoryRoutes.ts";
+import {
+  DEFAULT_DESCRIPTION,
+  DEFAULT_SOCIAL_IMAGE,
+  DIRECTORY_FAQ,
+  PUBLIC_PAGE_META,
+  PRICING_FAQ,
+  SITE_URL,
+  isPublicPageKey,
+  publicPagePath,
+} from "../src/lib/seoMetadata.ts";
 
 dotenv.config({ path: [".env.local", ".env"] });
 
@@ -150,7 +161,7 @@ export function createApp(options: { dbPath?: string } = {}) {
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
     };
   };
-  const verificationUrlFor = (token: string) => `${(process.env.PUBLIC_SITE_URL || "https://www.celinaconnection.com").replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
+  const verificationUrlFor = (token: string) => `${(process.env.PUBLIC_SITE_URL || SITE_URL).replace(/\/$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
   type TransactionalEmailMessage = { subject: string; html: string; text: string };
   const ownerVerificationEmail = (businessName: string, verificationUrl: string): TransactionalEmailMessage => ({
     subject: "Verify your Celina Connection listing",
@@ -530,13 +541,204 @@ export function createApp(options: { dbPath?: string } = {}) {
     return next();
   };
 
-  const siteUrl = "https://www.celinaconnection.com";
+  const siteUrl = SITE_URL;
   const xmlEscape = (value: string) => value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
+  const metaEscape = (value = "") => xmlEscape(String(value));
+  const safeJson = (value: unknown) => JSON.stringify(value).replace(/</g, "\\u003c");
+  const businessSlug = (business: { slug?: string; id?: string }) => business.slug || business.id || "";
+  const findBusinessForSlug = async (slug: string) => {
+    const decodedSlug = decodeURIComponent(slug || "").toLowerCase();
+    const businesses = await repository.listBusinesses();
+    return businesses.find((business) => {
+      const slugOrId = businessSlug(business).toLowerCase();
+      return slugOrId === decodedSlug || business.id.toLowerCase() === decodedSlug;
+    }) || null;
+  };
+  const firstBusinessImage = (business: Awaited<ReturnType<typeof findBusinessForSlug>>) => {
+    if (!business) return "";
+    return business.images?.[0] || business.logoUrl || "";
+  };
+  const isPublicImageUrl = (value = "") => /^https?:\/\//i.test(value);
+  const isDataImageUrl = (value = "") => /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,/i.test(value);
+  const businessSocialImageUrl = (business: NonNullable<Awaited<ReturnType<typeof findBusinessForSlug>>>) => {
+    const image = firstBusinessImage(business);
+    if (isPublicImageUrl(image)) return image;
+    if (isDataImageUrl(image)) return `${siteUrl}/api/social-image/business/${encodeURIComponent(businessSlug(business))}`;
+    return DEFAULT_SOCIAL_IMAGE;
+  };
+  const buildDirectoryItemListSchema = (businesses: Awaited<ReturnType<typeof repository.listBusinesses>>) => ({
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    "@id": `${siteUrl}/#business-directory`,
+    name: "Celina TX Local Business Directory",
+    description: `Browse ${businesses.length || "local"} Celina, Texas businesses by category, reviews, and location.`,
+    numberOfItems: businesses.length,
+    itemListOrder: "https://schema.org/ItemListOrderAscending",
+    itemListElement: businesses.slice(0, 25).map((business, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: business.name,
+      url: `${siteUrl}/business/${businessSlug(business)}`,
+    })),
+  });
+  const buildCategoryItemListSchema = (
+    categoryName: string,
+    url: string,
+    businesses: Awaited<ReturnType<typeof repository.listBusinesses>>,
+  ) => {
+    const categoryBusinesses = businesses.filter((business) => business.category === categoryName);
+    return {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "@id": `${url}#business-list`,
+      name: `${categoryName} businesses in Celina, TX`,
+      description: `Browse ${categoryBusinesses.length || "local"} ${categoryName.toLowerCase()} businesses in Celina, Texas.`,
+      numberOfItems: categoryBusinesses.length,
+      itemListOrder: "https://schema.org/ItemListOrderAscending",
+      itemListElement: categoryBusinesses.slice(0, 25).map((business, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: business.name,
+        url: `${siteUrl}/business/${businessSlug(business)}`,
+      })),
+    };
+  };
+  const buildBreadcrumbSchema = (name: string, url: string) => ({
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: siteUrl,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name,
+        item: url,
+      },
+    ],
+  });
+  const buildDirectoryFaqSchema = (url: string) => ({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "@id": `${url}#faq`,
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "Where can I find local businesses in Celina, Texas?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: DIRECTORY_FAQ[0].answer,
+        },
+      },
+      {
+        "@type": "Question",
+        name: "How can a Celina business claim a listing?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: DIRECTORY_FAQ[1].answer,
+        },
+      },
+      {
+        "@type": "Question",
+        name: "What types of businesses are listed?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: DIRECTORY_FAQ[2].answer,
+        },
+      },
+    ],
+  });
+  const buildPricingFaqSchema = (url: string) => ({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "@id": `${url}#faq`,
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "Is the free launch listing really free?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: PRICING_FAQ[0].answer,
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Which paid plan adds a website link and hours?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: PRICING_FAQ[1].answer,
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Which plan is best for more visibility?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: PRICING_FAQ[2].answer,
+        },
+      },
+    ],
+  });
+  const renderShareHtml = ({
+    title,
+    description,
+    canonical,
+    image,
+    ogType = "website",
+    h1,
+    intro,
+    schema,
+    noindex = false,
+  }: {
+    title: string;
+    description: string;
+    canonical: string;
+    image: string;
+    ogType?: string;
+    h1: string;
+    intro: string;
+    schema: unknown;
+    noindex?: boolean;
+  }) => `<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${metaEscape(title)}</title>
+    <meta name="description" content="${metaEscape(description)}" />
+    <meta name="robots" content="${noindex ? "noindex,follow" : "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"}" />
+    <link rel="canonical" href="${metaEscape(canonical)}" />
+    <meta property="og:type" content="${metaEscape(ogType)}" />
+    <meta property="og:site_name" content="Celina Connection" />
+    <meta property="og:title" content="${metaEscape(title)}" />
+    <meta property="og:description" content="${metaEscape(description)}" />
+    <meta property="og:url" content="${metaEscape(canonical)}" />
+    <meta property="og:image" content="${metaEscape(image)}" />
+    <meta property="og:image:secure_url" content="${metaEscape(image)}" />
+    <meta property="og:locale" content="en_US" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${metaEscape(title)}" />
+    <meta name="twitter:description" content="${metaEscape(description)}" />
+    <meta name="twitter:image" content="${metaEscape(image)}" />
+    <script type="application/ld+json">${safeJson(schema)}</script>
+  </head>
+  <body>
+    <main>
+      <h1>${metaEscape(h1)}</h1>
+      <p>${metaEscape(intro)}</p>
+      <p><a href="${metaEscape(canonical)}">Open this page on Celina Connection</a></p>
+    </main>
+  </body>
+</html>`;
 
   app.get("/robots.txt", (_req, res) => {
     res.type("text/plain").send([
@@ -553,11 +755,19 @@ export function createApp(options: { dbPath?: string } = {}) {
     type SitemapPage = { loc: string; priority: string; changefreq: string; lastmod?: string };
     const staticPages: SitemapPage[] = [
       { loc: siteUrl, priority: "1.0", changefreq: "daily" },
+      { loc: `${siteUrl}/directory`, priority: "0.9", changefreq: "daily" },
+      { loc: `${siteUrl}/events`, priority: "0.7", changefreq: "weekly" },
       { loc: `${siteUrl}/pricing`, priority: "0.8", changefreq: "weekly" },
       { loc: `${siteUrl}/legacyhillspetition`, priority: "0.8", changefreq: "weekly" },
-      { loc: `${siteUrl}/dashboard`, priority: "0.7", changefreq: "weekly" },
       { loc: `${siteUrl}/launch`, priority: "0.5", changefreq: "monthly" },
     ];
+    const categoryPages: SitemapPage[] = CATEGORY_LANDING_PAGES
+      .filter((category) => businesses.some((business) => business.category === category.name))
+      .map((category) => ({
+        loc: `${siteUrl}/directory/${category.slug}`,
+        priority: "0.8",
+        changefreq: "weekly",
+      }));
     const businessPages = businesses
       .filter((business) => business.slug || business.id)
       .map((business) => ({
@@ -567,9 +777,215 @@ export function createApp(options: { dbPath?: string } = {}) {
         lastmod: business.createdAt,
       }));
 
-    const urls = [...staticPages, ...businessPages].map((page) => `  <url>\n    <loc>${xmlEscape(page.loc)}</loc>\n    ${page.lastmod ? `<lastmod>${xmlEscape(new Date(page.lastmod).toISOString())}</lastmod>\n    ` : ""}<changefreq>${page.changefreq}</changefreq>\n    <priority>${page.priority}</priority>\n  </url>`).join("\n");
+    const urls = [...staticPages, ...categoryPages, ...businessPages].map((page) => `  <url>\n    <loc>${xmlEscape(page.loc)}</loc>\n    ${page.lastmod ? `<lastmod>${xmlEscape(new Date(page.lastmod).toISOString())}</lastmod>\n    ` : ""}<changefreq>${page.changefreq}</changefreq>\n    <priority>${page.priority}</priority>\n  </url>`).join("\n");
 
     res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+  });
+
+  app.get("/api/share/page/:page", async (req, res) => {
+    const page = req.params.page.toLowerCase();
+    if (!isPublicPageKey(page)) {
+      return res.status(404).json({ error: "Share page not found." });
+    }
+
+    const definition = PUBLIC_PAGE_META[page];
+    const canonical = publicPagePath(page);
+    const businesses = await repository.listBusinesses();
+    const schema: unknown[] = [
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "@id": `${siteUrl}/#website`,
+        name: "Celina Connection",
+        url: siteUrl,
+        description: DEFAULT_DESCRIPTION,
+        inLanguage: "en-US",
+        potentialAction: {
+          "@type": "SearchAction",
+          target: `${siteUrl}/directory?search={search_term_string}`,
+          "query-input": "required name=search_term_string",
+        },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": `${siteUrl}/#organization`,
+        name: "Celina Connection",
+        url: siteUrl,
+        logo: DEFAULT_SOCIAL_IMAGE,
+        areaServed: {
+          "@type": "City",
+          name: "Celina",
+          addressRegion: "TX",
+          addressCountry: "US",
+        },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": definition.schemaType,
+        "@id": `${canonical}#webpage`,
+        name: definition.h1,
+        headline: definition.title,
+        description: definition.description,
+        url: canonical,
+        inLanguage: "en-US",
+        isPartOf: { "@id": `${siteUrl}/#website` },
+        publisher: { "@id": `${siteUrl}/#organization` },
+      },
+    ];
+
+    if (page !== "home") {
+      schema.push(buildBreadcrumbSchema(definition.h1, canonical));
+    }
+
+    if (page === "home" || page === "directory") {
+      schema.push(buildDirectoryItemListSchema(businesses));
+      schema.push(buildDirectoryFaqSchema(canonical));
+    }
+
+    if (page === "pricing") {
+      schema.push(buildPricingFaqSchema(canonical));
+    }
+
+    res.setHeader("cache-control", "public, max-age=0, s-maxage=3600");
+    res.type("html").send(renderShareHtml({
+      title: definition.title,
+      description: definition.description,
+      canonical,
+      image: DEFAULT_SOCIAL_IMAGE,
+      h1: definition.h1,
+      intro: definition.intro,
+      schema,
+    }));
+  });
+
+  app.get("/api/share/category/:slug", async (req, res) => {
+    const category = categoryLandingForSlug(req.params.slug);
+    if (!category) {
+      return res.redirect(302, `${siteUrl}/directory`);
+    }
+
+    const businesses = await repository.listBusinesses();
+    const categoryBusinesses = businesses.filter((business) => business.category === category.name);
+    const canonical = `${siteUrl}/directory/${category.slug}`;
+    const schema: unknown[] = [
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "@id": `${siteUrl}/#website`,
+        name: "Celina Connection",
+        url: siteUrl,
+        description: DEFAULT_DESCRIPTION,
+        inLanguage: "en-US",
+        potentialAction: {
+          "@type": "SearchAction",
+          target: `${siteUrl}/directory?search={search_term_string}`,
+          "query-input": "required name=search_term_string",
+        },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "@id": `${canonical}#webpage`,
+        name: category.title,
+        headline: category.title,
+        description: category.description,
+        url: canonical,
+        inLanguage: "en-US",
+        isPartOf: { "@id": `${siteUrl}/#website` },
+      },
+      buildBreadcrumbSchema(category.name, canonical),
+      buildCategoryItemListSchema(category.name, canonical, businesses),
+    ];
+    const intro = categoryBusinesses.length
+      ? `${category.intro} This category currently includes ${categoryBusinesses.length} local ${categoryBusinesses.length === 1 ? "listing" : "listings"}.`
+      : category.intro;
+
+    res.setHeader("cache-control", "public, max-age=0, s-maxage=3600");
+    res.type("html").send(renderShareHtml({
+      title: category.title,
+      description: category.description,
+      canonical,
+      image: DEFAULT_SOCIAL_IMAGE,
+      h1: category.title.replace(" | Celina Connection", ""),
+      intro,
+      schema,
+    }));
+  });
+
+  app.get("/api/social-image/business/:slug", async (req, res) => {
+    const business = await findBusinessForSlug(req.params.slug);
+    const image = firstBusinessImage(business);
+
+    if (isPublicImageUrl(image)) {
+      return res.redirect(302, image);
+    }
+
+    if (!isDataImageUrl(image)) {
+      return res.redirect(302, DEFAULT_SOCIAL_IMAGE);
+    }
+
+    const match = image.match(/^data:image\/(png|jpeg|jpg|webp|gif);base64,(.+)$/i);
+    if (!match) {
+      return res.redirect(302, DEFAULT_SOCIAL_IMAGE);
+    }
+
+    const imageType = match[1].toLowerCase() === "jpg" ? "jpeg" : match[1].toLowerCase();
+    const bytes = Buffer.from(match[2], "base64");
+    res.setHeader("cache-control", "public, max-age=3600, s-maxage=86400");
+    res.type(`image/${imageType}`).send(bytes);
+  });
+
+  app.get("/api/share/business/:slug", async (req, res) => {
+    const business = await findBusinessForSlug(req.params.slug);
+    if (!business) {
+      return res.redirect(302, siteUrl);
+    }
+
+    const slug = businessSlug(business);
+    const canonical = `${siteUrl}/business/${encodeURIComponent(slug)}`;
+    const title = `${business.name} | Celina Connection`;
+    const description = `${business.description || `Take a look at ${business.name} on Celina Connection.`}`.slice(0, 280);
+    const image = businessSocialImageUrl(business);
+    const schema = {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "@id": `${canonical}#localbusiness`,
+      name: business.name,
+      description: business.description,
+      url: canonical,
+      telephone: business.phone,
+      email: business.email,
+      image,
+      address: business.address
+        ? {
+            "@type": "PostalAddress",
+            streetAddress: business.address.replace(", Celina, TX 75009", "").replace(", TX 75009", ""),
+            addressLocality: "Celina",
+            addressRegion: "TX",
+            postalCode: "75009",
+            addressCountry: "US",
+          }
+        : {
+            "@type": "PostalAddress",
+            addressLocality: "Celina",
+            addressRegion: "TX",
+            postalCode: "75009",
+            addressCountry: "US",
+          },
+    };
+
+    res.setHeader("cache-control", "public, max-age=0, s-maxage=3600");
+    res.type("html").send(renderShareHtml({
+      title,
+      description,
+      canonical,
+      image,
+      ogType: "business.business",
+      h1: business.name,
+      intro: description,
+      schema,
+    }));
   });
 
   app.get("/api/payment-config", (_req, res) => {

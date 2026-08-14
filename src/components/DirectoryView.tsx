@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Business, Review, Tier } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
+import { categoryLandingForName } from '../lib/categoryRoutes';
 import FeaturedCarousel from './FeaturedCarousel';
 import MapModal from './MapModal';
 import {
@@ -41,6 +42,8 @@ interface DirectoryViewProps {
   serverAiAvailable: boolean;
   setActiveTab?: (tab: string) => void;
   homeMode?: boolean;
+  initialCategory?: string;
+  onCategoryNavigate?: (category: string) => void;
 }
 
 const INLINE_AI_AUTO_COLLAPSE_MS = 30000;
@@ -57,9 +60,11 @@ export default function DirectoryView({
   serverAiAvailable,
   setActiveTab,
   homeMode = false,
+  initialCategory = 'All',
+  onCategoryNavigate,
 }: DirectoryViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [selectedTierFilter, setSelectedTierFilter] = useState<'all' | 'premium' | 'pro'>('all');
   const [selectedMapBusiness, setSelectedMapBusiness] = useState<Business | null>(null);
 
@@ -78,6 +83,13 @@ export default function DirectoryView({
   ]);
   const [isInlineAiExpanded, setIsInlineAiExpanded] = useState(false);
   const inlineAiEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSelectedCategory(initialCategory);
+    setIsAiFilterActive(false);
+    setAiSearchInsights(null);
+    setAiMatchingIds(null);
+  }, [initialCategory]);
 
   useEffect(() => {
     if (!isInlineAiExpanded || isAiSearching) return;
@@ -284,7 +296,16 @@ export default function DirectoryView({
     }
   };
 
+  const handleCategorySelect = (category: string) => {
+    setSelectedCategory(category);
+    setIsAiFilterActive(false);
+    setAiSearchInsights(null);
+    setAiMatchingIds(null);
+    onCategoryNavigate?.(category);
+  };
+
   // Filter businesses
+  const selectedCategoryLanding = categoryLandingForName(selectedCategory);
   let unclaimedCount = 0;
   const filteredBusinesses = businesses.filter((b) => {
     if (isAiFilterActive && aiMatchingIds) {
@@ -411,8 +432,8 @@ export default function DirectoryView({
         </div>
       </div>
 
-      {/* Featured Businesses Spotlight */}
-      {businesses.some((b) => b.tier === 'premium' || b.tier === 'pro' || b.featured) && (
+      {/* Featured Businesses Spotlight: home-only to avoid duplicating the front page on the directory tab */}
+      {homeMode && businesses.some((b) => b.tier === 'premium' || b.tier === 'pro' || b.featured) && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-bold text-slate-900 flex items-center gap-1.5">
@@ -437,14 +458,14 @@ export default function DirectoryView({
               <MapPin className="w-3.5 h-3.5 text-orange-400" /> Celina, Texas
             </span>
           </motion.div>
-          <motion.h2
+          <motion.h1
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
             className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight"
           >
             Connect with the Best of <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">Celina</span>
-          </motion.h2>
+          </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -603,7 +624,7 @@ export default function DirectoryView({
             return (
               <button
                 key={cat}
-                onClick={() => setSelectedCategory(cat)}
+              onClick={() => handleCategorySelect(cat)}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
                   isSelected
                     ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-100'
@@ -713,11 +734,53 @@ export default function DirectoryView({
               </div>
             ))}
           </div>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm" id="home-directory-faq" aria-labelledby="home-directory-faq-heading">
+            <div className="max-w-2xl space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-700">Celina local guide</p>
+              <h2 id="home-directory-faq-heading" className="font-display text-2xl font-black tracking-tight text-slate-950">
+                Quick answers about Celina Connection
+              </h2>
+            </div>
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  question: 'Where can I find local businesses in Celina, Texas?',
+                  answer: 'Use Celina Connection to browse restaurants, shops, service providers, health and beauty businesses, activities, and featured community businesses in Celina, TX.',
+                },
+                {
+                  question: 'How can a Celina business claim a listing?',
+                  answer: 'Business owners can claim a free listing, update business details, add photos, and choose paid visibility plans when they want more placement.',
+                },
+                {
+                  question: 'What types of businesses are listed?',
+                  answer: 'The directory includes dining, shopping, boutiques, home services, professional services, financial services, legal services, real estate, wellness, and community categories.',
+                },
+              ].map((item) => (
+                <div key={item.question} className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                  <h3 className="text-sm font-black text-slate-950">{item.question}</h3>
+                  <p className="mt-2 text-xs font-medium leading-relaxed text-slate-600">{item.answer}</p>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       ) : (
         <>
           {/* Primary Directory List Grid */}
           <div className="space-y-4">
+            {selectedCategoryLanding && (
+              <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm" id="directory-category-intro" aria-labelledby="directory-category-heading">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-700">Celina category guide</p>
+                <h2 id="directory-category-heading" className="mt-2 font-display text-2xl font-black tracking-tight text-slate-950">
+                  {selectedCategoryLanding.title.replace(' | Celina Connection', '')}
+                </h2>
+                <p className="mt-3 max-w-3xl text-sm font-medium leading-relaxed text-slate-600">
+                  {selectedCategoryLanding.intro}
+                </p>
+              </section>
+            )}
+
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <p className="text-sm font-medium text-slate-500">
                 Showing <span className="font-bold text-slate-900">{filteredBusinesses.length}</span>{' '}

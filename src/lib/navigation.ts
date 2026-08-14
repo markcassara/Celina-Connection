@@ -7,6 +7,7 @@ export function isAdminDashboardHash(hash?: string) {
 export function activeTabFromPath(pathname: string) {
   const path = pathname.replace(/^\//, '');
   if (path.startsWith('business/')) return 'directory';
+  if (path.startsWith('directory/')) return 'directory';
   if (path === 'owner-login' || path === 'admin-login') return path;
   return path || 'home';
 }
