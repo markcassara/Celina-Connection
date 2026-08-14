@@ -3,6 +3,7 @@ import { Business } from '../types';
 import { categoryLandingForName } from '../lib/categoryRoutes';
 import {
   DEFAULT_DESCRIPTION,
+  BRAND_LOGO_IMAGE,
   DEFAULT_SOCIAL_IMAGE,
   DIRECTORY_FAQ,
   PAGE_META,
@@ -143,7 +144,7 @@ function buildPageSchema(activeTab: string, businessCount: number, canonical: st
       '@id': `${SITE_URL}/#organization`,
       name: SITE_NAME,
       url: SITE_URL,
-      logo: DEFAULT_SOCIAL_IMAGE,
+      logo: BRAND_LOGO_IMAGE,
       areaServed: {
         '@type': 'City',
         name: 'Celina',

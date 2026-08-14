@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserProfile, Tier } from '../types';
-import { MapPin, Building2, LogIn, LogOut, Award, Star, Sparkles, Menu, X } from 'lucide-react';
+import { MapPin, LogIn, LogOut, Award, Star, Sparkles, Menu, X } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface HeaderProps {
@@ -136,19 +136,19 @@ export default function Header({
     switch (tier) {
       case 'premium':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-slate-950 shadow-sm border border-amber-400">
-            <Star className="w-3 h-3 fill-slate-950" /> Premium Partner
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#f2c35d] text-[#173542] shadow-sm border border-[#d28f33]/40">
+            <Star className="w-3 h-3 fill-[#173542]" /> Premium Partner
           </span>
         );
       case 'pro':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#f7ead4] text-[#173542] border border-[#d28f33]/30">
             <Award className="w-3 h-3" /> Pro Partner
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#e4eee9] text-[#66716d] border border-[rgba(23,53,66,0.12)]">
             Basic Member
           </span>
         );
@@ -186,7 +186,7 @@ export default function Header({
   const mobileTabs = getMobileHeaderTabs(currentUser);
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-100 bg-white/90 backdrop-blur-xl shadow-sm">
+    <header className="sticky top-0 z-40 w-full border-b border-[rgba(23,53,66,0.16)] bg-white/85 backdrop-blur-xl shadow-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo and Brand */}
         <div 
@@ -197,21 +197,25 @@ export default function Header({
           className="flex min-w-0 cursor-pointer items-center gap-2.5 group"
           id="brand-logo"
         >
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-100 group-hover:scale-105 transition-transform">
-            <Building2 className="h-5 w-5" />
+          <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-white shadow-md shadow-[#173542]/15 ring-1 ring-[rgba(23,53,66,0.12)] group-hover:scale-105 transition-transform overflow-hidden">
+            <img
+              src="/assets/brand/cc-logo.png"
+              alt="Celina Connection"
+              className="h-full w-full object-contain"
+            />
           </div>
           <div className="min-w-0">
-            <p className="font-display text-lg font-extrabold tracking-tight text-slate-950 flex items-center gap-1 whitespace-nowrap">
-              Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">Connection</span>
+            <p className="font-display text-xl font-bold text-[#173542] flex items-center gap-1 whitespace-nowrap">
+              Celina <span className="text-[#1f6473]">Connection</span>
             </p>
-            <p className="hidden sm:flex text-[10px] font-medium tracking-wide text-slate-600 uppercase -mt-0.5 items-center gap-0.5 whitespace-nowrap">
-              <MapPin className="w-2.5 h-2.5 text-orange-700" /> Texas Business Directory
+            <p className="hidden sm:flex text-[10px] font-bold tracking-wide text-[#66716d] uppercase -mt-0.5 items-center gap-0.5 whitespace-nowrap">
+              <MapPin className="w-2.5 h-2.5 text-[#d28f33]" /> Local businesses, neighbor first
             </p>
           </div>
         </div>
 
         {/* Desktop Navigation Tabs */}
-        <nav className="hidden xl:flex items-center gap-0.5 rounded-full bg-slate-100/75 p-1 ring-1 ring-slate-200/80" aria-label="Primary navigation">
+        <nav className="hidden xl:flex items-center gap-0.5 rounded-lg bg-[#e4eee9]/75 p-1 ring-1 ring-[rgba(23,53,66,0.16)]" aria-label="Primary navigation">
           {desktopTabs.map((tab) => {
             const isActive = isHeaderTabActive(tab, activeTab, currentHash);
             return (
@@ -224,17 +228,17 @@ export default function Header({
                   event.preventDefault();
                   handleTabClick(tab);
                 }}
-                className={`relative rounded-full px-3.5 py-2 text-[12px] font-semibold tracking-tight transition-colors ${
+                className={`relative rounded-lg px-3.5 py-2 text-[12px] font-bold tracking-tight transition-colors ${
                   isActive 
-                    ? 'bg-white text-orange-700 shadow-sm ring-1 ring-orange-100' 
-                    : 'text-slate-600 hover:bg-white/80 hover:text-slate-950'
+                    ? 'bg-white text-[#1f6473] shadow-sm ring-1 ring-[rgba(23,53,66,0.12)]' 
+                    : 'text-[#66716d] hover:bg-white/80 hover:text-[#173542]'
                 }`}
               >
                 {tab.label}
                 {isActive && (
                   <motion.div
                     layoutId="active-tab-indicator"
-                    className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500"
+                    className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-gradient-to-r from-[#1f6473] to-[#d28f33]"
                     transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                   />
                 )}
@@ -247,10 +251,10 @@ export default function Header({
         <div className="flex items-center gap-3">
           {/* AI Toggle Switch */}
           {currentUser.isLoggedIn && currentUser.role === 'admin' && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-100 hover:bg-slate-100/80 transition-colors mr-1">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#e4eee9]/70 border border-[rgba(23,53,66,0.12)] hover:bg-[#e4eee9] transition-colors mr-1">
               <div className="flex items-center gap-1.5">
-                <Sparkles className={`w-3.5 h-3.5 transition-all duration-500 ${isAiEnabled ? 'text-orange-500 animate-pulse scale-110' : 'text-slate-400'}`} />
-                <span className="text-[11px] font-bold text-slate-600 hidden sm:inline">Celina AI</span>
+                <Sparkles className={`w-3.5 h-3.5 transition-all duration-500 ${isAiEnabled ? 'text-[#d28f33] animate-pulse scale-110' : 'text-[#66716d]'}`} />
+                <span className="text-[11px] font-bold text-[#66716d] hidden sm:inline">Celina AI</span>
               </div>
               <button
                 id="ai-toggle-btn"
@@ -273,7 +277,7 @@ export default function Header({
                 }}
                 disabled={isCheckingAiConfig}
                 className={`relative inline-flex h-4.5 w-8 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  isAiEnabled ? 'bg-gradient-to-r from-orange-500 to-amber-500' : 'bg-slate-200'
+                  isAiEnabled ? 'bg-gradient-to-r from-[#1f6473] to-[#d28f33]' : 'bg-slate-200'
                 }`}
                 title={serverAiAvailable ? "Toggle Celina Connection AI Assistant" : "AI is offline (needs GEMINI_API_KEY)"}
               >
@@ -289,7 +293,7 @@ export default function Header({
           {currentUser.isLoggedIn ? (
             <div className="flex items-center gap-3" id="user-profile-menu">
               <div className="hidden sm:flex flex-col items-end text-right">
-                <span className="text-xs font-semibold text-slate-950 truncate max-w-[150px]">
+                <span className="text-xs font-semibold text-[#173542] truncate max-w-[150px]">
                   {currentUser.businessName || 'My Business'}
                 </span>
                 <span className="mt-0.5">
@@ -299,7 +303,7 @@ export default function Header({
               <button
                 id="btn-signout"
                 onClick={handleSignOut}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[rgba(23,53,66,0.16)] text-xs font-medium text-[#66716d] hover:text-[#173542] hover:bg-[#e4eee9] transition-colors cursor-pointer"
                 title="Sign out of Dashboard"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -310,7 +314,7 @@ export default function Header({
             <button
               id="btn-signin-nav"
               onClick={onOpenLogin}
-              className="hidden xl:inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold bg-slate-950 text-white hover:bg-orange-600 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
+              className="hidden xl:inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-extrabold bg-[#173542] text-white hover:bg-[#1f6473] transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
               <span>Owners Login</span>
@@ -321,7 +325,7 @@ export default function Header({
             id="mobile-menu-toggle"
             type="button"
             onClick={() => setIsMobileMenuOpen((open) => !open)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-orange-700 xl:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[rgba(23,53,66,0.16)] bg-white text-[#173542] shadow-sm transition-colors hover:bg-[#e4eee9] hover:text-[#1f6473] xl:hidden"
             aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
             aria-expanded={isMobileMenuOpen}
             aria-controls="mobile-navigation-menu"
@@ -333,7 +337,7 @@ export default function Header({
 
       {/* Mobile hamburger navigation menu */}
       {isMobileMenuOpen && (
-        <div id="mobile-navigation-menu" className="xl:hidden border-t border-slate-100 bg-white px-4 py-4 shadow-lg">
+        <div id="mobile-navigation-menu" className="xl:hidden border-t border-[rgba(23,53,66,0.12)] bg-white px-4 py-4 shadow-lg">
           <nav className="flex flex-col gap-2" aria-label="Mobile navigation">
             {mobileTabs.map((tab) => {
               const isActive = isHeaderTabActive(tab, activeTab, currentHash);
@@ -346,12 +350,12 @@ export default function Header({
                     event.preventDefault();
                     handleTabClick(tab);
                   }}
-                  className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-bold transition-colors ${
-                    isActive ? 'bg-orange-100 text-orange-700 shadow-sm ring-1 ring-orange-100' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                  className={`flex items-center justify-between rounded-lg px-4 py-3 text-sm font-bold transition-colors ${
+                    isActive ? 'bg-[#e4eee9] text-[#1f6473] shadow-sm ring-1 ring-[rgba(23,53,66,0.12)]' : 'bg-slate-50 text-[#66716d] hover:bg-[#e4eee9] hover:text-[#173542]'
                   }`}
                 >
                   <span>{tab.label}</span>
-                  {isActive && <span className="h-2 w-2 rounded-full bg-orange-500" aria-hidden="true" />}
+                  {isActive && <span className="h-2 w-2 rounded-full bg-[#d28f33]" aria-hidden="true" />}
                 </a>
               );
             })}
@@ -363,7 +367,7 @@ export default function Header({
                   setIsMobileMenuOpen(false);
                   onOpenLogin();
                 }}
-                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all duration-300 hover:bg-orange-600 hover:shadow-md"
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#173542] px-4 py-3 text-sm font-bold text-white shadow-sm transition-all duration-300 hover:bg-[#1f6473] hover:shadow-md"
               >
                 <LogIn className="h-4 w-4" />
                 <span>Owners Login</span>

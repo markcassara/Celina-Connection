@@ -606,31 +606,31 @@ export default function App() {
 
   if (isGated) {
     return (
-      <div className="min-h-screen bg-slate-50/50 text-slate-900 flex flex-col font-sans selection:bg-orange-500 selection:text-white" id="celina-connect-gated-root">
+      <div className="min-h-screen bg-[#f7f1e4]/70 text-[#173542] flex flex-col font-sans selection:bg-[#d28f33] selection:text-white" id="celina-connect-gated-root">
         <SeoHead activeTab="launch" businessCount={businesses.length} />
         {/* Top Banner Accent */}
-        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400" />
+        <div className="h-1 bg-gradient-to-r from-[#173542] via-[#1f6473] to-[#d28f33]" />
 
         {/* Simplified Header */}
-        <header className="border-b border-slate-100 bg-white/95 backdrop-blur-md sticky top-0 z-50 py-4 px-6 md:px-12 shadow-xs">
+        <header className="border-b border-[rgba(23,53,66,0.16)] bg-white/90 backdrop-blur-md sticky top-0 z-50 py-4 px-6 md:px-12 shadow-xs">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center font-black font-display text-lg shadow-md shadow-orange-500/10">
-                C
+              <div className="h-10 w-10 rounded-lg bg-white flex items-center justify-center shadow-md shadow-[#173542]/10 ring-1 ring-[rgba(23,53,66,0.12)] overflow-hidden">
+                <img src="/assets/brand/cc-logo.png" alt="Celina Connection" className="h-full w-full object-contain" />
               </div>
               <div>
-                <h1 className="font-display font-black text-base tracking-tight leading-none text-slate-900">
-                  Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">Connection</span>
+                <h1 className="font-display font-bold text-base leading-none text-[#173542]">
+                  Celina <span className="text-[#1f6473]">Connection</span>
                 </h1>
-                <p className="text-[9px] font-bold tracking-widest text-slate-400 uppercase mt-1">
-                  Texas Business Hub
+                <p className="text-[9px] font-bold tracking-widest text-[#66716d] uppercase mt-1">
+                  Local businesses, neighbor first
                 </p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
-              <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+              <span className="h-2 w-2 rounded-full bg-[#d28f33] animate-pulse" />
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#66716d]">
                 Limited Early Access
               </span>
             </div>
@@ -681,7 +681,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans selection:bg-orange-500 selection:text-white" id="celina-connection-root">
+    <div className="min-h-screen bg-[#f7f1e4]/70 text-[#173542] flex flex-col font-sans selection:bg-[#d28f33] selection:text-white" id="celina-connection-root">
       <SeoHead
         activeTab={activeTab}
         selectedBusiness={selectedBusiness}
@@ -689,7 +689,7 @@ export default function App() {
         selectedCategory={activeTab === 'directory' ? selectedDirectoryCategory : undefined}
       />
       {/* Top Banner Accent */}
-      <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400" />
+      <div className="h-1 bg-gradient-to-r from-[#173542] via-[#1f6473] to-[#d28f33]" />
 
       {/* Main Header navigation */}
       <Header
@@ -877,37 +877,37 @@ export default function App() {
       </button>
 
       {/* Celina Connection Welcoming Footer */}
-      <footer className="border-t border-slate-200 bg-white py-12 text-slate-500 text-xs">
+      <footer className="border-t border-[rgba(23,53,66,0.16)] bg-white/90 py-12 text-[#66716d] text-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             {/* Left */}
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center font-bold font-display text-xs">
-                C
+              <div className="h-7 w-7 rounded bg-white flex items-center justify-center ring-1 ring-[rgba(23,53,66,0.12)] overflow-hidden">
+                <img src="/assets/brand/cc-logo.png" alt="Celina Connection" className="h-full w-full object-contain" />
               </div>
-              <span className="font-display font-extrabold text-sm text-slate-900 tracking-tight">
+              <span className="font-display font-bold text-sm text-[#173542] tracking-tight">
                 Celina Connection
               </span>
             </div>
 
             {/* Middle Nav Links */}
-            <div className="flex flex-wrap gap-4 text-[11px] font-medium text-slate-600">
-              <button onClick={() => setActiveTab('directory')} className="hover:text-slate-900">Browse Directory</button>
-              <button onClick={() => setActiveTab('events')} className="hover:text-slate-900">Local Events</button>
-              <button onClick={() => setActiveTab('pricing')} className="hover:text-slate-900">Membership Plans</button>
-              <button onClick={openOwnerLogin} className="hover:text-slate-900">Owner Login</button>
+            <div className="flex flex-wrap gap-4 text-[11px] font-medium text-[#66716d]">
+              <button onClick={() => setActiveTab('directory')} className="hover:text-[#173542]">Browse Directory</button>
+              <button onClick={() => setActiveTab('events')} className="hover:text-[#173542]">Local Events</button>
+              <button onClick={() => setActiveTab('pricing')} className="hover:text-[#173542]">Membership Plans</button>
+              <button onClick={openOwnerLogin} className="hover:text-[#173542]">Owner Login</button>
             </div>
           </div>
 
           <hr className="border-slate-150" />
 
           {/* Bottom Row */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-600">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-[#66716d]">
             <p className="flex items-center gap-1">
-              Made with <Heart className="w-3.5 h-3.5 text-orange-500 fill-orange-500" /> for the Celina, Texas Community.
+              Made with <Heart className="w-3.5 h-3.5 text-[#d28f33] fill-[#d28f33]" /> for the Celina, Texas Community.
             </p>
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              <button onClick={openAdminLogin} className="text-slate-400 hover:text-slate-700 underline-offset-4 hover:underline">
+              <button onClick={openAdminLogin} className="text-[#66716d] hover:text-[#173542] underline-offset-4 hover:underline">
                 Admin Login
               </button>
               <span>&copy; {new Date().getFullYear()} Celina Connection. All Rights Reserved.</span>

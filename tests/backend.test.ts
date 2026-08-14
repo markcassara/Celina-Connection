@@ -603,7 +603,7 @@ test('page share preview endpoint renders directory metadata and item list schem
 
     assert.match(html, /<title>Celina Business Directory \| Restaurants, Shops &amp; Services<\/title>/);
     assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/directory" \/>/);
-    assert.match(html, /<meta property="og:image" content="https:\/\/www\.celinaconnection\.com\/celina-water-tower-bg\.jpg" \/>/);
+    assert.match(html, /<meta property="og:image" content="https:\/\/www\.celinaconnection\.com\/assets\/social\/business-owners-banner\.jpg" \/>/);
     assert.match(html, /"@type":"ItemList"/);
     assert.match(html, /"url":"https:\/\/www\.celinaconnection\.com\/business\/annie-jack-boutique"/);
   });

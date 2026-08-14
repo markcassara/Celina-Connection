@@ -7,6 +7,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { createRepository } from "./database.js";
 import { CATEGORY_LANDING_PAGES, categoryLandingForSlug } from "../src/lib/categoryRoutes.js";
 import {
+  BRAND_LOGO_IMAGE,
   DEFAULT_DESCRIPTION,
   DEFAULT_SOCIAL_IMAGE,
   DIRECTORY_FAQ,
@@ -812,7 +813,7 @@ export function createApp(options: { dbPath?: string } = {}) {
         "@id": `${siteUrl}/#organization`,
         name: "Celina Connection",
         url: siteUrl,
-        logo: DEFAULT_SOCIAL_IMAGE,
+        logo: BRAND_LOGO_IMAGE,
         areaServed: {
           "@type": "City",
           name: "Celina",
