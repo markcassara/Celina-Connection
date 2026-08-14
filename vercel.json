@@ -103,6 +103,6 @@
       ],
       "destination": "/api/share/business/:slug"
     },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!api/|api$|sitemap\\.xml$).*)", "destination": "/index.html" }
   ]
 }
