@@ -7,9 +7,8 @@ import { Check, ChevronDown, Copy, ExternalLink, Mail, Send } from 'lucide-react
  * All addresses below are published, verified contacts:
  *  - City of Celina officials: decoded from the City's own staff directory
  *    at celina-tx.gov/directory.aspx (Cloudflare-obfuscated in the markup).
- *  - Pulte Homes + Centurion American: published on Centurion American's own
- *    Legacy Hills development page, which lists OSSDallas@pultegroup.com
- *    against the "Pinnacle" neighborhood specifically.
+ *  - Pulte Homes + Centurion American: published contact paths for Legacy Hills
+ *    builder/developer follow-up.
  *
  * Contact forms are kept as a secondary path in case a resident prefers them.
  * Nothing is transmitted or stored by this page.
@@ -53,17 +52,50 @@ const CONTACT_FORMS = [
   { name: 'Centurion American contact form', url: 'https://centurionamerican.com/contact/' },
 ];
 
-const SUBJECT = 'Pinnacle at Legacy Hills — completion of promised amenities and community standards';
+const SUBJECTS = [
+  'Legacy Hills — completion of promised amenities and community standards',
+  'Request for a clear Legacy Hills completion timeline',
+  'Legacy Hills residents need answers on amenities and infrastructure',
+  'Please address outstanding Legacy Hills community commitments',
+];
 
-const buildBody = (name: string, street: string) => {
+const OPENINGS = [
+  'I am a homeowner or resident of a Legacy Hills community in Celina, and I am asking for a clear, written response on the completion of our community.',
+  'I live in Legacy Hills and am writing to ask for a specific update on the amenities, infrastructure, and maintenance standards that residents were promised.',
+  'As a Legacy Hills homeowner or resident, I am asking the builders, developer, and City leadership to provide a clear plan for finishing and maintaining our community.',
+  'I am contacting you as someone who lives in Legacy Hills because residents need a direct, written account of what remains to be completed and when it will happen.',
+  'Legacy Hills residents deserve a straightforward update on the community we bought into. I am asking for written answers and realistic completion dates.',
+];
+
+const REQUEST_INTROS = ['I am specifically asking for:', 'Please address the following points:', 'My requests are:', 'Please provide a written plan covering:'];
+
+const CLOSINGS = [
+  'Please provide a written response outlining the current status of each item above, the planned timeline, and the actions that will be taken.',
+  'A written response with the status, timeline, and next steps for each item would help residents understand what to expect.',
+  'Please let residents know, in writing, what will happen next, who is responsible, and when each item will be complete.',
+  'I would appreciate a written response that addresses each point and gives residents a clear schedule for the work ahead.',
+];
+
+const stableIndex = (value: string, length: number) => {
+  let hash = 0;
+  for (const character of value) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return hash % length;
+};
+
+export const buildPetitionEmail = (name: string, street: string) => {
+  const senderKey = `${name.trim().toLowerCase()}|${street.trim().toLowerCase()}`;
+  const subject = SUBJECTS[stableIndex(senderKey, SUBJECTS.length)];
+  const opening = OPENINGS[stableIndex(`${senderKey}:opening`, OPENINGS.length)];
+  const requestIntro = REQUEST_INTROS[stableIndex(`${senderKey}:requests`, REQUEST_INTROS.length)];
+  const closing = CLOSINGS[stableIndex(`${senderKey}:closing`, CLOSINGS.length)];
   const signOff = [name.trim(), street.trim()].filter(Boolean).join('\n');
-  return `To Pulte Homes, Centurion American, and City of Celina leadership,
+  const body = `To Legacy Hills builders, Centurion American, and City of Celina leadership,
 
-I am a homeowner or resident of Pinnacle at Legacy Hills in Celina, and I am asking for a clear, written response on the completion of our community.
+${opening}
 
 Many of us purchased here based on what was represented during the sales process, including a neighborhood playground, a community pool, additional recreational amenities, and a well-maintained, family-friendly environment. Years later, several of those commitments remain incomplete, significantly delayed, or appear to be at risk.
 
-I am specifically asking for:
+${requestIntro}
 
 1. Promised amenities. A written timeline for completing every originally advertised amenity, and disclosure of any change to the original development plan.
 
@@ -75,11 +107,13 @@ I am specifically asking for:
 
 This is not criticism for its own sake. Our homes are the largest investment most of us will ever make, and finishing this community as promised protects property values, resident safety, and the reputation of everyone involved in the development.
 
-Please provide a written response outlining the current status of each item above, the planned timeline, and the actions that will be taken.
+${closing}
 
 Thank you for your time and consideration.
 
-${signOff || '[Your name]\n[Your street, Pinnacle at Legacy Hills]'}`;
+${signOff || '[Your name]\n[Your street, Legacy Hills community]'}`;
+
+  return { subject, body };
 };
 
 const encode = (value: string) => encodeURIComponent(value);
@@ -91,7 +125,8 @@ export default function PetitionActionEmail() {
   const [copied, setCopied] = useState('');
   const [showContacts, setShowContacts] = useState(false);
 
-  const body = useMemo(() => buildBody(name, street), [name, street]);
+  const message = useMemo(() => buildPetitionEmail(name, street), [name, street]);
+  const { subject, body } = message;
 
   const to = DEVELOPER_RECIPIENTS.map((person) => person.email);
   const cc = useMemo(
@@ -101,7 +136,7 @@ export default function PetitionActionEmail() {
 
   const copyMessage = async (token: string) => {
     try {
-      await navigator.clipboard.writeText(`Subject: ${SUBJECT}\n\n${body}`);
+      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
       setCopied(token);
       window.setTimeout(() => setCopied(''), 2500);
     } catch {
@@ -109,10 +144,10 @@ export default function PetitionActionEmail() {
     }
   };
 
-  const query = `cc=${encode(cc.join(','))}&subject=${encode(SUBJECT)}&body=${encode(body)}`;
+  const query = `cc=${encode(cc.join(','))}&subject=${encode(subject)}&body=${encode(body)}`;
   const mailtoHref = `mailto:${to.join(',')}?${query}`;
-  const gmailHref = `https://mail.google.com/mail/?view=cm&fs=1&to=${encode(to.join(','))}&cc=${encode(cc.join(','))}&su=${encode(SUBJECT)}&body=${encode(body)}`;
-  const outlookHref = `https://outlook.live.com/mail/0/deeplink/compose?to=${encode(to.join(','))}&cc=${encode(cc.join(','))}&subject=${encode(SUBJECT)}&body=${encode(body)}`;
+  const gmailHref = `https://mail.google.com/mail/?view=cm&fs=1&to=${encode(to.join(','))}&cc=${encode(cc.join(','))}&su=${encode(subject)}&body=${encode(body)}`;
+  const outlookHref = `https://outlook.live.com/mail/0/deeplink/compose?to=${encode(to.join(','))}&cc=${encode(cc.join(','))}&subject=${encode(subject)}&body=${encode(body)}`;
 
   const totalRecipients = to.length + cc.length;
 
@@ -129,6 +164,9 @@ export default function PetitionActionEmail() {
         <p className="text-sm sm:text-base leading-7 text-slate-600">
           Signing adds your name to the list. This puts it in front of the people who can act on it —
           Pulte, Centurion American, and City of Celina leadership, all in a single email.
+        </p>
+        <p className="text-sm leading-6 text-orange-800">
+          Each sender gets a slightly different draft while keeping the same facts and requests, so officials hear from residents in their own words.
         </p>
       </div>
 
@@ -218,7 +256,7 @@ export default function PetitionActionEmail() {
             {copied === 'manual' ? 'Copied' : 'Copy message'}
           </button>
         </div>
-        <p className="text-xs font-bold text-slate-500">Subject: {SUBJECT}</p>
+        <p className="text-xs font-bold text-slate-500">Subject: {subject}</p>
         <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap font-sans text-sm leading-6 text-slate-600">
           {body}
         </pre>
@@ -258,7 +296,7 @@ export default function PetitionActionEmail() {
                   {section.list.map((person) => (
                     <li key={person.email}>
                       <a
-                        href={`mailto:${person.email}?subject=${encode(SUBJECT)}&body=${encode(body)}`}
+                        href={`mailto:${person.email}?subject=${encode(subject)}&body=${encode(body)}`}
                         className="flex items-start gap-3 rounded-xl border border-slate-200 px-4 py-3 transition hover:border-orange-300 hover:bg-orange-50"
                       >
                         <Mail className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-600" />
