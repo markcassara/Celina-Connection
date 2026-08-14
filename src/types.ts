@@ -9,6 +9,27 @@ export interface Review {
   ownerReply?: string;
 }
 
+export interface BusinessEvent {
+  id: string;
+  title: string;
+  description: string;
+  eventDate: string;
+  eventTime: string;
+  location: string;
+  status: 'draft' | 'active' | 'expired';
+  promotionPaid?: boolean;
+  paidAt?: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface BusinessGrowthCredits {
+  shareClicks: number;
+  referralVisits: number;
+  updatedAt?: string;
+}
+
 export interface Business {
   id: string;
   slug?: string;
@@ -35,12 +56,24 @@ export interface Business {
   // Premium unlocked fields
   featured?: boolean;
   ctaText?: string; // Custom button text for premium
+  // Review metrics
+  rating?: number;
+  reviewCount?: number;
   // System fields
   tier: Tier;
   ownerId: string;
   createdAt: string;
   reviews: Review[];
-  viewsCount: number;
+  metrics?: {
+    pageViews: number;
+    callClicks: number;
+    directionsClicks: number;
+    websiteClicks: number;
+  };
+  events?: BusinessEvent[];
+  viewsCount?: number;
+  votesCount?: number;
+  growthCredits?: BusinessGrowthCredits;
   isUnclaimed?: boolean;
   isRegistryOnly?: boolean;
   emailVerified?: boolean;
@@ -77,10 +110,14 @@ export interface LegacyHillsPetitionSignature {
   phone: string;
   streetAddress: string;
   neighborhood: string;
+  phaseSection?: string;
+  lotBlock?: string;
+  builder?: string;
   comments?: string;
   signatureDataUrl: string;
   contactId?: string;
   signedAt: string;
+  updatedAt?: string;
 }
 
 export interface ClaimRequest {

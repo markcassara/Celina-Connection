@@ -123,7 +123,7 @@ export default function PetitionActionEmail() {
     >
       <div className="space-y-3">
         <p className="text-[11px] font-black uppercase tracking-[0.2em] text-orange-600">Take action</p>
-        <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-slate-950">
+        <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-[var(--cc-deep-navy)]">
           Send the message in one click
         </h2>
         <p className="text-sm sm:text-base leading-7 text-slate-600">
@@ -155,7 +155,7 @@ export default function PetitionActionEmail() {
 
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 space-y-4">
         <div className="space-y-2">
-          <h3 className="font-display text-lg font-black text-slate-950">
+          <h3 className="font-display text-lg font-black text-[var(--cc-deep-navy)]">
             Goes to {totalRecipients} recipients
           </h3>
           <p className="text-sm leading-6 text-slate-600">
@@ -173,7 +173,7 @@ export default function PetitionActionEmail() {
             className="mt-0.5 h-4 w-4 flex-shrink-0 accent-orange-600"
           />
           <span>
-            <span className="block text-sm font-black text-slate-900">
+            <span className="block text-sm font-black text-[var(--cc-deep-navy)]">
               Also CC City department directors
             </span>
             <span className="block text-xs leading-5 text-slate-600">
@@ -186,7 +186,7 @@ export default function PetitionActionEmail() {
         <a
           href={mailtoHref}
           onClick={() => copyMessage('mail')}
-          className="w-full rounded-2xl bg-slate-950 px-5 py-4 text-sm font-black uppercase tracking-wider text-white shadow-lg shadow-slate-900/20 transition hover:bg-orange-600 flex items-center justify-center gap-2"
+          className="w-full rounded-2xl bg-[var(--cc-deep-navy)] px-5 py-4 text-sm font-black uppercase tracking-wider text-white shadow-lg shadow-[rgba(15,45,77,0.22)] transition hover:bg-orange-600 flex items-center justify-center gap-2"
         >
           <Send className="h-4 w-4" />
           Open email with message
@@ -208,7 +208,7 @@ export default function PetitionActionEmail() {
 
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <h3 className="font-display text-lg font-black text-slate-950">The message</h3>
+          <h3 className="font-display text-lg font-black text-[var(--cc-deep-navy)]">The message</h3>
           <button
             type="button"
             onClick={() => copyMessage('manual')}
@@ -231,7 +231,7 @@ export default function PetitionActionEmail() {
           className="flex w-full items-center justify-between gap-3 text-left"
         >
           <span>
-            <span className="block font-display text-lg font-black text-slate-950">
+            <span className="block font-display text-lg font-black text-[var(--cc-deep-navy)]">
               Email one recipient instead
             </span>
             <span className="block text-sm leading-6 text-slate-600">
@@ -263,7 +263,7 @@ export default function PetitionActionEmail() {
                       >
                         <Mail className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-600" />
                         <span className="min-w-0">
-                          <span className="block text-sm font-black text-slate-900">{person.name}</span>
+                          <span className="block text-sm font-black text-[var(--cc-deep-navy)]">{person.name}</span>
                           <span className="block text-xs font-bold text-slate-500">{person.role}</span>
                           <span className="block truncate text-xs text-slate-500">{person.email}</span>
                         </span>

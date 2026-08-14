@@ -1,7 +1,7 @@
 export const SITE_URL = 'https://www.celinaconnection.com';
 export const SITE_NAME = 'Celina Connection';
 export const DEFAULT_SOCIAL_IMAGE = `${SITE_URL}/assets/social/business-owners-banner.jpg`;
-export const BRAND_LOGO_IMAGE = `${SITE_URL}/assets/brand/cc-logo.png`;
+export const BRAND_LOGO_IMAGE = `${SITE_URL}/images/celina-connection-logo.png`;
 
 export type PublicPageKey = 'home' | 'directory' | 'events' | 'pricing' | 'launch' | 'legacyhillspetition';
 

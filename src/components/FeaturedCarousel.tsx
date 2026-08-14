@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Business } from '../types';
-import { Star, Phone, MapPin, ExternalLink, ArrowRight, ArrowLeft } from 'lucide-react';
+import { hasRequiredListingVisuals, isNewListing } from '../lib/listingVisuals';
+import { Star, Phone, MapPin, ExternalLink, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface FeaturedCarouselProps {
@@ -12,8 +13,16 @@ export default function FeaturedCarousel({
   businesses,
   onSelectBusiness,
 }: FeaturedCarouselProps) {
-  const featuredList = businesses.filter((b) => b.tier === 'premium' || b.tier === 'pro' || b.featured);
+  const featuredList = businesses.filter((b) => b.tier === 'premium' && hasRequiredListingVisuals(b));
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (featuredList.length < 2) return;
+    const timer = window.setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % featuredList.length);
+    }, 7000);
+    return () => window.clearInterval(timer);
+  }, [featuredList.length]);
 
   if (featuredList.length === 0) {
     return null;
@@ -30,7 +39,7 @@ export default function FeaturedCarousel({
   const currentBusiness = featuredList[currentIndex];
 
   return (
-    <div className="relative overflow-hidden rounded-3xl bg-slate-950 text-white shadow-xl" id="featured-spotlight-carousel">
+    <div className="relative overflow-hidden rounded-3xl bg-[var(--cc-deep-navy)] text-white shadow-xl" id="featured-spotlight-carousel">
       {/* Absolute Decorative Glow Background */}
       <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-transparent mix-blend-screen pointer-events-none" />
 
@@ -49,9 +58,14 @@ export default function FeaturedCarousel({
             <div>
               {/* Badge */}
               <div className="flex items-center gap-2 mb-4">
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-400 text-slate-950 shadow-md uppercase tracking-wider">
-                  <Star className="w-3 h-3 fill-slate-950" /> Featured Spotlight
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-amber-400 text-[var(--cc-deep-navy)] shadow-md uppercase tracking-wider">
+                  <Star className="w-3 h-3 fill-[var(--cc-deep-navy)]" /> Featured Spotlight
                 </span>
+                {isNewListing(currentBusiness) && (
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-orange-500 text-white shadow-md uppercase tracking-wider">
+                    <Sparkles className="w-3 h-3" /> New Listing
+                  </span>
+                )}
                 <span className="text-xs text-orange-200 font-medium">
                   {currentBusiness.tier === 'premium' ? 'Preston Elite Premium' : currentBusiness.tier === 'pro' ? 'Celina Champion Pro' : 'Featured Partner'}
                 </span>
@@ -111,7 +125,7 @@ export default function FeaturedCarousel({
 
           {/* Image Side */}
           <div className="relative min-h-[220px] lg:col-span-5 w-full h-full">
-            <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-slate-950 via-slate-950/40 to-transparent z-10" />
+            <div className="absolute inset-0 bg-gradient-to-t lg:bg-gradient-to-r from-[var(--cc-deep-navy)] via-slate-950/40 to-transparent z-10" />
             <img
               src={
                 currentBusiness.images && currentBusiness.images.length > 0
@@ -128,14 +142,14 @@ export default function FeaturedCarousel({
               <div className="absolute bottom-4 right-4 z-20 flex gap-2">
                 <button
                   onClick={prevSlide}
-                  className="p-2 rounded-lg bg-slate-900/80 backdrop-blur border border-white/10 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="p-2 rounded-lg bg-[rgba(15,45,77,0.82)] backdrop-blur border border-white/10 hover:bg-[#143a63] transition-colors cursor-pointer"
                   aria-label="Previous Featured Spot"
                 >
                   <ArrowLeft className="w-4 h-4 text-white" />
                 </button>
                 <button
                   onClick={nextSlide}
-                  className="p-2 rounded-lg bg-slate-900/80 backdrop-blur border border-white/10 hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="p-2 rounded-lg bg-[rgba(15,45,77,0.82)] backdrop-blur border border-white/10 hover:bg-[#143a63] transition-colors cursor-pointer"
                   aria-label="Next Featured Spot"
                 >
                   <ArrowRight className="w-4 h-4 text-white" />

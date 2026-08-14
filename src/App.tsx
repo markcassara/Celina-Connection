@@ -9,13 +9,15 @@ import LaunchView from './components/LaunchView';
 import DashboardView from './components/DashboardView';
 import EventsView from './components/EventsView';
 import LegacyHillsPetitionView from './components/LegacyHillsPetitionView';
+import LegacyHillsPetitionSignaturesView from './components/LegacyHillsPetitionSignaturesView';
+import PolicyView from './components/PolicyView';
 import CheckoutModal from './components/CheckoutModal';
 import BugReportForm from './components/BugReportForm';
 import AiChatWidget from './components/AiChatWidget';
-import SeoHead from './components/SeoHead';
+import SEOHead, { SchemaJson } from './components/SeoHead';
+import { CELINA_EVENTS } from './data/mockEvents';
 import { api } from './lib/api';
 import { activeTabFromPath, isAdminDashboardHash, pathForActiveTab, resolveDashboardPortalMode } from './lib/navigation';
-import { categoryLandingForName, categoryLandingForSlug } from './lib/categoryRoutes';
 import { MapPin, Heart, ShieldAlert, Sparkles, Star, CheckCircle, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -26,14 +28,14 @@ const INITIAL_BUGS: ReportedBug[] = [
     description: 'When viewing the owner dashboard on a smaller screen (width around 320px), the top navigation bar menu is slightly cut off on the right-hand side.',
     category: 'visual',
     severity: 'low',
-    email: 'test-user@legacywealthco.com',
+    email: 'test-user@celinaconnection.com',
     createdAt: '2026-07-01T10:00:00.000Z',
     status: 'open',
   },
   {
     id: 'bug-2',
-    title: 'Payment checkout simulator loading delay',
-    description: 'When purchasing a premium membership, the Stripe checkout modal simulated processing stays on spinner for 3 seconds, which is slightly long. A shorter loader or clearer status text would improve feedback.',
+    title: 'Checkout message could be clearer',
+    description: 'When purchasing a premium membership, the checkout message could do a better job explaining what happens next.',
     category: 'functional',
     severity: 'medium',
     email: 'baker@celinapatisserie.com',
@@ -42,8 +44,8 @@ const INITIAL_BUGS: ReportedBug[] = [
   },
   {
     id: 'bug-3',
-    title: 'Category count mismatches in Browse pills',
-    description: 'The number of listings in the Dining category is showing 3 but there are actually 4 businesses registered under Dining in the mock data.',
+    title: 'Directory count needs a second look',
+    description: 'The Dining category count may not match the number of visible Dining listings.',
     category: 'data',
     severity: 'high',
     email: 'admin@celinaconnect.com',
@@ -51,6 +53,301 @@ const INITIAL_BUGS: ReportedBug[] = [
     status: 'in-progress',
   }
 ];
+
+const SITE_URL = 'https://www.celinaconnection.com';
+const SITE_NAME = 'Celina Connection';
+const BRAND_LOGO_PATH = '/images/celina-connection-logo.png';
+const DEFAULT_OG_IMAGE = `${SITE_URL}${BRAND_LOGO_PATH}`;
+const DEFAULT_DESCRIPTION = 'Find local restaurants, shops, services, events, and featured small businesses in Celina, Texas. Claim a free Celina business listing on Celina Connection.';
+
+type PageSeoConfig = {
+  title: string;
+  description: string;
+  canonical: string;
+  ogImage: string;
+  noIndex?: boolean;
+  schemaJson?: SchemaJson;
+};
+
+function businessSlug(business: Business) {
+  return business.slug || business.id;
+}
+
+function cleanDescription(description: string) {
+  return description.replace(/\s+/g, ' ').trim().slice(0, 220);
+}
+
+function absoluteImage(image?: string) {
+  if (!image || image.startsWith('data:')) return DEFAULT_OG_IMAGE;
+  if (image.startsWith('http://') || image.startsWith('https://')) return image;
+  return `${SITE_URL}${image.startsWith('/') ? image : `/${image}`}`;
+}
+
+function buildOrganizationSchema() {
+  return {
+    '@type': 'Organization',
+    '@id': `${SITE_URL}/#organization`,
+    name: SITE_NAME,
+    url: `${SITE_URL}/`,
+    logo: DEFAULT_OG_IMAGE,
+    areaServed: {
+      '@type': 'City',
+      name: 'Celina',
+      address: {
+        '@type': 'PostalAddress',
+        addressRegion: 'TX',
+        addressCountry: 'US',
+      },
+    },
+  };
+}
+
+function buildWebsiteSchema() {
+  return {
+    '@type': 'WebSite',
+    '@id': `${SITE_URL}/#website`,
+    name: SITE_NAME,
+    url: `${SITE_URL}/`,
+    description: DEFAULT_DESCRIPTION,
+    inLanguage: 'en-US',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: `${SITE_URL}/directory?q={search_term_string}`,
+      'query-input': 'required name=search_term_string',
+    },
+  };
+}
+
+function buildDirectorySchema(businessCount: number) {
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      buildWebsiteSchema(),
+      buildOrganizationSchema(),
+      {
+        '@type': 'ItemList',
+        '@id': `${SITE_URL}/directory#business-directory`,
+        name: 'Celina TX Local Business Directory',
+        description: `Browse ${businessCount || 'local'} Celina, Texas businesses by category, reviews, and location.`,
+        numberOfItems: businessCount,
+        itemListOrder: 'https://schema.org/ItemListOrderAscending',
+      },
+      {
+        '@type': 'FAQPage',
+        '@id': `${SITE_URL}/#faq`,
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: 'Where can I find local businesses in Celina, Texas?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Celina Connection is a local business directory for Celina, TX with restaurants, shops, health and beauty providers, services, activities, and featured community businesses.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: 'How can a Celina business claim a listing?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Celina business owners can claim a free listing on Celina Connection, add business details, and upgrade for premium placement, more photos, and enhanced directory features.',
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function buildBusinessSchema(business: Business) {
+  const ratingCount = business.reviews?.length || 0;
+  const averageRating = ratingCount
+    ? business.reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) / ratingCount
+    : null;
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'LocalBusiness',
+    '@id': `${SITE_URL}/business/${businessSlug(business)}#localbusiness`,
+    name: business.name,
+    description: cleanDescription(business.description),
+    url: `${SITE_URL}/business/${businessSlug(business)}`,
+    telephone: business.phone,
+    email: business.email,
+    image: absoluteImage(business.images?.[0] || business.logoUrl),
+    address: business.address
+      ? {
+          '@type': 'PostalAddress',
+          streetAddress: business.address.replace(', Celina, TX 75009', '').replace(', TX 75009', ''),
+          addressLocality: 'Celina',
+          addressRegion: 'TX',
+          postalCode: '75009',
+          addressCountry: 'US',
+        }
+      : {
+          '@type': 'PostalAddress',
+          addressLocality: 'Celina',
+          addressRegion: 'TX',
+          postalCode: '75009',
+          addressCountry: 'US',
+        },
+    areaServed: 'Celina, Texas',
+    priceRange: '$$',
+    sameAs: [business.website, business.socialLinks?.facebook, business.socialLinks?.instagram, business.socialLinks?.twitter].filter(Boolean),
+    aggregateRating: averageRating
+      ? {
+          '@type': 'AggregateRating',
+          ratingValue: Number(averageRating.toFixed(1)),
+          reviewCount: ratingCount,
+        }
+      : undefined,
+  };
+}
+
+function buildEventsSchema() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    '@id': `${SITE_URL}/events#local-events`,
+    name: 'Celina Local Events',
+    description: 'Upcoming local events, public meetings, family gatherings, and business events in Celina, Texas.',
+    numberOfItems: CELINA_EVENTS.length,
+    itemListElement: CELINA_EVENTS.map((event, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      item: {
+        '@type': 'Event',
+        name: event.title,
+        startDate: event.date,
+        eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+        eventStatus: 'https://schema.org/EventScheduled',
+        image: absoluteImage(event.imageUrl),
+        description: event.description,
+        url: event.link || `${SITE_URL}/events`,
+        location: {
+          '@type': 'Place',
+          name: event.location,
+          address: event.address,
+        },
+        organizer: {
+          '@type': 'Organization',
+          name: event.organizer,
+        },
+      },
+    })),
+  };
+}
+
+function buildPageSeoConfig(activeTab: string, selectedBusiness: Business | null, businessCount: number): PageSeoConfig {
+  if (selectedBusiness) {
+    const canonical = `${SITE_URL}/business/${businessSlug(selectedBusiness)}`;
+    const description = `${cleanDescription(selectedBusiness.description)} View phone, address, reviews, and details for ${selectedBusiness.name} in Celina, Texas.`;
+    return {
+      title: `${selectedBusiness.name} | Celina TX ${selectedBusiness.category} | Celina Connection`,
+      description,
+      canonical,
+      ogImage: absoluteImage(selectedBusiness.images?.[0] || selectedBusiness.logoUrl),
+      schemaJson: buildBusinessSchema(selectedBusiness),
+    };
+  }
+
+  switch (activeTab) {
+    case 'home':
+      return {
+        title: 'Celina Connection | Celina TX Local Business Directory',
+        description: DEFAULT_DESCRIPTION,
+        canonical: `${SITE_URL}/`,
+        ogImage: DEFAULT_OG_IMAGE,
+        schemaJson: buildDirectorySchema(businessCount),
+      };
+    case 'directory':
+      return {
+        title: 'Explore Celina TX Businesses | Celina Connection',
+        description: 'Browse Celina restaurants, shops, service providers, health and wellness businesses, and featured local favorites in one friendly directory.',
+        canonical: `${SITE_URL}/directory`,
+        ogImage: DEFAULT_OG_IMAGE,
+        schemaJson: buildDirectorySchema(businessCount),
+      };
+    case 'events':
+      return {
+        title: "What's Happening in Celina | Celina Connection Events",
+        description: 'Explore Celina festivals, public meetings, family gatherings, city events, and business networking opportunities compiled for the local community.',
+        canonical: `${SITE_URL}/events`,
+        ogImage: absoluteImage(CELINA_EVENTS[0]?.imageUrl),
+        schemaJson: buildEventsSchema(),
+      };
+    case 'pricing':
+      return {
+        title: 'Membership Tiers for Celina Businesses | Celina Connection',
+        description: 'Compare free, paid, pro, and premium Celina Connection listing options for local businesses that want more visibility in Celina, Texas.',
+        canonical: `${SITE_URL}/pricing`,
+        ogImage: DEFAULT_OG_IMAGE,
+      };
+    case 'policies':
+      return {
+        title: 'Terms, Privacy, Payments, and Refunds | Celina Connection',
+        description: 'Review Celina Connection terms of use, privacy practices, payment terms, refund policy, event promotion rules, and community standards.',
+        canonical: `${SITE_URL}/policies`,
+        ogImage: DEFAULT_OG_IMAGE,
+      };
+    case 'legacyhillspetition-sign':
+      return {
+        title: 'Community Petition for Pinnacle at Legacy Hills Amenities | Celina Connection',
+        description: 'For homeowners and residents of Pinnacle at Legacy Hills who want clear timelines, stronger communication, and completion of promised community amenities.',
+        canonical: `${SITE_URL}/legacyhillspetition/sign`,
+        ogImage: DEFAULT_OG_IMAGE,
+        noIndex: true,
+      };
+    case 'legacyhillspetition-signatures':
+      return {
+        title: 'Pinnacle at Legacy Hills Petition Support | Celina Connection',
+        description: 'View the current signature count and protected signer list for the Pinnacle at Legacy Hills community petition.',
+        canonical: `${SITE_URL}/legacyhillspetition/signatures`,
+        ogImage: DEFAULT_OG_IMAGE,
+        noIndex: true,
+      };
+    case 'launch':
+      return {
+        title: "Celina's Local Business Hub | Celina Connection",
+        description: 'Find local favorites, support Celina businesses, and claim an early local business listing on Celina Connection.',
+        canonical: `${SITE_URL}/launch`,
+        ogImage: DEFAULT_OG_IMAGE,
+        schemaJson: buildDirectorySchema(businessCount),
+      };
+    case 'owner-login':
+      return {
+        title: 'Owner Login | Celina Connection',
+        description: 'Sign in to manage your Celina Connection business listing, photos, billing, reviews, and event submissions.',
+        canonical: `${SITE_URL}/owner-login`,
+        ogImage: DEFAULT_OG_IMAGE,
+        noIndex: true,
+      };
+    case 'admin-login':
+      return {
+        title: 'Team Login | Celina Connection',
+        description: 'Celina Connection team access for reviewing listings, events, feedback, claims, and petition records.',
+        canonical: `${SITE_URL}/admin-login`,
+        ogImage: DEFAULT_OG_IMAGE,
+        noIndex: true,
+      };
+    case 'reset-password':
+      return {
+        title: 'Reset Password | Celina Connection',
+        description: 'Reset access to your Celina Connection business owner account.',
+        canonical: `${SITE_URL}/reset-password`,
+        ogImage: DEFAULT_OG_IMAGE,
+        noIndex: true,
+      };
+    case 'dashboard':
+    default:
+      return {
+        title: 'Add or Claim a Celina Business Listing | Celina Connection',
+        description: 'Claim a free Celina Connection listing, update business details, and help local customers find your Celina, TX business.',
+        canonical: `${SITE_URL}/dashboard`,
+        ogImage: DEFAULT_OG_IMAGE,
+        noIndex: true,
+      };
+  }
+}
 
 export default function App() {
   const navigate = useNavigate();
@@ -63,29 +360,15 @@ export default function App() {
   const businessSlug = location.pathname.startsWith('/business/') 
     ? location.pathname.replace('/business/', '')
     : null;
-  const directoryCategorySlug = location.pathname.startsWith('/directory/')
-    ? location.pathname.replace('/directory/', '').split('/')[0]
-    : '';
-  const directoryCategory = categoryLandingForSlug(directoryCategorySlug);
-  const selectedDirectoryCategory = directoryCategory?.name || 'All';
-  const navigateDirectoryCategory = (category: string) => {
-    const categoryLanding = categoryLandingForName(category);
-    setActiveTab('directory');
-    navigate(categoryLanding ? `/directory/${categoryLanding.slug}` : '/directory');
-  };
   
   // Sync URL when activeTab changes
   useEffect(() => {
     if (businessSlug) return;
-    if (activeTab === 'directory' && location.pathname.startsWith('/directory/')) {
-      if (!directoryCategory) navigate('/directory', { replace: true });
-      return;
-    }
     const path = pathForActiveTab(activeTab);
     if (location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [activeTab, navigate, location.pathname, businessSlug, directoryCategory]);
+  }, [activeTab, navigate, location.pathname, businessSlug]);
 
   // Handle business selection via URL
   useEffect(() => {
@@ -101,15 +384,15 @@ export default function App() {
   // Set FORCE_SPLASH_LANDING to false to bypass the splash page and land
   // directly on the main index/directory page.
   // ==========================================
-  const FORCE_SPLASH_LANDING = true;
+  const FORCE_SPLASH_LANDING = false;
 
   // Launch campaign gating configuration (July 12, 2026 launch target)
   const launchCampaignTargetDate = new Date("2026-07-12T09:00:00-05:00").getTime();
   const [isGated, setIsGated] = useState<boolean>(() => {
     if (!FORCE_SPLASH_LANDING) return false;
     if (location.pathname.startsWith('/business/')) return false;
-    if (location.pathname === '/legacyhillspetition') return false;
-    if (location.pathname === '/owner-login' || location.pathname === '/admin-login') return false;
+    if (location.pathname.startsWith('/legacyhillspetition')) return false;
+    if (location.pathname === '/owner-login' || location.pathname === '/admin-login' || location.pathname === '/reset-password') return false;
     const now = new Date().getTime();
     if (now >= launchCampaignTargetDate) return false;
     const savedBypass = sessionStorage.getItem('celina_connection_gated_bypass');
@@ -129,7 +412,7 @@ export default function App() {
     id: '',
     email: '',
     businessName: '',
-    tier: 'basic',
+    tier: 'free',
     isLoggedIn: false,
   });
 
@@ -149,6 +432,15 @@ export default function App() {
     }
   }, [activeTab, currentUser.isLoggedIn, currentUser.role, dashboardPortalMode, location.hash]);
 
+  // Auto transition from login view to active dashboard view once logged in
+  useEffect(() => {
+    if (currentUser.isLoggedIn && (activeTab === 'owner-login' || activeTab === 'admin-login' || activeTab === 'reset-password')) {
+      setActiveTab('dashboard');
+      const hash = currentUser.role === 'admin' ? '#dashboard-admin-listings' : '#dashboard-profile';
+      navigate(`/dashboard${hash}`, { replace: true });
+    }
+  }, [currentUser.isLoggedIn, currentUser.role, activeTab, navigate]);
+
   const openOwnerLogin = () => {
     setIsGated(false);
     sessionStorage.setItem('celina_connection_gated_bypass', 'true');
@@ -160,6 +452,7 @@ export default function App() {
     setIsGated(false);
     sessionStorage.setItem('celina_connection_gated_bypass', 'true');
     setDashboardPortalMode('admin');
+    navigate({ pathname: '/admin-login', hash: '' });
     setActiveTab('admin-login');
   };
 
@@ -216,7 +509,7 @@ export default function App() {
         id: '',
         email: '',
         businessName: '',
-        tier: 'basic',
+        tier: 'free',
         isLoggedIn: false,
       };
 
@@ -308,7 +601,7 @@ export default function App() {
           if (isMounted) {
             setPaymentNotification({
               type: 'error',
-              message: error instanceof Error ? error.message : 'Verification link is invalid or expired.',
+              message: error instanceof Error ? error.message : 'That verification link is no longer working. Please request a fresh link and we will help you get signed in.',
             });
             setActiveTab('owner-login');
           }
@@ -321,25 +614,20 @@ export default function App() {
 
       if (paymentStatus === 'success' && redirectTier) {
         const targetBusId = redirectBusinessId || user.businessId;
-        currentBusinesses = await Promise.all(currentBusinesses.map(async (business) => {
+        currentBusinesses = currentBusinesses.map((business) => {
           if (business.ownerId !== user.id && business.id !== targetBusId) {
             return business;
           }
 
-          const payload: Partial<Business> = {
+          return {
+            ...business,
             tier: redirectTier,
             featured: redirectTier === 'premium',
             images: business.images && business.images.length > 0
               ? business.images
               : ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80'],
           };
-
-          try {
-            return await api.updateBusiness(business.id, payload);
-          } catch {
-            return { ...business, ...payload };
-          }
-        }));
+        });
 
         const updatedUser: UserProfile = {
           ...user,
@@ -351,19 +639,26 @@ export default function App() {
           setCurrentUser(updatedUser);
           setPaymentNotification({
             type: 'success',
-            message: `Stripe Billing Activated! Welcome to ${redirectTier === 'premium' ? 'Premium Partner' : 'Pro Partner'} Membership. Your partner dashboard features are now active!${
-              redirectAddonQty > 0 ? ` Included: ${redirectAddonQty} Additional Business Add-on listing slot(s).` : ''
-            }`,
+              message: `Welcome to ${redirectTier === 'premium' ? 'Premium Partner' : 'Pro Partner'} Membership. Your new listing features are almost ready.${
+                redirectAddonQty > 0 ? ` Included: ${redirectAddonQty} additional business listing${redirectAddonQty > 1 ? 's' : ''}.` : ''
+              }`,
           });
         }
         localStorage.setItem('celina_current_user', JSON.stringify(updatedUser));
 
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
+      } else if (paymentStatus === 'event_success' && isMounted) {
+        setPaymentNotification({
+          type: 'success',
+          message: 'Your event promotion payment is complete. The Celina Connection team will follow up to confirm the event details before publishing.',
+        });
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
       } else if (paymentStatus === 'cancel' && isMounted) {
         setPaymentNotification({
           type: 'cancel',
-          message: 'Stripe subscription setup was cancelled. No charges were made.',
+          message: 'Checkout was canceled. No charges were made.',
         });
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
@@ -390,6 +685,11 @@ export default function App() {
   // Review System Handler
   const handleAddReview = async (businessId: string, reviewData: Omit<Review, 'id' | 'createdAt'>) => {
     const result = await api.addReview(businessId, reviewData);
+    setBusinesses((prev) => prev.map((business) => (business.id === businessId ? result.business : business)));
+  };
+
+  const handleLikeBusiness = async (businessId: string, liked = true) => {
+    const result = await api.likeBusiness(businessId, liked);
     setBusinesses((prev) => prev.map((business) => (business.id === businessId ? result.business : business)));
   };
 
@@ -470,7 +770,7 @@ export default function App() {
     setSelectedBusinessId(null);
     setPaymentNotification({
       type: 'success',
-      message: `Claim request submitted for "${targetBus.name}". Admin approval is required before dashboard access is enabled.`,
+      message: `Thanks for claiming "${targetBus.name}". Our team will review your request and follow up soon.`,
     });
   };
 
@@ -500,7 +800,7 @@ export default function App() {
     setReportedBugs((prev) => [newBug, ...prev]);
     setPaymentNotification({
       type: 'success',
-      message: 'Thank you! Your bug report has been submitted successfully and will be reviewed by the admin immediately.',
+      message: 'Thank you for the heads-up. Our team will take a look and follow up if we need more details.',
     });
   };
 
@@ -521,7 +821,7 @@ export default function App() {
     setReportedBugs(resetState.reportedBugs);
     setPaymentNotification({
       type: 'success',
-      message: 'Database successfully reset to the seeded Celina Connection backend state.',
+      message: 'Celina Connection has been refreshed with the starter listings.',
     });
   };
 
@@ -573,20 +873,7 @@ export default function App() {
       }
     });
 
-    const changedBusinesses = updated.filter((business, index) => {
-      const original = businesses[index];
-      return original && (original.tier !== business.tier || original.featured !== business.featured || original.images !== business.images);
-    });
-
-    const persisted = await Promise.all(changedBusinesses.map((business) =>
-      api.updateBusiness(business.id, {
-        tier: business.tier,
-        featured: business.featured,
-        images: business.images,
-      })
-    ));
-
-    setBusinesses((prev) => prev.map((business) => persisted.find((item) => item.id === business.id) || business));
+    setBusinesses(updated);
 
     // Upgrade active login session
     setCurrentUser((prev) => ({
@@ -602,35 +889,64 @@ export default function App() {
     openOwnerLogin();
   };
 
+  const handleEventPromotionCheckout = async (eventId?: string) => {
+    if (!currentUser.isLoggedIn || currentUser.role === 'admin') {
+      openOwnerLogin();
+      return;
+    }
+
+    const response = await fetch('/api/create-event-promotion-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: currentUser.id,
+        businessId: currentUser.businessId || '',
+        businessName: currentUser.businessName,
+        email: currentUser.email,
+        eventId: eventId || '',
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.url) {
+      throw new Error(data.error || 'We could not open event promotion checkout right now. Please try again.');
+    }
+    window.location.href = data.url;
+  };
+
   const selectedBusiness = businesses.find((b) => b.id === selectedBusinessId) || null;
+  const seoConfig = buildPageSeoConfig(activeTab, selectedBusiness, businesses.length);
 
   if (isGated) {
+    const gatedSeoConfig = buildPageSeoConfig('launch', null, businesses.length);
+
     return (
-      <div className="min-h-screen bg-[#f7f1e4]/70 text-[#173542] flex flex-col font-sans selection:bg-[#d28f33] selection:text-white" id="celina-connect-gated-root">
-        <SeoHead activeTab="launch" businessCount={businesses.length} />
+      <div className="min-h-screen bg-[var(--cc-cream)] text-[var(--cc-soft-black)] flex flex-col font-sans selection:bg-[var(--cc-harvest-gold)] selection:text-[var(--cc-deep-navy)]" id="celina-connect-gated-root">
+        <SEOHead {...gatedSeoConfig} />
         {/* Top Banner Accent */}
-        <div className="h-1 bg-gradient-to-r from-[#173542] via-[#1f6473] to-[#d28f33]" />
+        <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400" />
 
         {/* Simplified Header */}
-        <header className="border-b border-[rgba(23,53,66,0.16)] bg-white/90 backdrop-blur-md sticky top-0 z-50 py-4 px-6 md:px-12 shadow-xs">
+        <header className="border-b border-slate-100 bg-white/95 backdrop-blur-md sticky top-0 z-50 py-4 px-6 md:px-12 shadow-xs">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-white flex items-center justify-center shadow-md shadow-[#173542]/10 ring-1 ring-[rgba(23,53,66,0.12)] overflow-hidden">
-                <img src="/assets/brand/cc-logo.png" alt="Celina Connection" className="h-full w-full object-contain" />
-              </div>
+              <img
+                src={BRAND_LOGO_PATH}
+                alt="Celina Connection logo"
+                className="h-9 w-9 rounded-xl object-contain shadow-md shadow-[rgba(15,45,77,0.12)]"
+              />
               <div>
-                <h1 className="font-display font-bold text-base leading-none text-[#173542]">
-                  Celina <span className="text-[#1f6473]">Connection</span>
-                </h1>
-                <p className="text-[9px] font-bold tracking-widest text-[#66716d] uppercase mt-1">
-                  Local businesses, neighbor first
+                <div className="font-display font-black text-base tracking-tight leading-none text-[var(--cc-deep-navy)]">
+                  Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">Connection</span>
+                </div>
+                <p className="text-[9px] font-bold tracking-widest text-slate-400 uppercase mt-1">
+                  Texas Business Hub
                 </p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
-              <span className="h-2 w-2 rounded-full bg-[#d28f33] animate-pulse" />
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#66716d]">
+              <span className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
                 Limited Early Access
               </span>
             </div>
@@ -667,8 +983,18 @@ export default function App() {
               © {new Date().getFullYear()} Celina Connection. All Rights Reserved. Launching July 12, 2026.
             </p>
             <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-right">
+              <button
+                onClick={() => {
+                  setIsGated(false);
+                  sessionStorage.setItem('celina_connection_gated_bypass', 'true');
+                  setActiveTab('policies');
+                }}
+                className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold underline-offset-4 hover:underline"
+              >
+                Policies
+              </button>
               <button onClick={openAdminLogin} className="text-[11px] text-slate-400 hover:text-slate-700 font-semibold underline-offset-4 hover:underline">
-                Admin Login
+                Team Login
               </button>
               <p className="text-[11px] text-slate-400 font-medium">
                 Made with ❤️ for Celina, Texas Community.
@@ -681,15 +1007,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f1e4]/70 text-[#173542] flex flex-col font-sans selection:bg-[#d28f33] selection:text-white" id="celina-connection-root">
-      <SeoHead
-        activeTab={activeTab}
-        selectedBusiness={selectedBusiness}
-        businessCount={businesses.length}
-        selectedCategory={activeTab === 'directory' ? selectedDirectoryCategory : undefined}
-      />
+    <div className="min-h-screen bg-[var(--cc-cream)] flex flex-col font-sans selection:bg-[var(--cc-harvest-gold)] selection:text-[var(--cc-deep-navy)]" id="celina-connection-root">
+      <SEOHead {...seoConfig} />
       {/* Top Banner Accent */}
-      <div className="h-1 bg-gradient-to-r from-[#173542] via-[#1f6473] to-[#d28f33]" />
+      <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400" />
 
       {/* Main Header navigation */}
       <Header
@@ -699,10 +1020,13 @@ export default function App() {
         currentUser={currentUser}
         setCurrentUser={setCurrentUser}
         onOpenLogin={handleOpenLoginPrompt}
+        onOpenAdminLogin={openAdminLogin}
         isAiEnabled={isAiEnabled}
         setIsAiEnabled={setIsAiEnabled}
         serverAiAvailable={serverAiAvailable}
         onServerAiAvailabilityChange={setServerAiAvailable}
+        businesses={businesses}
+        onSelectBusiness={(id) => setSelectedBusinessId(id)}
       />
 
       {/* Stripe Payment Notification Banner */}
@@ -746,9 +1070,9 @@ export default function App() {
           <DirectoryView
             businesses={businesses}
             onAddReview={handleAddReview}
+            onLikeBusiness={handleLikeBusiness}
             selectedBusiness={selectedBusiness}
             onSelectBusiness={(b) => {
-              handleUpdateBusiness(b.id, { viewsCount: b.viewsCount + 1 });
               setSelectedBusinessId(b.id);
               navigate(`/business/${b.slug || b.id}`);
             }}
@@ -765,7 +1089,6 @@ export default function App() {
             serverAiAvailable={serverAiAvailable}
             setActiveTab={setActiveTab}
             homeMode={true}
-            onCategoryNavigate={navigateDirectoryCategory}
           />
         )}
 
@@ -773,15 +1096,15 @@ export default function App() {
           <DirectoryView
             businesses={businesses}
             onAddReview={handleAddReview}
+            onLikeBusiness={handleLikeBusiness}
             selectedBusiness={selectedBusiness}
             onSelectBusiness={(b) => {
-              handleUpdateBusiness(b.id, { viewsCount: b.viewsCount + 1 });
               setSelectedBusinessId(b.id);
               navigate(`/business/${b.slug || b.id}`);
             }}
             onCloseDetail={() => {
               setSelectedBusinessId(null);
-              navigate(directoryCategory ? `/directory/${directoryCategory.slug}` : '/directory');
+              navigate('/directory');
             }}
             onUpgradePrompt={(tier) => {
               setSelectedBusinessId(null);
@@ -791,16 +1114,27 @@ export default function App() {
             isAiEnabled={isAiEnabled}
             serverAiAvailable={serverAiAvailable}
             setActiveTab={setActiveTab}
-            initialCategory={selectedDirectoryCategory}
-            onCategoryNavigate={navigateDirectoryCategory}
           />
         )}
 
         {activeTab === 'events' && (
-          <EventsView />
+          <EventsView
+            currentUser={currentUser}
+            onOpenLogin={handleOpenLoginPrompt}
+            onOpenEventWorkspace={() => {
+              setDashboardPortalMode('owner');
+              navigate({ pathname: '/dashboard', hash: '#dashboard-events' });
+              setActiveTab('dashboard');
+            }}
+            onPromoteEvent={handleEventPromotionCheckout}
+          />
         )}
 
-        {activeTab === 'legacyhillspetition' && (
+        {activeTab === 'legacyhillspetition-signatures' && (
+          <LegacyHillsPetitionSignaturesView setActiveTab={setActiveTab} />
+        )}
+
+        {activeTab === 'legacyhillspetition-sign' && (
           <LegacyHillsPetitionView />
         )}
 
@@ -815,6 +1149,10 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'policies' && (
+          <PolicyView />
+        )}
+
         {activeTab === 'launch' && (
           <LaunchView
             businesses={businesses}
@@ -823,7 +1161,7 @@ export default function App() {
           />
         )}
 
-        {(activeTab === 'dashboard' || activeTab === 'owner-login' || activeTab === 'admin-login') && (
+        {(activeTab === 'dashboard' || activeTab === 'owner-login' || activeTab === 'admin-login' || activeTab === 'reset-password') && (
           <DashboardView
             currentUser={currentUser}
             setCurrentUser={setCurrentUser}
@@ -834,6 +1172,7 @@ export default function App() {
             onOwnerUpdateBusiness={handleOwnerUpdateBusiness}
             onUpdateBusiness={handleUpdateBusiness}
             onUpgradePrompt={(tier) => setTargetTier(tier)}
+            onPromoteEvent={handleEventPromotionCheckout}
             onDeleteBusiness={handleDeleteBusiness}
             onResetDatabase={handleResetDatabase}
             reportedBugs={reportedBugs}
@@ -841,7 +1180,8 @@ export default function App() {
             onDeleteBugStatus={handleDeleteBugStatus}
             portalMode={dashboardPortalMode}
             setPortalMode={setDashboardPortalMode}
-            defaultOwnerView={activeTab === 'owner-login' ? 'login' : 'register'}
+            defaultOwnerView={activeTab === 'reset-password' ? 'reset' : activeTab === 'owner-login' ? 'login' : 'register'}
+            passwordResetToken={new URLSearchParams(location.search).get('token') || ''}
             locationHash={location.hash}
           />
         )}
@@ -870,45 +1210,46 @@ export default function App() {
       <button
         onClick={() => setIsBugModalOpen(true)}
         className="fixed bottom-6 left-6 z-40 bg-rose-600 hover:bg-rose-700 text-white p-3 sm:px-4 sm:py-2.5 rounded-full shadow-lg hover:shadow-rose-600/25 flex items-center gap-2 transition-all cursor-pointer font-sans font-bold text-xs border border-rose-500/10"
-        title="Report a bug ASAP to admin"
+        title="Share feedback with the Celina Connection team"
       >
         <Bug className="w-4 h-4 text-white animate-pulse" />
-        <span className="hidden sm:inline">Report a Bug</span>
+        <span className="hidden sm:inline">Share Feedback</span>
       </button>
 
       {/* Celina Connection Welcoming Footer */}
-      <footer className="border-t border-[rgba(23,53,66,0.16)] bg-white/90 py-12 text-[#66716d] text-xs">
+      <footer className="border-t border-slate-200 bg-white py-12 text-slate-500 text-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             {/* Left */}
             <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded bg-white flex items-center justify-center ring-1 ring-[rgba(23,53,66,0.12)] overflow-hidden">
-                <img src="/assets/brand/cc-logo.png" alt="Celina Connection" className="h-full w-full object-contain" />
-              </div>
-              <span className="font-display font-bold text-sm text-[#173542] tracking-tight">
+              <img
+                src={BRAND_LOGO_PATH}
+                alt=""
+                className="h-6 w-6 rounded object-contain"
+              />
+              <span className="font-display font-extrabold text-sm text-[var(--cc-deep-navy)] tracking-tight">
                 Celina Connection
               </span>
             </div>
 
             {/* Middle Nav Links */}
-            <div className="flex flex-wrap gap-4 text-[11px] font-medium text-[#66716d]">
-              <button onClick={() => setActiveTab('directory')} className="hover:text-[#173542]">Browse Directory</button>
-              <button onClick={() => setActiveTab('events')} className="hover:text-[#173542]">Local Events</button>
-              <button onClick={() => setActiveTab('pricing')} className="hover:text-[#173542]">Membership Plans</button>
-              <button onClick={openOwnerLogin} className="hover:text-[#173542]">Owner Login</button>
+            <div className="flex flex-wrap gap-4 text-[11px] font-medium text-slate-600">
+              <button onClick={() => setActiveTab('directory')} className="hover:text-[var(--cc-deep-navy)]">Browse Directory</button>
+              <button onClick={() => setActiveTab('events')} className="hover:text-[var(--cc-deep-navy)]">Local Events</button>
+              <button onClick={() => setActiveTab('pricing')} className="hover:text-[var(--cc-deep-navy)]">Membership Plans</button>
+              <button onClick={() => setActiveTab('policies')} className="hover:text-[var(--cc-deep-navy)]">Policies</button>
+              <button onClick={openOwnerLogin} className="hover:text-[var(--cc-deep-navy)]">Owner Login</button>
             </div>
           </div>
 
-          <hr className="border-slate-150" />
-
           {/* Bottom Row */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-[#66716d]">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-600 border-t border-slate-100 pt-4">
             <p className="flex items-center gap-1">
-              Made with <Heart className="w-3.5 h-3.5 text-[#d28f33] fill-[#d28f33]" /> for the Celina, Texas Community.
+              Made with <Heart className="w-3.5 h-3.5 text-orange-500 fill-orange-500" /> for the Celina, Texas Community.
             </p>
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              <button onClick={openAdminLogin} className="text-[#66716d] hover:text-[#173542] underline-offset-4 hover:underline">
-                Admin Login
+              <button onClick={openAdminLogin} className="text-slate-400 hover:text-slate-700 underline-offset-4 hover:underline">
+                Team Login
               </button>
               <span>&copy; {new Date().getFullYear()} Celina Connection. All Rights Reserved.</span>
             </div>

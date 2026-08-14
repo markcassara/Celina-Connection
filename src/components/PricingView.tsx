@@ -1,6 +1,23 @@
 import React, { useState } from 'react';
 import { Tier, UserProfile } from '../types';
-import { Check, Info, Lock, Star, Sparkles, Zap, DollarSign } from 'lucide-react';
+import {
+  ArrowRight,
+  CalendarDays,
+  Camera,
+  Check,
+  DollarSign,
+  Info,
+  Lock,
+  Mail,
+  MessageSquareText,
+  Printer,
+  Share2,
+  Shirt,
+  Smartphone,
+  Sparkles,
+  Star,
+  Zap,
+} from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface PricingViewProps {
@@ -53,7 +70,7 @@ export default function PricingView({
         'Featured front-page placement',
         'Gallery upgrades',
       ],
-      color: 'border-emerald-200 hover:border-emerald-300 bg-emerald-50/30 text-slate-900',
+      color: 'border-emerald-200 hover:border-emerald-300 bg-emerald-50/30 text-[var(--cc-deep-navy)]',
       buttonStyle: 'bg-emerald-600 text-white hover:bg-emerald-700',
       buttonText: 'Claim Free Listing',
     },
@@ -71,16 +88,16 @@ export default function PricingView({
         'Business description',
         'Full street address with Map view',
         'Hours of operation',
-        '1 image upload',
+        'Up to 5 image uploads',
         'Receive customer reviews',
       ],
       notIncluded: [
         'Social media integration',
         'Manage & reply to reviews',
         'Front-page featured spot',
-        'Max 1 photo upload (No galleries)',
+        'YouTube video feature',
       ],
-      color: 'border-slate-200 hover:border-slate-300 bg-white text-slate-900',
+      color: 'border-slate-200 hover:border-slate-300 bg-white text-[var(--cc-deep-navy)]',
       buttonStyle: 'bg-slate-100 text-slate-700 hover:bg-slate-200',
       buttonText: 'Claim Basic Listing',
     },
@@ -97,16 +114,16 @@ export default function PricingView({
         'Full business address with Map view',
         'Website link & Call to Action',
         'Hours of operation details',
-        'Up to 5 image uploads (Gallery)',
+        'Up to 10 image uploads (Gallery)',
+        'YouTube video section',
         'Review Management (Write replies!)',
         'Front-page featured placement (Secondary Spotlight)',
       ],
       notIncluded: [
         'Social media links',
         'Custom button labels',
-        'Monthly view metrics analytics',
       ],
-      color: 'border-orange-500 bg-orange-50/20 text-slate-900 shadow-md ring-1 ring-orange-400',
+      color: 'border-orange-500 bg-orange-50/20 text-[var(--cc-deep-navy)] shadow-md ring-1 ring-orange-400',
       buttonStyle: 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 shadow-md shadow-orange-100',
       buttonText: 'Upgrade to Pro',
     },
@@ -122,16 +139,76 @@ export default function PricingView({
         'Front-page Featured Spotlight Access',
         'Full physical address & contact cards',
         'Website & Custom Button labels (CTA)',
-        'Up to 10 image uploads (Full Gallery)',
+        'Up to 20 image uploads (Full Gallery)',
         'Review management & priority replies',
         'Social media integration links',
-        'Detailed monthly view metrics & analytics',
+        'YouTube video section',
         'Priority live support',
       ],
       notIncluded: [],
-      color: 'border-amber-400 bg-slate-950 text-white shadow-xl shadow-amber-500/10 relative overflow-hidden',
-      buttonStyle: 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 hover:from-amber-300 hover:to-amber-400 shadow-md shadow-amber-500/10',
+      color: 'border-amber-400 bg-[var(--cc-deep-navy)] text-white shadow-xl shadow-amber-500/10 relative overflow-hidden',
+      buttonStyle: 'bg-gradient-to-r from-amber-400 to-amber-500 text-[var(--cc-deep-navy)] hover:from-amber-300 hover:to-amber-400 shadow-md shadow-amber-500/10',
       buttonText: 'Upgrade to Preston Elite',
+    },
+  ];
+
+  const paidAddOns = [
+    {
+      name: 'Local Events Promotion',
+      desc: 'Give your grand opening, sale, workshop, or community event a brighter spot in the Local Events calendar.',
+      detail: 'Best requested while your event is still within its 30-day promotion window.',
+      note: 'Intro offer planned',
+      icon: CalendarDays,
+      featured: true,
+    },
+    {
+      name: 'Weekly Featured SMS Blast',
+      desc: 'Share a timely local promotion with Celina neighbors who have asked to hear from local businesses.',
+      detail: 'Limited weekly placement keeps each message easier to notice.',
+      note: 'Flash offers',
+      icon: MessageSquareText,
+    },
+    {
+      name: 'Targeted Email Blast Campaigns',
+      desc: 'Send a polished local announcement, seasonal offer, or business update through a curated Celina newsletter.',
+      detail: 'Best for offers that need room for details, links, and visuals.',
+      note: 'Newsletters',
+      icon: Mail,
+    },
+    {
+      name: 'Social Media Management Packages',
+      desc: 'Get help turning updates, offers, and local stories into consistent posts for your business channels.',
+      detail: 'Built for owners who need steady presence without another weekly task.',
+      note: 'Managed help',
+      icon: Share2,
+    },
+    {
+      name: 'Custom Mobile App Placement',
+      desc: 'Reserve priority placement inside the upcoming Celina Connection mobile guide experience.',
+      detail: 'Early interest helps shape which categories receive placement first.',
+      note: 'Mobile guide',
+      icon: Smartphone,
+    },
+    {
+      name: 'Professional Photo Services',
+      desc: 'Refresh your listing with friendly, useful photos of your storefront, team, products, or service work.',
+      detail: 'A better image set can make your listing feel more trustworthy at a glance.',
+      note: 'Local shoots',
+      icon: Camera,
+    },
+    {
+      name: 'Local Apparel & Merch Printing',
+      desc: 'Create branded hats, shirts, aprons, or simple merch for events, staff, and loyal customers.',
+      detail: 'Helpful for pop-ups, grand openings, and community sponsorships.',
+      note: 'Small batches',
+      icon: Shirt,
+    },
+    {
+      name: 'Premium Print & Signage Kits',
+      desc: 'Order business cards, QR window stickers, flyers, menus, and direct-mail pieces with a local-first look.',
+      detail: 'A practical add-on when your online listing needs matching in-person materials.',
+      note: 'Print support',
+      icon: Printer,
     },
   ];
 
@@ -142,12 +219,12 @@ export default function PricingView({
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 uppercase tracking-wider">
           <DollarSign className="w-3.5 h-3.5" /> Simple, Welcoming Membership Plans
         </span>
-        <h1 className="font-display text-3xl sm:text-4.5xl font-extrabold text-slate-900 tracking-tight">
+        <h2 className="font-display text-3xl sm:text-4.5xl font-extrabold text-[var(--cc-deep-navy)] tracking-tight">
           Help Celina Grow while{' '}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">
             Unlocking Growth
           </span>
-        </h1>
+        </h2>
         <p className="text-slate-500 text-sm sm:text-base leading-relaxed">
           Select a budget-friendly directory plan designed to list your business, attract customers, and display your brand perfectly. Upgrade or downgrade anytime.
         </p>
@@ -271,161 +348,102 @@ export default function PricingView({
         })}
       </div>
 
-      {/* Side-by-Side Comparison Matrix */}
-      <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-6">
-        <h3 className="font-display text-xl font-bold text-slate-900 text-center">
-          Comprehensive Feature Matrix
-        </h3>
+      <p className="text-center text-[11px] leading-5 text-slate-400">
+        Paid memberships and event promotions are subject to Celina Connection's{' '}
+        <a href="/policies#payments" className="font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2">
+          payment
+        </a>
+        ,{' '}
+        <a href="/policies#refunds" className="font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2">
+          refund
+        </a>
+        , and{' '}
+        <a href="/policies#terms" className="font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2">
+          terms
+        </a>{' '}
+        policies.
+      </p>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-400 uppercase tracking-wider font-bold">
-                <th className="py-3 px-4">Directory Feature</th>
-                <th className="py-3 px-4">Free Launch</th>
-                <th className="py-3 px-4">Basic ({billingCycle === 'year' ? '$60/yr' : '$6/mo'})</th>
-                <th className="py-3 px-4">Pro ({billingCycle === 'year' ? '$160/yr' : '$16/mo'})</th>
-                <th className="py-3 px-4">Premium ({billingCycle === 'year' ? '$290/yr' : '$29/mo'})</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-150 text-slate-700">
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Celina Square Search Placement</td>
-                <td className="py-3.5 px-4">Standard</td>
-                <td className="py-3.5 px-4">Standard</td>
-                <td className="py-3.5 px-4 font-medium text-orange-600">Standard + Badge</td>
-                <td className="py-3.5 px-4 font-bold text-amber-600">Priority Spotlight</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Featured Front-Page Access</td>
-                <td className="py-3.5 px-4 text-slate-400">No</td>
-                <td className="py-3.5 px-4 text-slate-400">No</td>
-                <td className="py-3.5 px-4 text-orange-600 font-semibold">Yes (Secondary Spotlight)</td>
-                <td className="py-3.5 px-4 text-emerald-600 font-bold">Yes (Top Slider Spotlight)</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Image Upload Limits</td>
-                <td className="py-3.5 px-4">Max 1 Image</td>
-                <td className="py-3.5 px-4">Max 1 Image</td>
-                <td className="py-3.5 px-4 font-medium">Max 5 Images (Gallery)</td>
-                <td className="py-3.5 px-4 font-bold">Max 10 Images (Full Gallery)</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Contact Info & Address</td>
-                <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
-                <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
-                <td className="py-3.5 px-4 font-medium text-emerald-600">Full Address</td>
-                <td className="py-3.5 px-4 font-bold text-emerald-600">Full Address</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Website & Custom CTA Buttons</td>
-                <td className="py-3.5 px-4 text-slate-400">No Link</td>
-                <td className="py-3.5 px-4 font-medium text-emerald-600">Website Link</td>
-                <td className="py-3.5 px-4 font-medium text-emerald-600">Website Link</td>
-                <td className="py-3.5 px-4 font-bold text-emerald-600">Custom Styled Button</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Hours of Operation</td>
-                <td className="py-3.5 px-4 text-slate-400">Hidden</td>
-                <td className="py-3.5 px-4 text-emerald-600">Visible</td>
-                <td className="py-3.5 px-4 text-emerald-600">Visible</td>
-                <td className="py-3.5 px-4 text-emerald-600 font-bold">Visible</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Review Responder Engine</td>
-                <td className="py-3.5 px-4 text-slate-400">Read-Only</td>
-                <td className="py-3.5 px-4 text-slate-400">Read-Only</td>
-                <td className="py-3.5 px-4 font-medium text-emerald-600">Write Replies</td>
-                <td className="py-3.5 px-4 font-bold text-emerald-600">Write Replies</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Social Media Integrations</td>
-                <td className="py-3.5 px-4 text-slate-400">None</td>
-                <td className="py-3.5 px-4 text-slate-400">None</td>
-                <td className="py-3.5 px-4 text-slate-400">None</td>
-                <td className="py-3.5 px-4 text-emerald-600 font-bold">Facebook, Insta, Twitter</td>
-              </tr>
-              <tr>
-                <td className="py-3.5 px-4 font-semibold text-slate-950">Directory Metrics Analytics</td>
-                <td className="py-3.5 px-4 text-slate-400">No</td>
-                <td className="py-3.5 px-4 text-slate-400">Basic Clicks</td>
-                <td className="py-3.5 px-4 text-slate-400">No</td>
-                <td className="py-3.5 px-4 font-bold text-emerald-600">Yes (Full Analytics Graph)</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm" id="pricing-faq" aria-labelledby="pricing-faq-heading">
-        <div className="text-center max-w-2xl mx-auto space-y-2">
-          <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md tracking-wider">
-            Plan Questions
-          </span>
-          <h2 id="pricing-faq-heading" className="font-display text-2xl font-black tracking-tight text-slate-950">
-            Choosing a Celina Connection listing plan
-          </h2>
-        </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          {[
-            {
-              question: 'Is the free launch listing really free?',
-              answer: 'Yes. The free launch listing is a no-card-required starter option for early Celina businesses while the first 100 free slots remain available.',
-            },
-            {
-              question: 'Which paid plan adds a website link and hours?',
-              answer: 'Local Pioneer Basic adds a website link and hours of operation while keeping the listing at the standard directory placement level.',
-            },
-            {
-              question: 'Which plan is best for more visibility?',
-              answer: 'Celina Champion Pro and Preston Elite Premium are built for businesses that want stronger placement, galleries, review tools, and featured visibility.',
-            },
-          ].map((item) => (
-            <div key={item.question} className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100 text-left">
-              <h3 className="text-sm font-black text-slate-950">{item.question}</h3>
-              <p className="mt-2 text-xs font-medium leading-relaxed text-slate-600">{item.answer}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Paid Tier Add-ons Section */}
-      <div className="space-y-6 pt-4">
-        <div className="text-center max-w-xl mx-auto space-y-2">
-          <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md tracking-wider">
-            Paid Tier Add-On
-          </span>
-          <h3 className="font-display text-xl font-bold text-slate-900">
-            Add-On Services for Paid Members
-          </h3>
-          <p className="text-slate-500 text-xs leading-relaxed">
-            Businesses on Local Pioneer, Celina Champion, or Preston Elite can layer on event promotion and campaign support as optional visibility boosters.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-            { name: 'Local Events Promotion', desc: 'Add your grand opening, sale, workshop, or community event to the Local Events calendar as a paid-tier add-on.' },
-            { name: 'Weekly Featured SMS Blast', desc: 'Push local promotion highlights directly to verified Celina shoppers.' },
-            { name: 'Targeted Email Blast Campaigns', desc: 'Engage local subscribers with beautifully curated newsletters.' },
-            { name: 'Social Media Management Packages', desc: 'Fully managed social posting and syndication to boost your local exposure.' },
-            { name: 'Custom Mobile App Placement', desc: 'Featured priority placement inside our future iOS & Android local guide apps.' },
-            { name: 'Professional Photo Services', desc: 'On-site photography package for your store interiors, staff, and products.' },
-            { name: 'Local Apparel & Merch Printing', desc: 'Custom branded hats, shirts, and aprons printed and delivered locally.' },
-            { name: 'Premium Print & Signage Kits', desc: 'Business cards, QR window stickers, flyers, and direct mailers printed in town.' },
-          ].map((addon, idx) => (
-            <div key={idx} className="p-4 bg-white border border-slate-150 rounded-2xl flex flex-col justify-between space-y-3 shadow-xs">
-              <div className="space-y-1.5">
-                <p className="text-xs font-bold text-slate-900">{addon.name}</p>
-                <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">{addon.desc}</p>
+      {/* Business Boosts Section */}
+      <div className="relative overflow-hidden rounded-3xl border border-[var(--cc-wheat-gold)]/45 bg-[var(--cc-warm-white)] shadow-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="bg-[var(--cc-deep-navy)] p-6 sm:p-8 text-white">
+            <span className="inline-flex items-center gap-1.5 bg-orange-100 text-orange-800 text-[10px] font-extrabold uppercase px-3 py-1 rounded-full tracking-wider">
+              <Sparkles className="h-3 w-3" />
+              Coming Soon for Paid Members
+            </span>
+            <h3 className="mt-4 font-display text-2xl sm:text-3xl font-black tracking-tight">
+              Business Boosts are on the way
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-slate-200">
+              Optional add-ons are being shaped for local businesses that want extra visibility around events, offers, launches, photos, print, and community campaigns.
+            </p>
+            <div className="mt-6 grid grid-cols-1 gap-3 text-xs sm:grid-cols-2 lg:grid-cols-1">
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                <p className="font-black text-orange-100">Local-first</p>
+                <p className="mt-1 text-slate-200 font-medium leading-relaxed">Built around Celina launches, offers, events, and neighborhood moments.</p>
               </div>
-              <div>
-                <span className="inline-flex items-center gap-0.5 text-[8px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
-                  <Lock className="w-2 h-2" /> PAID TIER ADD-ON
-                </span>
+              <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
+                <p className="font-black text-orange-100">Thoughtful placement</p>
+                <p className="mt-1 text-slate-200 font-medium leading-relaxed">Designed to stay useful and noticeable without crowding the directory.</p>
               </div>
             </div>
-          ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 p-4 sm:p-5 gap-4">
+            {paidAddOns.map((addon) => {
+              const AddonIcon = addon.icon;
+
+              return (
+                <div
+                  key={addon.name}
+                  className={`group relative flex min-h-[190px] flex-col justify-between overflow-hidden rounded-2xl border p-4 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
+                    addon.featured
+                      ? 'md:col-span-2 border-orange-300 bg-gradient-to-br from-orange-50 to-amber-50 text-[var(--cc-deep-navy)]'
+                      : 'border-slate-200 bg-white text-[var(--cc-deep-navy)] hover:border-orange-200'
+                  }`}
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <span
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                          addon.featured
+                            ? 'bg-orange-500 text-white'
+                            : 'bg-orange-50 text-orange-600'
+                        }`}
+                      >
+                        <AddonIcon className="h-5 w-5" />
+                      </span>
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <span className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-orange-700">
+                          Coming Soon
+                        </span>
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-amber-700">
+                          {addon.note}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="font-display text-base font-black leading-tight">{addon.name}</h4>
+                      <p className="text-xs font-semibold leading-relaxed text-slate-600">
+                        {addon.desc}
+                      </p>
+                      <p className="text-[11px] font-medium leading-relaxed text-slate-500">
+                        {addon.detail}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-3 text-[10px] font-black uppercase tracking-wider text-orange-600">
+                    <span className="inline-flex items-center gap-1">
+                      <Lock className="h-3 w-3" />
+                      Paid member preview
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

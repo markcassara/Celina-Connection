@@ -82,7 +82,7 @@ export default function CheckoutModal({
           name: 'Premium Partner',
           price: targetInterval === 'year' ? '$290.00' : '$29.00',
           frequency: targetInterval === 'year' ? 'billed annually' : 'billed monthly',
-          accent: 'from-amber-400 to-amber-500 text-slate-950',
+          accent: 'from-amber-400 to-amber-500 text-[var(--cc-deep-navy)]',
           benefits: [
             'Featured placement in homepage carousel',
             'Priority directory search sorting',
@@ -101,7 +101,7 @@ export default function CheckoutModal({
             'Standard active profile listing',
             'Verified Business silver badge',
             'Reviews & ratings integration',
-            'Basic monthly page views counter',
+            'Expanded listing tools',
           ],
         };
       case 'basic':
@@ -110,7 +110,7 @@ export default function CheckoutModal({
           price: targetInterval === 'year' ? '$60.00' : '$6.00',
           frequency: targetInterval === 'year' ? 'billed annually' : 'billed monthly',
           accent: 'from-slate-500 to-slate-600 text-white',
-          benefits: ['Standard paid directory listing', 'Website link', 'Business hours', 'Basic monthly page views counter'],
+          benefits: ['Standard paid directory listing', 'Website link', 'Business hours', 'Expanded listing tools'],
         };
       default:
         return {
@@ -197,16 +197,16 @@ export default function CheckoutModal({
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to initialize checkout');
+        throw new Error(data.error || 'We could not open checkout right now. Please try again in a moment.');
       }
 
       if (data.url) {
         window.location.href = data.url;
       } else {
-        throw new Error('No checkout URL returned from server.');
+        throw new Error('We could not open checkout right now. Please try again in a moment.');
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred during Stripe redirect.');
+      setError(err.message || 'We could not open checkout right now. Please try again in a moment.');
       setIsProcessing(false);
     }
   };
@@ -214,7 +214,7 @@ export default function CheckoutModal({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto" id="checkout-modal-container">
       {/* Backdrop */}
-      <div onClick={onClose} className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" />
+      <div onClick={onClose} className="fixed inset-0 bg-[rgba(15,45,77,0.62)] backdrop-blur-sm" />
 
       {/* Modal Alignment */}
       <div className="flex min-h-full items-center justify-center p-4">
@@ -228,7 +228,7 @@ export default function CheckoutModal({
           <div className="p-6 bg-slate-50 border-b border-slate-150 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Lock className="w-4 h-4 text-orange-600" />
-              <h3 className="font-display font-extrabold text-slate-950 text-sm">Secure Celina Checkout</h3>
+              <h3 className="font-display font-extrabold text-[var(--cc-deep-navy)] text-sm">Secure Celina Checkout</h3>
             </div>
             <button
               onClick={onClose}
@@ -243,7 +243,7 @@ export default function CheckoutModal({
             {isLoadingConfig ? (
               <div className="p-12 text-center space-y-3 flex flex-col items-center justify-center min-h-[340px]" key="loading">
                 <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
-                <p className="text-xs text-slate-500 font-medium">Loading checkout options...</p>
+	                <p className="text-xs text-slate-500 font-medium">Getting your membership options ready...</p>
               </div>
             ) : isSuccess ? (
               <motion.div
@@ -254,13 +254,13 @@ export default function CheckoutModal({
                 key="success-screen"
               >
                 <CheckCircle className="w-16 h-16 text-emerald-500 animate-bounce" />
-                <h4 className="font-display text-xl font-extrabold text-slate-900">Payment Approved!</h4>
-                <p className="text-slate-500 text-xs leading-relaxed max-w-xs">
-                  Your Celina Connection account has been upgraded to <span className="font-bold text-orange-600">{details.name}</span>. Updating directory data...
-                </p>
-                <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                  <Shield className="w-3.5 h-3.5" /> Secure token recorded.
-                </div>
+	                <h4 className="font-display text-xl font-extrabold text-[var(--cc-deep-navy)]">Membership Confirmed!</h4>
+	                <p className="text-slate-500 text-xs leading-relaxed max-w-xs">
+	                  Your Celina Connection listing is now on <span className="font-bold text-orange-600">{details.name}</span>. We are refreshing your member features now.
+	                </p>
+	                <div className="flex items-center gap-1 text-[10px] text-slate-400">
+	                  <Shield className="w-3.5 h-3.5" /> Secure checkout complete.
+	                </div>
               </motion.div>
             ) : stripeEnabled && !useManualEntryMode ? (
               /* REAL STRIPE CHECKOUT SCREEN */
@@ -281,7 +281,7 @@ export default function CheckoutModal({
                         onClick={() => onChangeInterval('month')}
                         className={`text-[11px] font-bold px-3 py-1 rounded-lg transition-all cursor-pointer ${
                           targetInterval === 'month'
-                            ? 'bg-white text-slate-950 shadow-sm'
+                            ? 'bg-white text-[var(--cc-deep-navy)] shadow-sm'
                             : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
@@ -306,7 +306,7 @@ export default function CheckoutModal({
                 {/* Upgrade details summary banner */}
                 <div className={`p-4.5 rounded-2xl bg-gradient-to-r ${details.accent} shadow-md flex items-center justify-between`}>
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-85 block">Total Subscription Billing</span>
+	                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-85 block">Membership Total</span>
                     <span className="font-display font-black text-base">{details.name} {addonQuantity > 0 ? `+ ${addonQuantity} Add-on${addonQuantity > 1 ? 's' : ''}` : ''}</span>
                   </div>
                   <div className="text-right">
@@ -321,20 +321,20 @@ export default function CheckoutModal({
                     <div>
                       <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                        Additional Business Add-on
+	                        Additional Business Listing
                       </h4>
                       <p className="text-[10px] text-slate-500 mt-0.5">
-                        List multiple businesses under your account for {targetInterval === 'year' ? '$36.00/yr' : '$3.00/mo'} each
+	                        Add another Celina business to your membership for {targetInterval === 'year' ? '$36.00/year' : '$3.00/month'} each
                       </p>
                     </div>
-                    <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2.5 py-1 rounded-xl">
+                    <span className="text-xs font-black text-[var(--cc-deep-navy)] bg-white border border-slate-200 px-2.5 py-1 rounded-xl">
                       +{targetInterval === 'year' ? '$36.00/yr' : '$3.00/mo'}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <span className="text-[11px] font-medium text-slate-600">
-                      Additional Listings to Upgrade:
+	                      Extra listings to include:
                     </span>
                     <div className="flex items-center gap-2">
                       <button
@@ -344,7 +344,7 @@ export default function CheckoutModal({
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-6 text-center text-xs font-bold text-slate-900">
+                      <span className="w-6 text-center text-xs font-bold text-[var(--cc-deep-navy)]">
                         {addonQuantity}
                       </span>
                       <button
@@ -361,7 +361,7 @@ export default function CheckoutModal({
                     <div className="p-2.5 rounded bg-amber-50 border border-amber-100 text-[10px] text-amber-800 leading-normal font-medium flex items-start gap-1.5 animate-pulse">
                       <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
                       <div>
-                        We noticed you have {userOwnedCount} registered listings under this account. We recommend choosing at least {defaultAddonQty} add-on slots to cover them all!
+	                        We noticed you manage {userOwnedCount} listings. Consider including at least {defaultAddonQty} extra listing{defaultAddonQty > 1 ? 's' : ''} so they are all covered.
                       </div>
                     </div>
                   )}
@@ -370,10 +370,10 @@ export default function CheckoutModal({
                 <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-100 space-y-1">
                   <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
                     <Shield className="w-4 h-4 text-emerald-600" />
-                    Stripe Secure Processing Active
+	                    Secure Checkout
                   </div>
                   <p className="text-[11px] text-emerald-700 leading-normal">
-                    This directory is configured with real payment integrations. You will be redirected to Stripe's bank-grade secure checkout.
+	                    You will finish your membership through Stripe's secure checkout.
                   </p>
                 </div>
 
@@ -401,24 +401,39 @@ export default function CheckoutModal({
                   <button
                     onClick={handleStripeCheckout}
                     disabled={isProcessing}
-                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-950 text-white font-bold text-xs hover:bg-slate-900 transition-all cursor-pointer shadow-md disabled:opacity-55"
+                    className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[var(--cc-deep-navy)] text-white font-bold text-xs hover:bg-[var(--cc-deep-navy)] transition-all cursor-pointer shadow-md disabled:opacity-55"
                   >
                     {isProcessing ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Redirecting to Stripe...</span>
+	                        <span>Opening secure checkout...</span>
                       </>
                     ) : (
                       <>
-                        <span>Proceed to Stripe Checkout</span>
+	                        <span>Continue to Secure Checkout</span>
                         <ExternalLink className="w-3.5 h-3.5" />
                       </>
                     )}
                   </button>
 
                   <div className="flex justify-end items-center text-[10px] text-slate-400">
-                    <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> PCI Compliant</span>
+	                    <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> Secure payment</span>
                   </div>
+                  <p className="text-[10px] leading-4 text-slate-400 text-center">
+                    By continuing, you agree to Celina Connection's{' '}
+                    <a href="/policies#terms" target="_blank" rel="noreferrer" className="font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2">
+                      terms
+                    </a>
+                    ,{' '}
+                    <a href="/policies#privacy" target="_blank" rel="noreferrer" className="font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2">
+                      privacy
+                    </a>
+                    , and{' '}
+                    <a href="/policies#refunds" target="_blank" rel="noreferrer" className="font-bold text-orange-600 hover:text-orange-700 underline underline-offset-2">
+                      refund
+                    </a>{' '}
+                    policies.
+                  </p>
                 </div>
               </motion.div>
             ) : (
@@ -438,7 +453,7 @@ export default function CheckoutModal({
                         onClick={() => onChangeInterval('month')}
                         className={`text-[11px] font-bold px-3 py-1 rounded-lg transition-all cursor-pointer ${
                           targetInterval === 'month'
-                            ? 'bg-white text-slate-950 shadow-sm'
+                            ? 'bg-white text-[var(--cc-deep-navy)] shadow-sm'
                             : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
@@ -463,7 +478,7 @@ export default function CheckoutModal({
                 {/* Upgrade details summary banner */}
                 <div className={`p-4.5 rounded-2xl bg-gradient-to-r ${details.accent} shadow-md flex items-center justify-between`}>
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-85 block">Total Subscription Billing</span>
+	                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-85 block">Membership Total</span>
                     <span className="font-display font-black text-base">{details.name} {addonQuantity > 0 ? `+ ${addonQuantity} Add-on${addonQuantity > 1 ? 's' : ''}` : ''}</span>
                   </div>
                   <div className="text-right">
@@ -478,20 +493,20 @@ export default function CheckoutModal({
                     <div>
                       <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1">
                         <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
-                        Additional Business Add-on
+	                        Additional Business Listing
                       </h4>
                       <p className="text-[10px] text-slate-500 mt-0.5">
-                        List multiple businesses under your account for {targetInterval === 'year' ? '$36.00/yr' : '$3.00/mo'} each
+	                        Add another Celina business to your membership for {targetInterval === 'year' ? '$36.00/year' : '$3.00/month'} each
                       </p>
                     </div>
-                    <span className="text-xs font-black text-slate-900 bg-white border border-slate-200 px-2.5 py-1 rounded-xl">
+                    <span className="text-xs font-black text-[var(--cc-deep-navy)] bg-white border border-slate-200 px-2.5 py-1 rounded-xl">
                       +{targetInterval === 'year' ? '$36.00/yr' : '$3.00/mo'}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <span className="text-[11px] font-medium text-slate-600">
-                      Additional Listings to Upgrade:
+	                      Extra listings to include:
                     </span>
                     <div className="flex items-center gap-2">
                       <button
@@ -501,7 +516,7 @@ export default function CheckoutModal({
                       >
                         <Minus className="w-3 h-3" />
                       </button>
-                      <span className="w-6 text-center text-xs font-bold text-slate-900">
+                      <span className="w-6 text-center text-xs font-bold text-[var(--cc-deep-navy)]">
                         {addonQuantity}
                       </span>
                       <button
@@ -518,7 +533,7 @@ export default function CheckoutModal({
                     <div className="p-2.5 rounded bg-amber-50 border border-amber-100 text-[10px] text-amber-800 leading-normal font-medium flex items-start gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
                       <div>
-                        We noticed you have {userOwnedCount} registered listings. We recommend choosing at least {defaultAddonQty} add-on slot(s) to cover all your businesses!
+	                        We noticed you manage {userOwnedCount} listings. Consider including at least {defaultAddonQty} extra listing{defaultAddonQty > 1 ? 's' : ''} so they are all covered.
                       </div>
                     </div>
                   )}
@@ -529,10 +544,10 @@ export default function CheckoutModal({
                   <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-orange-50 text-slate-700 text-xs border border-orange-100">
                     <div className="flex items-center gap-1.5 text-orange-700 font-bold">
                       <Sparkles className="w-4 h-4 text-orange-500 flex-shrink-0" />
-                      Card Checkout Setup Required
+	                      Card Checkout Is Almost Ready
                     </div>
                     <p className="leading-relaxed text-slate-600 text-[11px]">
-                      Card checkout is being finalized. Please contact support if you need this upgrade activated right away.
+	                      We are finishing card checkout for this option. Please contact us if you would like help activating your membership right away.
                     </p>
                   </div>
                 ) : (
@@ -542,9 +557,9 @@ export default function CheckoutModal({
                       Secure Card Entry
                     </div>
                     <p className="leading-relaxed text-slate-500 text-[11px]">
-                      Prefer Stripe Checkout?{' '}
+	                      Prefer our secure checkout page?{' '}
                       <button type="button" onClick={() => setUseManualEntryMode(false)} className="text-orange-600 underline font-bold hover:text-orange-700 cursor-pointer">
-                        Return to Stripe Checkout
+	                        Return to secure checkout
                       </button>
                     </p>
                   </div>
@@ -563,7 +578,7 @@ export default function CheckoutModal({
                       value={cardName}
                       onChange={(e) => setCardName(e.target.value)}
                       disabled={isProcessing}
-                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 disabled:opacity-50"
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] disabled:opacity-50"
                     />
                   </div>
 
@@ -580,7 +595,7 @@ export default function CheckoutModal({
                         value={cardNumber}
                         onChange={handleCardNumberChange}
                         disabled={isProcessing}
-                        className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 disabled:opacity-50"
+                        className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -597,7 +612,7 @@ export default function CheckoutModal({
                         value={cardExpiry}
                         onChange={handleExpiryChange}
                         disabled={isProcessing}
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 disabled:opacity-50"
+                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] disabled:opacity-50"
                       />
                     </div>
 
@@ -612,7 +627,7 @@ export default function CheckoutModal({
                         value={cardCvc}
                         onChange={handleCvcChange}
                         disabled={isProcessing}
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 disabled:opacity-50"
+                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -638,16 +653,16 @@ export default function CheckoutModal({
                   <button
                     type="submit"
                     disabled={isProcessing}
-                    className="flex-grow inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-slate-950 text-white font-bold text-xs hover:bg-slate-900 transition-all cursor-pointer shadow-md disabled:opacity-55"
+                    className="flex-grow inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-[var(--cc-deep-navy)] text-white font-bold text-xs hover:bg-[var(--cc-deep-navy)] transition-all cursor-pointer shadow-md disabled:opacity-55"
                   >
                     {isProcessing ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Verifying Card...</span>
+	                        <span>Reviewing payment...</span>
                       </>
                     ) : (
                       <>
-                        <span>Simulate {details.price} Payment</span>
+	                        <span>Activate {details.price} Membership</span>
                       </>
                     )}
                   </button>

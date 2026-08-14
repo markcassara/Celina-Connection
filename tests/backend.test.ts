@@ -5,12 +5,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { AddressInfo, createServer } from 'node:net';
+import Stripe from 'stripe';
 
 import { createApp } from '../server/app.ts';
+import { CATEGORIES } from '../src/data/mockBusinesses.ts';
 import { buildOwnerProfilePatch } from '../src/lib/ownerProfilePatch.ts';
-import { activeTabFromPath, resolveDashboardPortalMode } from '../src/lib/navigation.ts';
+import { countOutsideUserClaimedListings, isNewListing } from '../src/lib/listingVisuals.ts';
+import { resolveDashboardPortalMode } from '../src/lib/navigation.ts';
 
 const ADMIN_TOKEN = 'test-admin-token';
+const TEST_LOGO_URL = 'data:image/png;base64,test-profile-image';
+const TEST_COVER_URL = 'data:image/jpeg;base64,test-cover-image';
 
 test('public dashboard menu leaves admin-login mode and opens the owner join page', () => {
   assert.equal(resolveDashboardPortalMode({ activeTab: 'dashboard', currentMode: 'admin', isLoggedIn: false }), 'owner');
@@ -49,9 +54,92 @@ test('direct admin dashboard hash keeps unauthenticated users in admin login int
   );
 });
 
-test('directory category URLs render the directory tab', () => {
-  assert.equal(activeTabFromPath('/directory/dining'), 'directory');
-  assert.equal(activeTabFromPath('/directory/home-services'), 'directory');
+test('new listing badge helper only marks listings from the first 30 days', () => {
+  const now = new Date('2026-08-04T12:00:00.000Z').getTime();
+  assert.equal(isNewListing({ createdAt: '2026-07-06T12:00:00.000Z' }, now), true);
+  assert.equal(isNewListing({ createdAt: '2026-07-05T11:59:59.000Z' }, now), false);
+  assert.equal(isNewListing({ createdAt: 'bad-date' }, now), false);
+});
+
+test('new business category dropdown keeps expanded local business options', () => {
+  const categoryLabels = [...CATEGORIES] as string[];
+  assert.ok(categoryLabels.includes('All'));
+  for (const category of [
+    'Activities & Community',
+    'Beauty & Personal Care',
+    'Childcare & Education',
+    'Estate Planning',
+    'Events & Venues',
+    'Financial Services',
+    'Legal Services',
+    'Medical & Dental',
+    'Mortgage & Lending',
+    'Nonprofits & Churches',
+    'Pet Services',
+    'Professional Services',
+    'Real Estate',
+    'Shopping & Retail',
+    'Trades & Contractors',
+  ]) {
+    assert.ok(categoryLabels.includes(category), `${category} should be available to new listings`);
+  }
+});
+
+test('1-click business setup drafts a profile from a public website', async () => {
+  const previousGeminiKey = process.env.GEMINI_API_KEY;
+  const previousGoogleGeminiKey = process.env.GOOGLE_GEMINI_API_KEY;
+  const previousGoogleKey = process.env.GOOGLE_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_GEMINI_API_KEY;
+  delete process.env.GOOGLE_API_KEY;
+
+  const websiteServer = createHttpServer((_req, res) => {
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    res.end(`<!doctype html>
+      <html>
+        <head>
+          <title>The Well Marketing Solutions</title>
+          <meta name="description" content="Helping small businesses grow with marketing strategy, websites, lead generation, and content." />
+          <meta property="og:image" content="/banner.jpg" />
+        </head>
+        <body>
+          <a href="tel:2144949952">2144949952</a>
+          <a href="mailto:kimberly@thewellmarketingsolutions.com">Email Kimberly</a>
+        </body>
+      </html>`);
+  });
+  await new Promise<void>((resolve) => websiteServer.listen(0, '127.0.0.1', () => resolve()));
+  const websitePort = (websiteServer.address() as AddressInfo).port;
+
+  try {
+    await withServer(makeDbPath('business-discovery'), async (baseUrl) => {
+      const discoverRes = await fetch(`${baseUrl}/api/owner/discover-business`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          businessName: 'The Well Marketing Solutions',
+          website: `http://127.0.0.1:${websitePort}`,
+        }),
+      });
+      assert.equal(discoverRes.status, 200);
+      const body = await discoverRes.json();
+      assert.equal(body.draft.name, 'The Well Marketing Solutions');
+      assert.equal(body.draft.website, `http://127.0.0.1:${websitePort}/`);
+      assert.match(body.draft.description, /Helping small businesses grow/);
+      assert.equal(body.draft.phone, '2144949952');
+      assert.equal(body.draft.email, 'kimberly@thewellmarketingsolutions.com');
+      assert.equal(body.draft.coverImageUrl, `http://127.0.0.1:${websitePort}/banner.jpg`);
+      assert.ok(body.draft.confidenceNotes.length > 0);
+    });
+  } finally {
+    if (previousGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = previousGeminiKey;
+    if (previousGoogleGeminiKey === undefined) delete process.env.GOOGLE_GEMINI_API_KEY;
+    else process.env.GOOGLE_GEMINI_API_KEY = previousGoogleGeminiKey;
+    if (previousGoogleKey === undefined) delete process.env.GOOGLE_API_KEY;
+    else process.env.GOOGLE_API_KEY = previousGoogleKey;
+    await new Promise<void>((resolve, reject) => websiteServer.close((err) => (err ? reject(err) : resolve())));
+  }
 });
 
 async function withServer(dbPath: string, run: (baseUrl: string) => Promise<void>) {
@@ -187,6 +275,7 @@ test('owner verification email can be delivered through GoHighLevel contact mess
     process.env.GHL_LOCATION_ID = 'test-location-id';
     process.env.GHL_API_BASE_URL = ghlBaseUrl;
     process.env.GHL_WELCOME_TAGS = 'celina-connection,owner-registration,welcome-email';
+    process.env.GHL_PASSWORD_RESET_TAGS = 'celina-connection,password-reset';
     process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
     delete process.env.SMTP_HOST;
     delete process.env.SMTP_USER;
@@ -208,10 +297,12 @@ test('owner verification email can be delivered through GoHighLevel contact mess
             password: 'StrongPass123!',
             startedAt: Date.now() - 4000,
             company: '',
+            logoUrl: TEST_LOGO_URL,
+            images: [TEST_COVER_URL],
           }),
         });
         assert.equal(res.status, 201);
-        assert.equal(requests.length, 2);
+        assert.equal(requests.length, 4);
         assert.equal(requests[0].url, '/contacts/upsert');
         assert.equal(requests[0].authorization, 'Bearer test-ghl-key');
         assert.equal(requests[0].body.locationId, 'test-location-id');
@@ -221,10 +312,176 @@ test('owner verification email can be delivered through GoHighLevel contact mess
         assert.equal(requests[1].body.type, 'Email');
         assert.equal(requests[1].body.contactId, 'contact-123');
         assert.equal(requests[1].body.emailTo, 'owner-ghl@example.com');
+        assert.equal(requests[1].body.subject, 'Welcome to Celina Connection');
         assert.match(requests[1].body.html, /verify-email\?token=/);
+        assert.match(requests[1].body.html, /Welcome to Celina Connection/);
+        assert.match(requests[1].body.html, /Your submitted listing details/);
+        assert.match(requests[1].body.html, /GHL Mail Test/);
+        assert.match(requests[1].body.html, /Starting plan/);
+        assert.match(requests[1].body.html, /Profile image/);
+        assert.match(requests[1].body.html, /What happens next/);
+        assert.equal(requests[2].url, '/contacts/upsert');
+        assert.equal(requests[2].body.email, 'info@celinaconnection.com');
+        assert.deepEqual(requests[2].body.tags, ['celina-connection', 'admin-notification', 'new-owner-registration']);
+        assert.equal(requests[3].url, '/conversations/messages');
+        assert.equal(requests[3].body.emailTo, 'info@celinaconnection.com');
+        assert.equal(requests[3].body.subject, 'New Celina Connection user: GHL Mail Test');
+        assert.match(requests[3].body.html, /owner-ghl@example\.com/);
+        assert.match(requests[3].body.html, /Home &amp; Professional Services/);
+        assert.match(requests[3].body.html, /Suggested review/);
+        assert.match(requests[3].body.html, /Banner image/);
+        assert.match(requests[3].body.html, /Open Celina Connection admin/);
       });
     } finally {
       for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL', 'GHL_WELCOME_TAGS', 'CELINA_EXPOSE_VERIFICATION_LINK']) {
+        delete process.env[key];
+      }
+    }
+  });
+});
+
+test('owner forgot password sends reset through GoHighLevel and updates login password', async () => {
+  const dbPath = makeDbPath('ghl-password-reset');
+
+  await withFakeGhl(async (ghlBaseUrl, requests) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+    process.env.GHL_WELCOME_TAGS = 'celina-connection,owner-registration,welcome-email';
+    process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+    delete process.env.BREVO_API_KEY;
+    delete process.env.RESEND_API_KEY;
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const registerRes = await fetch(`${baseUrl}/api/owner/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Reset Link Books',
+            category: 'Professional Services',
+            description: 'Password reset test listing.',
+            phone: '(972) 555-0147',
+            email: 'reset-ghl@example.com',
+            password: 'Original Strong Pass 42',
+            startedAt: Date.now() - 4000,
+            company: '',
+            logoUrl: TEST_LOGO_URL,
+            images: [TEST_COVER_URL],
+          }),
+        });
+        assert.equal(registerRes.status, 201);
+        const registered = await registerRes.json();
+        const verificationToken = new URL(registered.verificationUrl).searchParams.get('token');
+        assert.ok(verificationToken);
+        assert.equal((await fetch(`${baseUrl}/api/owner/verify-email?token=${verificationToken}`)).status, 200);
+
+        requests.length = 0;
+        const forgotRes = await fetch(`${baseUrl}/api/owner/forgot-password`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: 'reset-ghl@example.com' }),
+        });
+        assert.equal(forgotRes.status, 200);
+        assert.equal(requests.length, 2);
+        assert.equal(requests[0].url, '/contacts/upsert');
+        assert.equal(requests[0].body.email, 'reset-ghl@example.com');
+        assert.deepEqual(requests[0].body.tags, ['celina-connection', 'password-reset']);
+        assert.equal(requests[1].url, '/conversations/messages');
+        assert.equal(requests[1].body.emailTo, 'reset-ghl@example.com');
+        assert.match(requests[1].body.html, /reset-password\?token=/);
+
+        const resetToken = new URL(requests[1].body.html.match(/https:\/\/www\.celinaconnection\.com\/reset-password\?token=[^"<>]+/)?.[0] || '').searchParams.get('token');
+        assert.ok(resetToken);
+
+        const resetRes = await fetch(`${baseUrl}/api/owner/reset-password`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token: resetToken, password: 'Fresh Strong Pass 43' }),
+        });
+        assert.equal(resetRes.status, 200);
+        const resetBody = await resetRes.json();
+        assert.equal(resetBody.currentUser.email, 'reset-ghl@example.com');
+
+        const oldLoginRes = await fetch(`${baseUrl}/api/owner/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: 'reset-ghl@example.com', password: 'Original Strong Pass 42' }),
+        });
+        assert.equal(oldLoginRes.status, 401);
+
+        const newLoginRes = await fetch(`${baseUrl}/api/owner/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: 'reset-ghl@example.com', password: 'Fresh Strong Pass 43' }),
+        });
+        assert.equal(newLoginRes.status, 200);
+      });
+    } finally {
+      for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL', 'GHL_WELCOME_TAGS', 'GHL_PASSWORD_RESET_TAGS', 'CELINA_EXPOSE_VERIFICATION_LINK']) {
+        delete process.env[key];
+      }
+    }
+  });
+});
+
+test('admin can send future missing listing image reminders through GoHighLevel', async () => {
+  const dbPath = makeDbPath('ghl-missing-visuals');
+
+  await withFakeGhl(async (ghlBaseUrl, requests) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+    process.env.GHL_MISSING_IMAGES_TAGS = 'celina-connection,missing-listing-images,72-hour-image-notice';
+    process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+    try {
+      await withServer(dbPath, async (baseUrl) => {
+        const createRes = await fetch(`${baseUrl}/api/businesses`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-admin-token': ADMIN_TOKEN,
+          },
+          body: JSON.stringify({
+            name: 'Missing Photo Market',
+            category: 'Shopping & Retail',
+            description: 'A listing that still needs its launch visuals.',
+            phone: '(972) 555-0188',
+            email: 'photos-needed@example.net',
+            tier: 'free',
+            ownerId: '',
+            isUnclaimed: true,
+          }),
+        });
+        assert.equal(createRes.status, 201);
+
+        const notifyRes = await fetch(`${baseUrl}/api/admin/notifications/missing-visuals`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-admin-token': ADMIN_TOKEN,
+          },
+          body: JSON.stringify({ deadlineHours: 72, includeUnclaimed: true }),
+        });
+        assert.equal(notifyRes.status, 200);
+        const payload = await notifyRes.json();
+        assert.ok(payload.sent.some((item: any) => item.email === 'photos-needed@example.net'));
+
+        const upsert = requests.find((request) => request.url === '/contacts/upsert' && request.body.email === 'photos-needed@example.net');
+        assert.ok(upsert);
+        assert.deepEqual(upsert.body.tags, ['celina-connection', 'missing-listing-images', '72-hour-image-notice']);
+        const message = requests.find((request) => request.url === '/conversations/messages' && request.body.emailTo === 'photos-needed@example.net');
+        assert.ok(message);
+        assert.equal(message.body.subject, 'Action needed: add photos to keep your Celina Connection listing visible');
+        assert.match(message.body.html, /profile image and banner image/);
+        assert.match(message.body.html, /Update my listing/);
+      });
+    } finally {
+      for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL', 'GHL_MISSING_IMAGES_TAGS', 'ADMIN_API_TOKEN']) {
         delete process.env[key];
       }
     }
@@ -258,6 +515,7 @@ test('legacy hills petition signature is captured as a tagged GoHighLevel contac
             neighborhood: 'Legacy Hills',
             comments: 'Please keep neighbors informed.',
             signatureDataUrl: 'data:image/png;base64,aGVsbG8=',
+            eligibilityConfirmed: true,
             consent: true,
             company: '',
           }),
@@ -325,13 +583,17 @@ test('admin can view and export locally captured Legacy Hills petition signature
             phone: '(972) 555-0177',
             streetAddress: '789 Legacy Hills Dr',
             neighborhood: 'Legacy Hills',
+            builder: 'Pulte Homes',
             comments: 'Please include me in the packet.',
             signatureDataUrl: 'data:image/png;base64,aGVsbG8=',
+            eligibilityConfirmed: true,
             consent: true,
             company: '',
           }),
         });
         assert.equal(submit.status, 201);
+        const submittedPayload = await submit.json();
+        assert.equal(submittedPayload.editToken, undefined);
 
         const list = await fetch(`${baseUrl}/api/admin/petitions/legacy-hills/signatures`, {
           headers: { 'x-admin-token': ADMIN_TOKEN },
@@ -341,23 +603,74 @@ test('admin can view and export locally captured Legacy Hills petition signature
         assert.equal(payload.signatures.length, 1);
         assert.equal(payload.signatures[0].firstName, 'City');
         assert.equal(payload.signatures[0].streetAddress, '789 Legacy Hills Dr');
+        assert.equal(payload.signatures[0].builder, 'Pulte Homes');
         assert.equal(payload.signatures[0].signatureDataUrl, 'data:image/png;base64,aGVsbG8=');
+
+        const access = await fetch(`${baseUrl}/api/petitions/legacy-hills/signatures/access`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: 'city.packet@example.com', phone: '(972) 555-0177' }),
+        });
+        assert.equal(access.status, 404);
+
+        const selfEdit = await fetch(`${baseUrl}/api/petitions/legacy-hills/signatures/${payload.signatures[0].id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            ...payload.signatures[0],
+            comments: 'Updated by signer.',
+          }),
+        });
+        assert.equal(selfEdit.status, 404);
+
+        const adminEdit = await fetch(`${baseUrl}/api/admin/petitions/legacy-hills/signatures/${payload.signatures[0].id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+          body: JSON.stringify({
+            ...payload.signatures[0],
+            comments: 'Updated by admin.',
+            builder: 'Pulte / Legacy Hills Team',
+          }),
+        });
+        assert.equal(adminEdit.status, 200);
+        const adminEditPayload = await adminEdit.json();
+        assert.equal(adminEditPayload.signature.builder, 'Pulte / Legacy Hills Team');
+        assert.equal(adminEditPayload.signature.comments, 'Updated by admin.');
+
+        const publicList = await fetch(`${baseUrl}/api/petitions/legacy-hills/signatures`);
+        assert.equal(publicList.status, 200);
+        const publicPayload = await publicList.json();
+        assert.equal(publicPayload.total, 1);
+        assert.equal(publicPayload.signatures[0].displayName, 'City P.');
+        assert.equal(publicPayload.signatures[0].phaseSection, undefined);
+        assert.equal(publicPayload.signatures[0].builder, 'Pulte / Legacy Hills Team');
+        assert.equal(publicPayload.signatures[0].email, undefined);
+        assert.equal(publicPayload.signatures[0].phone, undefined);
+        assert.equal(publicPayload.signatures[0].streetAddress, undefined);
+        assert.equal(publicPayload.signatures[0].signatureDataUrl, undefined);
 
         const csv = await fetch(`${baseUrl}/api/admin/petitions/legacy-hills/export.csv`, {
           headers: { 'x-admin-token': ADMIN_TOKEN },
         });
         assert.equal(csv.status, 200);
         assert.match(csv.headers.get('content-disposition') || '', /legacy-hills-petition-signatures\.csv/);
-        assert.match(await csv.text(), /City","Packet/);
+        const csvText = await csv.text();
+        assert.match(csvText, /City","Packet/);
+        assert.match(csvText, /Pulte \/ Legacy Hills Team/);
+        assert.doesNotMatch(csvText, /Phase \/ Section/);
+        assert.doesNotMatch(csvText, /Lot \/ Block/);
 
         const doc = await fetch(`${baseUrl}/api/admin/petitions/legacy-hills/export`, {
           headers: { 'x-admin-token': ADMIN_TOKEN },
         });
         assert.equal(doc.status, 200);
         const html = await doc.text();
-        assert.match(html, /Legacy Hills Petition Signature Packet/);
+        assert.match(html, /Pinnacle at Legacy Hills Petition Signature Packet/);
+        assert.match(html, /Completion of Promised Amenities/);
         assert.match(html, /Print \/ Save as PDF/);
         assert.match(html, /data:image\/png;base64,aGVsbG8=/);
+        assert.doesNotMatch(html, /Phase \/ Section/);
+        assert.doesNotMatch(html, /Lot \/ Block/);
       });
     } finally {
       for (const key of ['GHL_API_KEY', 'GHL_LOCATION_ID', 'GHL_API_BASE_URL', 'ADMIN_API_TOKEN']) {
@@ -387,6 +700,7 @@ test('legacy hills petition requires neighbor consent before GHL sync', async ()
             phone: '(972) 555-0113',
             streetAddress: '456 Legacy Hills Dr',
             signatureDataUrl: 'data:image/png;base64,aGVsbG8=',
+            eligibilityConfirmed: true,
             consent: false,
             company: '',
           }),
@@ -409,10 +723,10 @@ test('owner verification email can be delivered through SMTP configuration', asy
   await withFakeSmtp(async (smtpPort, messages) => {
     process.env.SMTP_HOST = '127.0.0.1';
     process.env.SMTP_PORT = String(smtpPort);
-    process.env.SMTP_USER = 'hello@celinaconnection.com';
+    process.env.SMTP_USER = 'info@celinaconnection.com';
     process.env.SMTP_PASS = 'workspace-app-password';
     process.env.SMTP_SECURE = 'false';
-    process.env.SMTP_FROM = 'Celina Connection <hello@celinaconnection.com>';
+    process.env.SMTP_FROM = 'Celina Connection <info@celinaconnection.com>';
     process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
     delete process.env.RESEND_API_KEY;
     delete process.env.BREVO_API_KEY;
@@ -431,12 +745,14 @@ test('owner verification email can be delivered through SMTP configuration', asy
             password: 'StrongPass123!',
             startedAt: Date.now() - 4000,
             company: '',
+            logoUrl: TEST_LOGO_URL,
+            images: [TEST_COVER_URL],
           }),
         });
         assert.equal(res.status, 201);
         assert.equal(messages.length, 1);
         assert.match(messages[0], /To: owner@workspacemail\.com/);
-        assert.match(messages[0], /Verify your Celina Connection listing/);
+        assert.match(messages[0], /Welcome to Celina Connection/);
         assert.match(messages[0], /verify-email\?token=/);
       });
     } finally {
@@ -457,10 +773,10 @@ test('owner verification falls back to SMTP when Brevo is configured but unavail
       process.env.EMAIL_DELIVERY_TIMEOUT_MS = '500';
       process.env.SMTP_HOST = '127.0.0.1';
       process.env.SMTP_PORT = String(smtpPort);
-      process.env.SMTP_USER = 'hello@celinaconnection.com';
+      process.env.SMTP_USER = 'info@celinaconnection.com';
       process.env.SMTP_PASS = 'workspace-app-password';
       process.env.SMTP_SECURE = 'false';
-      process.env.SMTP_FROM = 'Celina Connection <hello@celinaconnection.com>';
+      process.env.SMTP_FROM = 'Celina Connection <info@celinaconnection.com>';
       process.env.CELINA_EXPOSE_VERIFICATION_LINK = 'true';
       delete process.env.RESEND_API_KEY;
 
@@ -478,6 +794,8 @@ test('owner verification falls back to SMTP when Brevo is configured but unavail
               password: 'StrongPass123!',
               startedAt: Date.now() - 4000,
               company: '',
+              logoUrl: TEST_LOGO_URL,
+              images: [TEST_COVER_URL],
             }),
           });
           assert.equal(res.status, 201);
@@ -518,6 +836,8 @@ test('owner registration times out stalled email delivery and does not leave dup
             password: 'StrongPass123!',
             startedAt: Date.now() - 4000,
             company: '',
+            logoUrl: TEST_LOGO_URL,
+            images: [TEST_COVER_URL],
           }),
         });
         assert.equal(res.status, 503);
@@ -547,6 +867,8 @@ test('owner registration times out stalled email delivery and does not leave dup
           password: 'StrongPass123!',
           startedAt: Date.now() - 4000,
           company: '',
+          logoUrl: TEST_LOGO_URL,
+          images: [TEST_COVER_URL],
         }),
       });
       assert.equal(retryRes.status, 201);
@@ -575,88 +897,7 @@ test('GET /api/bootstrap seeds businesses and bug collection', async () => {
   });
 });
 
-test('business share preview endpoint uses the listing image for social cards', async () => {
-  const dbPath = makeDbPath('business-share-preview');
-
-  await withServer(dbPath, async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/api/share/business/annie-jack-boutique`);
-    assert.equal(res.status, 200);
-    const html = await res.text();
-
-    assert.match(html, /<title>Annie Jack Boutique \| Celina Connection<\/title>/);
-    assert.match(html, /<meta property="og:image" content="https:\/\/images\.unsplash\.com\/photo-1441986300917-64674bd600d8/);
-    assert.match(html, /<meta name="twitter:image" content="https:\/\/images\.unsplash\.com\/photo-1441986300917-64674bd600d8/);
-
-    const imageRes = await fetch(`${baseUrl}/api/social-image/business/annie-jack-boutique`, { redirect: 'manual' });
-    assert.equal(imageRes.status, 302);
-    assert.match(imageRes.headers.get('location') || '', /^https:\/\/images\.unsplash\.com\/photo-1441986300917-64674bd600d8/);
-  });
-});
-
-test('page share preview endpoint renders directory metadata and item list schema', async () => {
-  const dbPath = makeDbPath('page-share-preview');
-
-  await withServer(dbPath, async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/api/share/page/directory`);
-    assert.equal(res.status, 200);
-    const html = await res.text();
-
-    assert.match(html, /<title>Celina Business Directory \| Restaurants, Shops &amp; Services<\/title>/);
-    assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/directory" \/>/);
-    assert.match(html, /<meta property="og:image" content="https:\/\/www\.celinaconnection\.com\/assets\/social\/business-owners-banner\.jpg" \/>/);
-    assert.match(html, /"@type":"ItemList"/);
-    assert.match(html, /"url":"https:\/\/www\.celinaconnection\.com\/business\/annie-jack-boutique"/);
-  });
-});
-
-test('page share preview endpoint renders pricing FAQ schema', async () => {
-  const dbPath = makeDbPath('pricing-share-preview');
-
-  await withServer(dbPath, async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/api/share/page/pricing`);
-    assert.equal(res.status, 200);
-    const html = await res.text();
-
-    assert.match(html, /<title>Claim Your Celina Business Listing \| Celina Connection Plans<\/title>/);
-    assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/pricing" \/>/);
-    assert.match(html, /"@type":"FAQPage"/);
-    assert.match(html, /Which paid plan adds a website link and hours/);
-  });
-});
-
-test('category share preview endpoint renders filtered category metadata', async () => {
-  const dbPath = makeDbPath('category-share-preview');
-
-  await withServer(dbPath, async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/api/share/category/dining`);
-    assert.equal(res.status, 200);
-    const html = await res.text();
-
-    assert.match(html, /<title>Celina Restaurants &amp; Dining \| Celina Connection<\/title>/);
-    assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/directory\/dining" \/>/);
-    assert.match(html, /"@type":"CollectionPage"/);
-    assert.match(html, /"@id":"https:\/\/www\.celinaconnection\.com\/directory\/dining#business-list"/);
-    assert.match(html, /"name":"Lucy's on the Square"/);
-    assert.doesNotMatch(html, /"name":"Annie Jack Boutique"/);
-  });
-});
-
-test('sitemap includes public pages and excludes authenticated dashboard', async () => {
-  const dbPath = makeDbPath('public-sitemap-pages');
-
-  await withServer(dbPath, async (baseUrl) => {
-    const res = await fetch(`${baseUrl}/sitemap.xml`);
-    assert.equal(res.status, 200);
-    const xml = await res.text();
-
-    assert.match(xml, /<loc>https:\/\/www\.celinaconnection\.com\/directory<\/loc>/);
-    assert.match(xml, /<loc>https:\/\/www\.celinaconnection\.com\/directory\/dining<\/loc>/);
-    assert.match(xml, /<loc>https:\/\/www\.celinaconnection\.com\/events<\/loc>/);
-    assert.doesNotMatch(xml, /<loc>https:\/\/www\.celinaconnection\.com\/dashboard<\/loc>/);
-  });
-});
-
-test('seed data includes demo featured listings for Celina Bistro and Legacy Wealth Academy', async () => {
+test('seed data includes demo featured listings for Celina Bistro and Celina Financial Planning', async () => {
   const dbPath = makeDbPath('featured-demo-listings');
 
   await withServer(dbPath, async (baseUrl) => {
@@ -678,47 +919,54 @@ test('seed data includes demo featured listings for Celina Bistro and Legacy Wea
     assert.ok(featuredNames.includes('CELINA Bistro'));
     assert.ok(!featuredNames.includes("Lucy's on the Square"));
 
-    const legacyWealth = body.businesses.find((business: any) => business.name === 'Legacy Wealth Academy LLC');
-    assert.ok(legacyWealth);
-    assert.equal(legacyWealth.featured, true);
-    assert.equal(legacyWealth.tier, 'premium');
-    assert.equal(legacyWealth.ownerId, 'admin');
-    assert.equal(legacyWealth.email, 'mark@legacywealthco.com');
+    const celinaFinancial = body.businesses.find((business: any) => business.name === 'Celina Financial Planning Co.');
+    assert.ok(celinaFinancial);
+    assert.equal(celinaFinancial.featured, true);
+    assert.equal(celinaFinancial.tier, 'premium');
+    assert.equal(celinaFinancial.ownerId, 'admin');
+    assert.equal(celinaFinancial.email, 'hello@celinafinancialplanning.com');
   });
 });
 
-test('existing databases promote demo placeholders and connect Legacy plus Bistro to admin management', async () => {
+test('existing databases promote demo placeholders and connect Celina financial plus Bistro to admin management', async () => {
   const dbPath = makeDbPath('existing-featured-placeholders');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
 
-  await withServer(dbPath, async (baseUrl) => {
-    await fetch(`${baseUrl}/api/businesses`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: 'legacy-existing-owned',
-        name: 'Legacy Wealth Academy LLC',
-        category: 'Home & Professional Services',
-        description: 'Existing owned profile',
-        phone: '(972) 555-2222',
-        email: 'mark@legacywealthco.com',
-        tier: 'basic',
-        ownerId: 'owner-existing-admin',
-        featured: false,
-        isUnclaimed: false,
-      }),
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      await fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          id: 'celina-financial-existing-owned',
+          name: 'Celina Financial Planning Co.',
+          category: 'Home & Professional Services',
+          description: 'Existing owned profile',
+          phone: '(972) 555-2222',
+          email: 'hello@celinafinancialplanning.com',
+          tier: 'basic',
+          ownerId: 'owner-existing-admin',
+          featured: false,
+          isUnclaimed: false,
+          logoUrl: TEST_LOGO_URL,
+          images: [TEST_COVER_URL],
+        }),
+      });
     });
-  });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
 
   await withServer(dbPath, async (baseUrl) => {
     const res = await fetch(`${baseUrl}/api/bootstrap`);
     assert.equal(res.status, 200);
     const body = await res.json();
-    const legacyWealth = body.businesses.find((business: any) => business.id === 'legacy-existing-owned');
+    const celinaFinancial = body.businesses.find((business: any) => business.id === 'celina-financial-existing-owned');
 
-    assert.ok(legacyWealth);
-    assert.equal(legacyWealth.featured, true);
-    assert.equal(legacyWealth.tier, 'premium');
-    assert.equal(legacyWealth.ownerId, 'admin');
+    assert.ok(celinaFinancial);
+    assert.equal(celinaFinancial.featured, true);
+    assert.equal(celinaFinancial.tier, 'premium');
+    assert.equal(celinaFinancial.ownerId, 'admin');
 
     const celinaBistro = body.businesses.find((business: any) => business.name === 'CELINA Bistro');
     assert.ok(celinaBistro);
@@ -734,10 +982,70 @@ test('directory copy uses friendly claim and removal request wording', () => {
   assert.doesNotMatch(directorySource, /Secure Claim Review/);
 });
 
+test('directory cards and profile details show listing images for every visible tier', () => {
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+
+  assert.match(directorySource, /const primaryListingImage = \(business: Business\)/);
+  assert.match(directorySource, /const cardImage = primaryListingImage\(b\)/);
+  assert.match(directorySource, /alt=\{`\$\{b\.name\} banner image`\}/);
+  assert.match(directorySource, /alt=\{`\$\{b\.name\} profile image`\}/);
+  assert.match(directorySource, /src=\{primaryListingImage\(selectedBusiness\)\}/);
+  assert.match(directorySource, /\{primaryListingImage\(selectedBusiness\) \? \(\s*<img/);
+});
+
+test('directory listings include share buttons with copy-link fallback', () => {
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+
+  assert.match(directorySource, /const handleShareListing = async \(business: Business/);
+  assert.match(directorySource, /navigator\.share/);
+  assert.match(directorySource, /navigator\.clipboard\.writeText\(url\)/);
+  assert.match(directorySource, /share-listing-btn/);
+  assert.match(directorySource, /Take a look at \$\{business\.name\} on Celina Connection/);
+});
+
+test('admin-created listings default to free and Growth Credits includes referral sharing instructions', () => {
+  const dashboardSource = fs.readFileSync(path.join(process.cwd(), 'src/components/DashboardView.tsx'), 'utf8');
+  const databaseSource = fs.readFileSync(path.join(process.cwd(), 'server/database.ts'), 'utf8');
+
+  assert.match(dashboardSource, /const \[newTier, setNewTier\] = useState<Tier>\('free'\)/);
+  assert.match(dashboardSource, /const \[acTier, setAcTier\] = useState<Tier>\('free'\)/);
+  assert.match(dashboardSource, /tier: 'free',\n\s+isUnclaimed: true/);
+  assert.match(dashboardSource, /setNewTier\('free'\)/);
+  assert.match(databaseSource, /async createOwnedBusiness[\s\S]*tier: input\.tier \|\| 'free'/);
+  assert.doesNotMatch(databaseSource, /async createOwnedBusiness[\s\S]*tier: 'basic'/);
+  assert.match(dashboardSource, /const referralUrl = `\$\{typeof window/);
+  assert.match(dashboardSource, /Share this link with customers/);
+  assert.match(dashboardSource, /Copy Link/);
+});
+
+test('launch cap counts outside-user claimed listings and excludes demo or unclaimed records', () => {
+  assert.equal(countOutsideUserClaimedListings([
+    { tier: 'free', ownerId: 'owner-new', isUnclaimed: false, isRegistryOnly: false },
+    { tier: 'free', ownerId: 'admin', isUnclaimed: false, isRegistryOnly: false },
+    { tier: 'free', ownerId: '', isUnclaimed: true, isRegistryOnly: false },
+    { tier: 'free', ownerId: 'owner-registry', isUnclaimed: false, isRegistryOnly: true },
+    { tier: 'basic', ownerId: 'owner-paid', isUnclaimed: false, isRegistryOnly: false },
+  ]), 2);
+});
+
+test('directory listings include real thumbs-up buttons and all unclaimed records stay in the unclaimed section', () => {
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+
+  assert.match(directorySource, /const handleLikeListing = async \(business: Business/);
+  assert.match(directorySource, /const willLike = !likedIds\.has\(business\.id\)/);
+  assert.match(directorySource, /onLikeBusiness\(business\.id, willLike\)/);
+  assert.match(directorySource, /like-listing-btn/);
+  assert.match(directorySource, /Remove your thumbs up/);
+  assert.match(directorySource, /business\.isUnclaimed \|\| hasRequiredListingVisuals\(business\)/);
+  assert.match(directorySource, /filteredUnclaimedBusinesses = orderedFilteredBusinesses\.filter\(\(business\) => business\.isUnclaimed && !isNewListing\(business\)\)/);
+});
+
 test('Claim Your Free Spot routes to registration instead of scrolling to the registry', () => {
   const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
 
   assert.match(directorySource, /Claim Your Free Spot/);
+  assert.match(directorySource, /claimedBasicCount = countOutsideUserClaimedListings\(businesses\)/);
+  assert.doesNotMatch(directorySource, /claimedBasicCount = countOutsideUserClaimedListings\(publicBusinesses\)/);
   assert.match(directorySource, /setActiveTab\?\.\('dashboard'\)/);
   assert.doesNotMatch(directorySource, /scrollIntoView\(\{ behavior: 'smooth' \}\)/);
 });
@@ -757,11 +1065,19 @@ test('pricing keeps paid Basic tier while adding separate free launch tier', () 
 test('pricing and checkout copy keep free limited while Basic includes website and hours with no sandbox language', () => {
   const pricingSource = fs.readFileSync(path.join(process.cwd(), 'src/components/PricingView.tsx'), 'utf8');
   const checkoutSource = fs.readFileSync(path.join(process.cwd(), 'src/components/CheckoutModal.tsx'), 'utf8');
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
 
   assert.match(pricingSource, /notIncluded:[\s\S]*'Website link'[\s\S]*'Hours of operation'/);
   assert.match(pricingSource, /id: 'basic'[\s\S]*'Website link'[\s\S]*'Hours of operation'/);
+  assert.match(pricingSource, /id: 'basic'[\s\S]*'Up to 5 image uploads'/);
+  assert.match(pricingSource, /id: 'pro'[\s\S]*'Up to 10 image uploads \(Gallery\)'[\s\S]*'YouTube video section'/);
+  assert.match(pricingSource, /id: 'premium'[\s\S]*'Up to 20 image uploads \(Full Gallery\)'[\s\S]*'YouTube video section'/);
+  assert.doesNotMatch(pricingSource, /Comprehensive Feature Matrix/);
+  assert.match(fs.readFileSync(path.join(process.cwd(), 'src/components/DashboardView.tsx'), 'utf8'), /tier === 'free' \? 1 : tier === 'basic' \? 5 : tier === 'pro' \? 10 : 20/);
   assert.match(checkoutSource, /Website link/);
   assert.match(checkoutSource, /Business hours/);
+  assert.match(directorySource, /case 'free':[\s\S]*Free Listing/);
+  assert.match(directorySource, /case 'basic':[\s\S]*Basic Partner/);
   assert.doesNotMatch(checkoutSource, /Or run in Simulated Sandbox Mode|Stripe Sandbox Active|Simulation Mode|simulated sandbox|test credit card/i);
 });
 
@@ -769,14 +1085,55 @@ test('pricing and navigation reflect post-launch tier and events changes', () =>
   const pricingSource = fs.readFileSync(path.join(process.cwd(), 'src/components/PricingView.tsx'), 'utf8');
   const headerSource = fs.readFileSync(path.join(process.cwd(), 'src/components/Header.tsx'), 'utf8');
   const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+  const menuSource = fs.readFileSync(path.join(process.cwd(), 'src/config/menuItems.ts'), 'utf8');
+  const eventsSource = fs.readFileSync(path.join(process.cwd(), 'src/components/EventsView.tsx'), 'utf8');
+  const serverSource = fs.readFileSync(path.join(process.cwd(), 'server/app.ts'), 'utf8');
 
   assert.match(pricingSource, /buttonText: 'Upgrade to Preston Elite'/);
   assert.doesNotMatch(pricingSource, /Preston Elite Launches July 12/);
   assert.match(pricingSource, /Local Events Promotion/);
-  assert.match(pricingSource, /paid-tier add-on/);
+  assert.match(pricingSource, /Business Boosts are on the way/);
+  assert.doesNotMatch(pricingSource, /paid-tier add-on/);
   assert.match(headerSource, /label: 'Local Events'/);
   assert.doesNotMatch(headerSource, /Join as Business/);
   assert.match(appSource, /activeTab === 'events'/);
+  assert.doesNotMatch(menuSource.match(/PUBLIC_MENU_ITEMS[\s\S]*?OWNER_MENU_ITEMS/)?.[0] || '', /legacyhillspetition|Legacy Hills Petition/);
+  assert.match(menuSource.match(/ADMIN_MENU_ITEMS[\s\S]*?Helper/)?.[0] || '', /admin-petition/);
+  assert.match(eventsSource, /selectedEvent/);
+  assert.match(eventsSource, /Original Calendar/);
+  assert.doesNotMatch(eventsSource, /Paid feature only/);
+  assert.doesNotMatch(eventsSource, /Registered business owners only/);
+  assert.doesNotMatch(eventsSource, /Sign In to Promote/);
+  assert.match(appSource, /create-event-promotion-checkout-session/);
+  assert.match(serverSource, /purchaseType: "event_promotion"/);
+  assert.match(serverSource, /mode: "payment"/);
+  assert.doesNotMatch(eventsSource, /Intro Offer: \$5 per event/);
+  assert.doesNotMatch(eventsSource, /one checkout per event/);
+});
+
+test('global typography uses readable original Inter and Outfit font stack', () => {
+  const cssSource = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf8');
+
+  assert.match(cssSource, /--font-sans: "Inter"/);
+  assert.match(cssSource, /--font-display: "Outfit"/);
+  assert.doesNotMatch(cssSource, /--font-brand|Cinzel|Montserrat/);
+});
+
+test('brand logo is used for favicon and default social preview metadata', () => {
+  const indexSource = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf8');
+  const appSource = fs.readFileSync(path.join(process.cwd(), 'src/App.tsx'), 'utf8');
+  const headerSource = fs.readFileSync(path.join(process.cwd(), 'src/components/Header.tsx'), 'utf8');
+  const seoHeadSource = fs.readFileSync(path.join(process.cwd(), 'src/components/SeoHead.tsx'), 'utf8');
+  const logoPath = '/images/celina-connection-logo.png';
+
+  assert.ok(fs.existsSync(path.join(process.cwd(), 'public/images/celina-connection-logo.png')));
+  assert.match(indexSource, new RegExp(`<link rel="icon" type="image/png" href="${logoPath}"`));
+  assert.match(indexSource, new RegExp(`<link rel="apple-touch-icon" href="${logoPath}"`));
+  assert.match(indexSource, /<meta property="og:image" content="https:\/\/www\.celinaconnection\.com\/images\/celina-connection-logo\.png" \/>/);
+  assert.match(indexSource, /<meta name="twitter:image" content="https:\/\/www\.celinaconnection\.com\/images\/celina-connection-logo\.png" \/>/);
+  assert.match(appSource, /const DEFAULT_OG_IMAGE = `\$\{SITE_URL\}\$\{BRAND_LOGO_PATH\}`/);
+  assert.match(headerSource, /src=\{BRAND_LOGO_PATH\}/);
+  assert.match(seoHeadSource, /https:\/\/www\.celinaconnection\.com\/images\/celina-connection-logo\.png/);
 });
 
 test('basic owner profile patches include address website and hours but keep premium fields locked', () => {
@@ -870,33 +1227,38 @@ test('pro owner profile patches include address website and hours but keep premi
 
 test('POST /api/businesses creates and persists a business', async () => {
   const dbPath = makeDbPath('create-business');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
 
-  await withServer(dbPath, async (baseUrl) => {
-    const createRes = await fetch(`${baseUrl}/api/businesses`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Legacy Wealth Co.',
-        category: 'Home & Professional Services',
-        description: 'Estate planning and wealth guidance.',
-        phone: '(972) 555-1000',
-        email: 'mark@legacywealthco.com',
-        tier: 'basic',
-      }),
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const createRes = await fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          name: 'Celina Planning Co.',
+          category: 'Home & Professional Services',
+          description: 'Estate planning and wealth guidance.',
+          phone: '(972) 555-1000',
+          email: 'hello@celinaplanning.com',
+          tier: 'basic',
+        }),
+      });
+
+      assert.equal(createRes.status, 201);
+      const created = await createRes.json();
+      assert.equal(created.name, 'Celina Planning Co.');
+      assert.ok(created.id);
+      assert.equal(created.slug, 'celina-planning-co');
+
+      const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+      const body = await bootstrapRes.json();
+      const found = body.businesses.find((business: any) => business.id === created.id);
+      assert.ok(found);
+      assert.equal(found.email, 'hello@celinaplanning.com');
     });
-
-    assert.equal(createRes.status, 201);
-    const created = await createRes.json();
-    assert.equal(created.name, 'Legacy Wealth Co.');
-    assert.ok(created.id);
-    assert.equal(created.slug, 'legacy-wealth-co');
-
-    const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
-    const body = await bootstrapRes.json();
-    const found = body.businesses.find((business: any) => business.id === created.id);
-    assert.ok(found);
-    assert.equal(found.email, 'mark@legacywealthco.com');
-  });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
 });
 
 test('self registration creates a free listing but requires email verification before login or public listing', async () => {
@@ -920,6 +1282,8 @@ test('self registration creates a free listing but requires email verification b
           website: 'https://should-not-be-free.example',
           startedAt: Date.now() - 5000,
           company: '',
+          logoUrl: TEST_LOGO_URL,
+          images: [TEST_COVER_URL],
         }),
       });
 
@@ -929,7 +1293,7 @@ test('self registration creates a free listing but requires email verification b
       assert.equal(body.requiresEmailVerification, true);
       assert.equal(body.business.emailVerified, false);
       assert.equal(body.business.tier, 'free');
-      assert.equal(body.business.website, '');
+      assert.equal(body.business.website, 'https://should-not-be-free.example');
       assert.equal(body.business.isUnclaimed, false);
       assert.ok(body.business.ownerId);
       assert.match(body.verificationUrl, /^https:\/\/www\.celinaconnection\.com\/verify-email\?token=/);
@@ -990,6 +1354,8 @@ test('owner login supports password sign-in and owner-only safe profile updates'
         password: 'Correct Horse Battery 42',
         startedAt: Date.now() - 5000,
         company: '',
+        logoUrl: TEST_LOGO_URL,
+        images: [TEST_COVER_URL],
       }),
     });
     const registered = await registerRes.json();
@@ -1065,6 +1431,8 @@ test('paid basic owner can save website and hours after upgrading from free', as
           password: 'Correct Horse Battery 42',
           startedAt: Date.now() - 5000,
           company: '',
+          logoUrl: TEST_LOGO_URL,
+          images: [TEST_COVER_URL],
         }),
       });
       assert.equal(registerRes.status, 201);
@@ -1122,9 +1490,9 @@ test('paid basic owner can save website and hours after upgrading from free', as
 test('admin listing edit modal exposes profile info plus logo and image management controls', () => {
   const dashboardSource = fs.readFileSync(path.join(process.cwd(), 'src/components/DashboardView.tsx'), 'utf8');
 
-  assert.match(dashboardSource, /Admin Listing Media/);
-  assert.match(dashboardSource, /Upload Logo/);
-  assert.match(dashboardSource, /Upload Gallery Images/);
+  assert.match(dashboardSource, /Listing Media/);
+  assert.match(dashboardSource, /Upload Profile Image/);
+  assert.match(dashboardSource, /Upload Banner Images/);
   assert.match(dashboardSource, /Business Description/);
   assert.match(dashboardSource, /Website URL/);
   assert.match(dashboardSource, /Owner Assignment \/ CRM Access/);
@@ -1148,6 +1516,8 @@ test('self registration rejects spam traps, too-fast submissions, duplicate emai
         password: 'Correct Horse Battery 42',
         startedAt: Date.now() - 5000,
         company: '',
+        logoUrl: TEST_LOGO_URL,
+        images: [TEST_COVER_URL],
         ...overrides,
       }),
     });
@@ -1158,6 +1528,86 @@ test('self registration rejects spam traps, too-fast submissions, duplicate emai
     assert.equal((await submit({})).status, 201);
     assert.equal((await submit({ name: 'Duplicate Email LLC' })).status, 409);
   });
+});
+
+test('listings require a profile image and banner image before owner approval', async () => {
+  const dbPath = makeDbPath('listing-visuals-required');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const registerMissingVisualsRes = await fetch(`${baseUrl}/api/owner/register`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'No Photo Cafe',
+          category: 'Dining',
+          description: 'Coffee and breakfast near downtown Celina.',
+          phone: '(972) 555-4040',
+          email: 'owner@nophotocafe.com',
+          password: 'Correct Horse Battery 42',
+          startedAt: Date.now() - 5000,
+          company: '',
+        }),
+      });
+      assert.equal(registerMissingVisualsRes.status, 400);
+      assert.match((await registerMissingVisualsRes.json()).error, /profile image and banner image/i);
+
+      const createUnclaimedRes = await fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          name: 'Awaiting Photos Boutique',
+          category: 'Shopping & Retail',
+          description: 'A draft listing waiting on approved photos.',
+          phone: '(972) 555-4141',
+          email: 'hello@awaitingphotos.com',
+          tier: 'basic',
+          isUnclaimed: true,
+        }),
+      });
+      assert.equal(createUnclaimedRes.status, 201);
+      const draft = await createUnclaimedRes.json();
+
+      const approveWithoutVisualsRes = await fetch(`${baseUrl}/api/businesses/${draft.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          isUnclaimed: false,
+          ownerEmail: 'owner@awaitingphotos.com',
+          ownerPassword: 'Correct Horse Battery 42',
+        }),
+      });
+      assert.equal(approveWithoutVisualsRes.status, 400);
+      assert.match((await approveWithoutVisualsRes.json()).error, /profile image and banner image/i);
+
+      const approveWithVisualsRes = await fetch(`${baseUrl}/api/businesses/${draft.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          isUnclaimed: false,
+          ownerEmail: 'owner@awaitingphotos.com',
+          ownerPassword: 'Correct Horse Battery 42',
+          logoUrl: TEST_LOGO_URL,
+          images: [TEST_COVER_URL],
+        }),
+      });
+      assert.equal(approveWithVisualsRes.status, 200);
+      const approved = await approveWithVisualsRes.json();
+      assert.equal(approved.isUnclaimed, false);
+      assert.equal(approved.logoUrl, TEST_LOGO_URL);
+      assert.deepEqual(approved.images, [TEST_COVER_URL]);
+
+      const removeVisualsRes = await fetch(`${baseUrl}/api/businesses/${draft.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ logoUrl: '', images: [] }),
+      });
+      assert.equal(removeVisualsRes.status, 400);
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
 });
 
 test('admin login creates an http-only session that authorizes protected routes', async () => {
@@ -1202,6 +1652,35 @@ test('admin login creates an http-only session that authorizes protected routes'
         body: JSON.stringify({ featured: true }),
       });
       assert.equal(updateRes.status, 200);
+    });
+  } finally {
+    delete process.env.ADMIN_PASSWORD;
+    delete process.env.ADMIN_SESSION_SECRET;
+  }
+});
+
+test('admin login rejects default passwords and requires configured credentials', async () => {
+  const dbPath = makeDbPath('admin-no-defaults');
+  process.env.ADMIN_PASSWORD = 'correct-password';
+  process.env.ADMIN_SESSION_SECRET = 'test-session-secret';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      for (const password of ['admin', 'admin123', 'password', 'celina2026', 'CelinaAdmin']) {
+        const loginRes = await fetch(`${baseUrl}/api/admin/login`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        assert.equal(loginRes.status, 401);
+      }
+
+      const loginRes = await fetch(`${baseUrl}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: 'correct-password' }),
+      });
+      assert.equal(loginRes.status, 200);
     });
   } finally {
     delete process.env.ADMIN_PASSWORD;
@@ -1264,6 +1743,8 @@ test('owner session remains valid across refreshes for a few days but expires af
           password: 'Correct Horse Battery 42',
           startedAt: issuedAt - 5000,
           company: '',
+          logoUrl: TEST_LOGO_URL,
+          images: [TEST_COVER_URL],
         }),
       });
       assert.equal(registerRes.status, 201);
@@ -1457,6 +1938,80 @@ test('admin can assign listing owner access and reset owner passwords', async ()
   }
 });
 
+test('signed Stripe checkout webhook fulfills paid membership server-side', async () => {
+  const dbPath = makeDbPath('stripe-webhook-fulfillment');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+  process.env.STRIPE_SECRET_KEY = 'sk_test_123';
+  process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const createRes = await fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          name: 'Webhook Upgrade Books',
+          category: 'Shopping & Retail',
+          description: 'Book shop ready for paid membership.',
+          phone: '(972) 555-6622',
+          email: 'owner@webhookbooks.com',
+          tier: 'free',
+          ownerId: 'owner-webhook-books',
+          isUnclaimed: false,
+          logoUrl: TEST_LOGO_URL,
+          images: [TEST_COVER_URL],
+        }),
+      });
+      assert.equal(createRes.status, 201);
+      const created = await createRes.json();
+
+      const payload = JSON.stringify({
+        id: 'evt_checkout_completed',
+        object: 'event',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_completed',
+            object: 'checkout.session',
+            mode: 'subscription',
+            payment_status: 'paid',
+            metadata: {
+              tier: 'premium',
+              businessId: created.id,
+              userId: 'owner-webhook-books',
+              addonQuantity: '0',
+              interval: 'month',
+            },
+          },
+        },
+      });
+      const signature = Stripe.webhooks.generateTestHeaderString({
+        payload,
+        secret: process.env.STRIPE_WEBHOOK_SECRET,
+      });
+
+      const webhookRes = await fetch(`${baseUrl}/api/stripe/webhook`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'stripe-signature': signature,
+        },
+        body: payload,
+      });
+      assert.equal(webhookRes.status, 200);
+
+      const bootstrap = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
+      const upgraded = bootstrap.businesses.find((business: any) => business.id === created.id);
+      assert.equal(upgraded.tier, 'premium');
+      assert.equal(upgraded.featured, true);
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+    delete process.env.STRIPE_SECRET_KEY;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+  }
+});
+
 test('admin listing updates persist large uploaded logo and image data', async () => {
   const dbPath = makeDbPath('admin-large-upload-save');
   process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
@@ -1507,6 +2062,11 @@ test('destructive business and admin endpoints are disabled when admin auth is n
     const target = bootstrap.businesses[0];
 
     const protectedCalls = [
+      fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Tampered Business', category: 'Dining', description: 'Test', phone: '123', email: 'a@b.com', tier: 'basic' }),
+      }),
       fetch(`${baseUrl}/api/businesses/${target.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -1538,6 +2098,11 @@ test('destructive business and admin endpoints reject missing or wrong admin tok
       const target = bootstrap.businesses[0];
 
       const protectedCalls = [
+        fetch(`${baseUrl}/api/businesses`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-admin-token': 'wrong-token' },
+          body: JSON.stringify({ name: 'Tampered Business', category: 'Dining', description: 'Test', phone: '123', email: 'a@b.com', tier: 'basic' }),
+        }),
         fetch(`${baseUrl}/api/businesses/${target.id}`, {
           method: 'PATCH',
           headers: { 'content-type': 'application/json', 'x-admin-token': 'wrong-token' },
@@ -1584,6 +2149,69 @@ test('POST /api/businesses/:id/reviews appends a persisted review', async () => 
     const updated = refreshed.businesses.find((business: any) => business.id === target.id);
     assert.equal(updated.reviews.length, initialReviewCount + 1);
     assert.equal(updated.reviews[0].text, 'Backend persistence works.');
+  });
+});
+
+test('POST /api/businesses/:id/likes toggles and persists listing thumbs up count', async () => {
+  const dbPath = makeDbPath('like-business');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+    const bootstrap = await bootstrapRes.json();
+    const target = bootstrap.businesses[0];
+    const initialVotes = Number(target.votesCount || 0);
+
+    const likeRes = await fetch(`${baseUrl}/api/businesses/${target.id}/likes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ liked: true }),
+    });
+
+    assert.equal(likeRes.status, 200);
+    const likePayload = await likeRes.json();
+    assert.equal(likePayload.votesCount, initialVotes + 1);
+    assert.equal(likePayload.business.votesCount, initialVotes + 1);
+
+    const unlikeRes = await fetch(`${baseUrl}/api/businesses/${target.id}/likes`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ liked: false }),
+    });
+    assert.equal(unlikeRes.status, 200);
+    const unlikePayload = await unlikeRes.json();
+    assert.equal(unlikePayload.votesCount, initialVotes);
+    assert.equal(unlikePayload.business.votesCount, initialVotes);
+
+    const refreshedRes = await fetch(`${baseUrl}/api/bootstrap`);
+    const refreshed = await refreshedRes.json();
+    const updated = refreshed.businesses.find((business: any) => business.id === target.id);
+    assert.equal(updated.votesCount, initialVotes);
+  });
+});
+
+test('POST /api/businesses/:id/growth/:action tracks owner growth credits signals', async () => {
+  const dbPath = makeDbPath('growth-credits');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
+    const bootstrap = await bootstrapRes.json();
+    const target = bootstrap.businesses[0];
+
+    const shareRes = await fetch(`${baseUrl}/api/businesses/${target.id}/growth/share-click`, { method: 'POST' });
+    assert.equal(shareRes.status, 200);
+    const sharePayload = await shareRes.json();
+    assert.equal(sharePayload.growthCredits.shareClicks, 1);
+
+    const visitRes = await fetch(`${baseUrl}/api/businesses/${target.id}/growth/referral-visit`, { method: 'POST' });
+    assert.equal(visitRes.status, 200);
+    const visitPayload = await visitRes.json();
+    assert.equal(visitPayload.growthCredits.referralVisits, 1);
+
+    const refreshedRes = await fetch(`${baseUrl}/api/bootstrap`);
+    const refreshed = await refreshedRes.json();
+    const updated = refreshed.businesses.find((business: any) => business.id === target.id);
+    assert.equal(updated.growthCredits.shareClicks, 1);
+    assert.equal(updated.growthCredits.referralVisits, 1);
   });
 });
 
@@ -1635,7 +2263,7 @@ test('bug endpoints create publicly, then update, delete, and reset with admin a
 
       const createBusinessRes = await fetch(`${baseUrl}/api/businesses`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
         body: JSON.stringify({
           name: 'Reset Target',
           category: 'Dining',

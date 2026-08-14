@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Business, Review, Tier } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
-import { categoryLandingForName } from '../lib/categoryRoutes';
 import FeaturedCarousel from './FeaturedCarousel';
 import MapModal from './MapModal';
+import { countOutsideUserClaimedListings, hasRequiredListingVisuals, isNewListing } from '../lib/listingVisuals';
+import { api } from '../lib/api';
 import {
   Search,
   Filter,
@@ -26,13 +27,18 @@ import {
   ShieldAlert,
   Sparkles,
   Send,
-  X
+  X,
+  Award,
+  SlidersHorizontal,
+  Share2,
+  ThumbsUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface DirectoryViewProps {
   businesses: Business[];
   onAddReview: (businessId: string, review: Omit<Review, 'id' | 'createdAt'>) => void | Promise<void>;
+  onLikeBusiness: (businessId: string, liked?: boolean) => void | Promise<void>;
   onSelectBusiness: (business: Business) => void;
   selectedBusiness: Business | null;
   onCloseDetail: () => void;
@@ -42,8 +48,6 @@ interface DirectoryViewProps {
   serverAiAvailable: boolean;
   setActiveTab?: (tab: string) => void;
   homeMode?: boolean;
-  initialCategory?: string;
-  onCategoryNavigate?: (category: string) => void;
 }
 
 const INLINE_AI_AUTO_COLLAPSE_MS = 30000;
@@ -51,6 +55,7 @@ const INLINE_AI_AUTO_COLLAPSE_MS = 30000;
 export default function DirectoryView({
   businesses,
   onAddReview,
+  onLikeBusiness,
   selectedBusiness,
   onSelectBusiness,
   onCloseDetail,
@@ -60,12 +65,10 @@ export default function DirectoryView({
   serverAiAvailable,
   setActiveTab,
   homeMode = false,
-  initialCategory = 'All',
-  onCategoryNavigate,
 }: DirectoryViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-  const [selectedTierFilter, setSelectedTierFilter] = useState<'all' | 'premium' | 'pro'>('all');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedTierFilter, setSelectedTierFilter] = useState<'all' | 'new' | 'claimed' | 'unclaimed' | 'premium' | 'pro'>('all');
   const [selectedMapBusiness, setSelectedMapBusiness] = useState<Business | null>(null);
 
   // AI Search states
@@ -82,14 +85,121 @@ export default function DirectoryView({
     },
   ]);
   const [isInlineAiExpanded, setIsInlineAiExpanded] = useState(false);
+  const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
+  const [likedIds, setLikedIds] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem('celina_liked_businesses') || '[]'));
+    } catch {
+      return new Set();
+    }
+  });
+  const [likingIds, setLikingIds] = useState<Set<string>>(new Set());
   const inlineAiEndRef = useRef<HTMLDivElement>(null);
+  const publicBusinesses = businesses.filter((business) => business.isUnclaimed || hasRequiredListingVisuals(business));
+
+  const primaryListingImage = (business: Business) => (
+    business.images?.find((image) => image.trim()) || business.logoUrl || ''
+  );
+  const listingUrl = (business: Business) => `${window.location.origin}/business/${business.slug || business.id}?ref=${encodeURIComponent(business.id)}`;
 
   useEffect(() => {
-    setSelectedCategory(initialCategory);
-    setIsAiFilterActive(false);
-    setAiSearchInsights(null);
-    setAiMatchingIds(null);
-  }, [initialCategory]);
+    const ref = new URLSearchParams(window.location.search).get('ref');
+    if (!ref) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const storageKey = `celina_referral_visit_${ref}_${today}`;
+    if (localStorage.getItem(storageKey)) return;
+    localStorage.setItem(storageKey, '1');
+    api.trackGrowthAction(ref, 'referral-visit').catch(() => undefined);
+  }, []);
+
+  const handleShareListing = async (business: Business, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    const url = listingUrl(business);
+    api.trackGrowthAction(business.id, 'share-click').catch(() => undefined);
+    const shareData = {
+      title: `${business.name} on Celina Connection`,
+      text: `Take a look at ${business.name} on Celina Connection.`,
+      url,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setCopiedShareId(business.id);
+      window.setTimeout(() => setCopiedShareId((current) => (current === business.id ? null : current)), 2200);
+    } catch (error) {
+      if ((error as Error)?.name === 'AbortError') return;
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopiedShareId(business.id);
+        window.setTimeout(() => setCopiedShareId((current) => (current === business.id ? null : current)), 2200);
+      } catch {
+        window.prompt('Share this listing link:', url);
+      }
+    }
+  };
+
+  const handleLikeListing = async (business: Business, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    if (likingIds.has(business.id)) return;
+
+    setLikingIds((prev) => new Set(prev).add(business.id));
+    const willLike = !likedIds.has(business.id);
+    try {
+      await onLikeBusiness(business.id, willLike);
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        if (willLike) {
+          next.add(business.id);
+        } else {
+          next.delete(business.id);
+        }
+        try {
+          localStorage.setItem('celina_liked_businesses', JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore storage limits
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error(error);
+      alert('We could not update that thumbs up right now. Please try again.');
+    } finally {
+      setLikingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(business.id);
+        return next;
+      });
+    }
+  };
+
+  const renderLikeButton = (business: Business, compact = false) => {
+    const liked = likedIds.has(business.id);
+    const isSaving = likingIds.has(business.id);
+    const count = Math.max(0, Number(business.votesCount || 0));
+    return (
+      <button
+        id={`like-listing-btn-${business.id}`}
+        onClick={(event) => handleLikeListing(business, event)}
+        disabled={isSaving}
+        className={`inline-flex items-center gap-1 rounded-lg border font-bold transition-colors ${
+          compact ? 'px-2 py-1 text-[10px]' : 'px-3 py-2 text-sm'
+        } ${
+          liked
+            ? 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-white cursor-pointer'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700 cursor-pointer'
+        }`}
+        title={liked ? 'Remove your thumbs up' : 'Give this listing a thumbs up'}
+      >
+        <ThumbsUp className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} ${liked ? 'fill-orange-500 text-orange-500' : 'text-orange-500'}`} />
+        <span>{liked ? 'Liked' : 'Like'}</span>
+        <span className="font-black">{count}</span>
+      </button>
+    );
+  };
 
   useEffect(() => {
     if (!isInlineAiExpanded || isAiSearching) return;
@@ -178,7 +288,7 @@ export default function DirectoryView({
           if (numbered && !isIntroBullet) {
             return (
               <div key={index} className="flex gap-2.5 rounded-xl bg-white/[0.07] px-3 py-2 ring-1 ring-white/10">
-                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-orange-400 text-[11px] font-black text-slate-950 shadow-sm shadow-orange-950/20">
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-orange-400 text-[11px] font-black text-[var(--cc-deep-navy)] shadow-sm shadow-orange-950/20">
                   {numbered[1]}
                 </span>
                 <p className="min-w-0">{renderInline(copy)}</p>
@@ -211,8 +321,9 @@ export default function DirectoryView({
   const [claimError, setClaimError] = useState('');
   const [claimSubmitting, setClaimSubmitting] = useState(false);
 
-  // Calculate claimed basic count dynamically (starting at 92 to simulate high demand)
-  const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length);
+  const claimedListingCount = publicBusinesses.filter(b => b.ownerId && !b.isUnclaimed).length;
+  const newListingCount = publicBusinesses.filter((b) => isNewListing(b)).length;
+  const claimedBasicCount = countOutsideUserClaimedListings(businesses);
 
   // Review Form state
   const [reviewAuthor, setReviewAuthor] = useState('');
@@ -270,7 +381,7 @@ export default function DirectoryView({
       ]);
 
       if (!searchRes.ok || !chatRes.ok) {
-        throw new Error("Failed to retrieve AI recommendations");
+        throw new Error("Celina AI could not find recommendations right now.");
       }
 
       const searchData = await searchRes.json();
@@ -286,7 +397,7 @@ export default function DirectoryView({
       ]);
     } catch (err: any) {
       console.error(err);
-      setAiSearchError("Unable to fetch AI chat right now. Standard text search remains active.");
+      setAiSearchError("Celina AI is taking a short break. Regular directory search is still ready.");
       setInlineAiMessages((prev) => [
         ...prev,
         { id: `assistant-error-${Date.now()}`, role: 'assistant', text: "I couldn't reach Celina AI just now. You can still use the regular directory search while we retry." },
@@ -296,18 +407,50 @@ export default function DirectoryView({
     }
   };
 
-  const handleCategorySelect = (category: string) => {
-    setSelectedCategory(category);
-    setIsAiFilterActive(false);
-    setAiSearchInsights(null);
-    setAiMatchingIds(null);
-    onCategoryNavigate?.(category);
+  const createdAtTime = (business: Business) => {
+    const timestamp = new Date(business.createdAt || '').getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
   };
 
+  const reviewScore = (business: Business) => {
+    const avgRating = business.reviews.length
+      ? business.reviews.reduce((sum, review) => sum + review.rating, 0) / business.reviews.length
+      : 0;
+    return avgRating * 10 + business.reviews.length * 3;
+  };
+
+  const tierWeight = (business: Business) => {
+    if (business.tier === 'premium') return 3;
+    if (business.tier === 'pro') return 2;
+    if (business.tier === 'basic') return 1;
+    return 0;
+  };
+
+  const compareDirectoryBusinesses = (a: Business, b: Business) => {
+    const aIsNew = isNewListing(a);
+    const bIsNew = isNewListing(b);
+    if (aIsNew !== bIsNew) return aIsNew ? -1 : 1; // NEW listings are promoted to the top first
+    if (a.isUnclaimed !== b.isUnclaimed) return a.isUnclaimed ? 1 : -1; // then unclaimed profiles sink to the bottom
+    const tierDifference = tierWeight(b) - tierWeight(a);
+    if (tierDifference !== 0) return tierDifference;
+    const dateDifference = createdAtTime(b) - createdAtTime(a);
+    if (dateDifference !== 0) return dateDifference;
+    const scoreDifference = reviewScore(b) - reviewScore(a);
+    if (scoreDifference !== 0) return scoreDifference;
+    return a.name.localeCompare(b.name);
+  };
+
+  const quickFilters: Array<{ id: typeof selectedTierFilter; label: string; count: number }> = [
+    { id: 'all', label: 'All listings', count: publicBusinesses.length },
+    { id: 'new', label: 'New verified', count: newListingCount },
+    { id: 'claimed', label: 'Claimed', count: claimedListingCount },
+    { id: 'premium', label: 'Premium', count: publicBusinesses.filter((b) => b.tier === 'premium' && !b.isUnclaimed).length },
+    { id: 'pro', label: 'Pro', count: publicBusinesses.filter((b) => b.tier === 'pro' && !b.isUnclaimed).length },
+    { id: 'unclaimed', label: 'Unclaimed', count: publicBusinesses.filter((b) => b.isUnclaimed).length },
+  ];
+
   // Filter businesses
-  const selectedCategoryLanding = categoryLandingForName(selectedCategory);
-  let unclaimedCount = 0;
-  const filteredBusinesses = businesses.filter((b) => {
+  const filteredBusinesses = publicBusinesses.filter((b) => {
     if (isAiFilterActive && aiMatchingIds) {
       if (!aiMatchingIds.includes(b.id)) return false;
     } else {
@@ -322,27 +465,29 @@ export default function DirectoryView({
     
     const matchesTier =
       selectedTierFilter === 'all' ||
-      (selectedTierFilter === 'premium' && b.tier === 'premium') ||
-      (selectedTierFilter === 'pro' && b.tier === 'pro');
+      (selectedTierFilter === 'new' && isNewListing(b)) ||
+      (selectedTierFilter === 'claimed' && !b.isUnclaimed && Boolean(b.ownerId)) ||
+      (selectedTierFilter === 'unclaimed' && b.isUnclaimed) ||
+      (selectedTierFilter === 'premium' && b.tier === 'premium' && !b.isUnclaimed) ||
+      (selectedTierFilter === 'pro' && b.tier === 'pro' && !b.isUnclaimed);
 
     const matchesFilters = matchesCategory && matchesTier;
     if (!matchesFilters) return false;
 
-    // Limit unclaimed businesses on the front page directory grid to 10
-    if (b.isUnclaimed) {
-      if (unclaimedCount >= 10) return false;
-      unclaimedCount++;
-    }
-
     return true;
   });
+  const orderedFilteredBusinesses = [...filteredBusinesses].sort(compareDirectoryBusinesses);
+  // New listings (claimed OR unclaimed) are promoted into the main directory grid and sorted to the
+  // top by compareDirectoryBusinesses. Only non-new unclaimed profiles remain in the bottom registry.
+  const filteredClaimedBusinesses = orderedFilteredBusinesses.filter((business) => !business.isUnclaimed || isNewListing(business));
+  const filteredUnclaimedBusinesses = orderedFilteredBusinesses.filter((business) => business.isUnclaimed && !isNewListing(business));
 
   const getTierBadge = (tier: Tier) => {
     switch (tier) {
       case 'premium':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500 text-slate-950 shadow-sm uppercase tracking-wide border border-amber-400">
-            <Star className="w-2.5 h-2.5 fill-slate-950" /> Premium Partner
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500 text-[var(--cc-deep-navy)] shadow-sm uppercase tracking-wide border border-amber-400">
+            <Star className="w-2.5 h-2.5 fill-[var(--cc-deep-navy)]" /> Premium Partner
           </span>
         );
       case 'pro':
@@ -351,21 +496,35 @@ export default function DirectoryView({
             Pro Partner
           </span>
         );
-      default:
+      case 'basic':
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-500 uppercase tracking-wide border border-slate-200">
-            Basic
+            Basic Partner
           </span>
-        );
+      );
+      case 'free':
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 uppercase tracking-wide border border-emerald-200">
+            Free Listing
+          </span>
+      );
     }
   };
+
+  const getNewListingBadge = (business: Business) => (
+    isNewListing(business) ? (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-orange-500 text-white uppercase tracking-wide shadow-sm">
+        <Sparkles className="w-2.5 h-2.5" /> New
+      </span>
+    ) : null
+  );
 
   const removalRequestMailto = (business: Business) => {
     const subject = `Request to remove listing: ${business.name}`;
     const body = [
       `Please review this request to remove ${business.name} from Celina Connection.`,
       '',
-      `Listing ID: ${business.id}`,
       `Listing email: ${business.email}`,
       `Listing phone: ${business.phone}`,
       '',
@@ -373,7 +532,7 @@ export default function DirectoryView({
       'Reason for removal:',
     ].join('\n');
 
-    return `mailto:mark@legacywealthco.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    return `mailto:info@celinaconnection.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
@@ -408,7 +567,7 @@ export default function DirectoryView({
             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
           </span>
           <div>
-            <p className="font-display font-extrabold text-slate-900 text-sm">🔥 Celina Connection Competitive Launch</p>
+            <p className="font-display font-extrabold text-[var(--cc-deep-navy)] text-sm">🔥 Celina Connection Competitive Launch</p>
             <p className="text-slate-500 font-medium text-[11px] mt-0.5 leading-relaxed">
               FREE listing slots are strictly capped for the first 100 businesses. Claim your local business profile today to secure a lifetime free listing.
             </p>
@@ -417,14 +576,14 @@ export default function DirectoryView({
         <div className="flex items-center gap-3.5 w-full md:w-auto justify-between md:justify-start flex-shrink-0">
           <div className="bg-white border border-orange-200/80 px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-sm">
             <span className="text-orange-700 font-black text-sm tracking-tight">{claimedBasicCount}/100</span>
-            <span className="text-slate-600 font-semibold text-[9px] uppercase tracking-wider">Slots Claimed</span>
+            <span className="text-slate-600 font-semibold text-[9px] uppercase tracking-wider">Listings Claimed</span>
           </div>
           {claimedBasicCount >= 100 ? (
-            <span className="text-red-600 text-xs font-bold bg-red-50 border border-red-200 px-3 py-2 rounded-xl">ALL FREE SLOTS CLAIMEED</span>
+            <span className="text-red-600 text-xs font-bold bg-red-50 border border-red-200 px-3 py-2 rounded-xl">ALL FREE SLOTS CLAIMED</span>
           ) : (
             <button
               onClick={() => setActiveTab?.('dashboard')}
-              className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer shadow-sm shadow-orange-100"
+              className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer shadow-sm shadow-orange-100"
             >
               Claim Your Free Spot
             </button>
@@ -432,21 +591,21 @@ export default function DirectoryView({
         </div>
       </div>
 
-      {/* Featured Businesses Spotlight: home-only to avoid duplicating the front page on the directory tab */}
-      {homeMode && businesses.some((b) => b.tier === 'premium' || b.tier === 'pro' || b.featured) && (
+      {/* Featured Businesses Spotlight (Home Page Only) */}
+      {homeMode && publicBusinesses.some((b) => b.tier === 'premium') && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold text-slate-900 flex items-center gap-1.5">
+            <h2 className="font-display text-lg font-bold text-[var(--cc-deep-navy)] flex items-center gap-1.5">
               <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
               Featured Partners Spotlight
             </h2>
           </div>
-          <FeaturedCarousel businesses={businesses} onSelectBusiness={onSelectBusiness} />
+          <FeaturedCarousel businesses={publicBusinesses} onSelectBusiness={onSelectBusiness} />
         </div>
       )}
 
       {/* Search and Hero Area */}
-      <div className={`${isInlineAiExpanded ? 'min-h-[410px]' : ''} relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-orange-950 text-white p-5 sm:p-7 md:p-9 shadow-md flex`}>
+      <div className={`${isInlineAiExpanded ? 'min-h-[410px]' : ''} relative rounded-3xl overflow-hidden bg-gradient-to-br from-[var(--cc-deep-navy)] via-[#1b4a78] to-[#143a63] text-white p-5 sm:p-7 md:p-9 shadow-md flex`}>
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
         <div className="relative z-10 w-full flex flex-col space-y-4">
           <motion.div
@@ -458,14 +617,14 @@ export default function DirectoryView({
               <MapPin className="w-3.5 h-3.5 text-orange-400" /> Celina, Texas
             </span>
           </motion.div>
-          <motion.h1
+          <motion.h2
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
             className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight"
           >
             Connect with the Best of <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">Celina</span>
-          </motion.h1>
+          </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -474,6 +633,24 @@ export default function DirectoryView({
           >
             Explore our rich community directory, discover local treasures on the Square, or register your own business and grow your Celina reach today.
           </motion.p>
+
+          {/* Hero Quick Stats Bar */}
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.25 }}
+            className="flex flex-wrap items-center gap-2 pt-1 text-xs font-semibold text-slate-300"
+          >
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-amber-300 text-[11px] font-bold">
+              <Check className="w-3.5 h-3.5 text-emerald-400" /> 15+ Verified Businesses
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-slate-200 text-[11px] font-bold">
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" /> 100% Celina Local
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-orange-200 text-[11px] font-bold">
+              <Sparkles className="w-3.5 h-3.5 text-orange-300" /> AI Powered Search
+            </div>
+          </motion.div>
 
           {/* Blended Search + AI Chat Bar */}
           <motion.div
@@ -564,7 +741,7 @@ export default function DirectoryView({
                         handleAiSearch();
                       }
                     }}
-                    className="w-full pl-11 pr-4 py-3.5 bg-white/90 text-slate-950 rounded-[1.35rem] font-medium placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm border border-white/20"
+                    className="w-full pl-11 pr-4 py-3.5 bg-white/90 text-[var(--cc-deep-navy)] rounded-[1.35rem] font-medium placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm border border-white/20"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -601,53 +778,236 @@ export default function DirectoryView({
                   )}
                 </div>
               </div>
+
+              {/* Trending Quick Search Chips */}
+              <div className="flex flex-wrap items-center gap-1.5 px-3.5 pb-2.5 pt-1 text-[11px] border-t border-white/5">
+                <span className="text-slate-300 font-bold tracking-wide uppercase text-[9px] mr-1 flex items-center gap-1">
+                  <Sparkles className="w-2.5 h-2.5 text-amber-300" /> Trending:
+                </span>
+                {[
+                  "Lucy's Steak",
+                  "Celina Bistro",
+                  "Chiropractor",
+                  "Boutiques",
+                  "Lawn Care",
+                  "Coffee"
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm(chip);
+                      setIsAiFilterActive(false);
+                    }}
+                    className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-medium transition-all border border-white/10 cursor-pointer text-[10px]"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
             </div>
           </motion.div>
         </div>
       </div>
 
-      {aiSearchError && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-100 text-red-800 text-xs font-semibold flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0" />
-          <span>{aiSearchError}</span>
+      {searchTerm.trim() && (
+        <div className="rounded-2xl bg-gradient-to-r from-[var(--cc-deep-navy)] via-[#1b4a78] to-[var(--cc-deep-navy)] border border-slate-700 p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-200" id="search-claim-assistant-banner">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Search & Claim Assistant</p>
+              <p className="text-sm font-bold text-white">
+                Searching for <span className="text-amber-300">"{searchTerm}"</span> in Celina Directory
+              </p>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {filteredBusinesses.filter(b => b.isUnclaimed).length > 0
+                  ? `${filteredBusinesses.filter(b => b.isUnclaimed).length} unclaimed listing(s) matched. Click "Claim Now" on any card to activate instant owner access.`
+                  : filteredBusinesses.length > 0
+                  ? 'Matching businesses found! Click "Claim Now" or create a new listing if yours is missing.'
+                  : `No exact match found for "${searchTerm}". You can create your instant business listing in under 30 seconds!`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (setActiveTab) setActiveTab('dashboard');
+              else window.location.hash = 'dashboard-profile';
+            }}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-[var(--cc-deep-navy)] font-black text-xs shadow-md hover:from-amber-300 hover:to-orange-400 transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Create Listing for "{searchTerm}"</span>
+          </button>
         </div>
       )}
 
+      {/* Directory Filters or Home Page Community Sectors */}
+      {!homeMode ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:px-4 shadow-sm" id="directory-filters">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="hidden sm:flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                <SlidersHorizontal className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-display text-sm font-black text-[var(--cc-deep-navy)]">Filter directory</h3>
+              </div>
+            </div>
 
-
-      {/* Category Selection Filter Pills */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">Browse by Category</h3>
-        <div className="flex flex-wrap gap-1.5 overflow-x-auto pb-1" id="category-filter-pills">
-          {CATEGORIES.map((cat) => {
-            const isSelected = selectedCategory === cat;
-            return (
-              <button
-                key={cat}
-              onClick={() => handleCategorySelect(cat)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
-                  isSelected
-                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm shadow-orange-100'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
-                }`}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <select
+                aria-label="Filter by category"
+                value={selectedCategory}
+                onChange={(event) => setSelectedCategory(event.target.value)}
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-800 outline-none transition-colors focus:border-orange-300 focus:bg-white focus:ring-2 focus:ring-orange-100 sm:w-64"
               >
-                {cat}
-              </button>
-            );
-          })}
+                {CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat === 'All' ? 'All categories' : cat}</option>
+                ))}
+              </select>
+
+              <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0" aria-label="Filter by listing status">
+                {quickFilters.map((filter) => {
+                  const isSelected = selectedTierFilter === filter.id;
+                  return (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setSelectedTierFilter(filter.id)}
+                      className={`inline-flex h-10 flex-shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs font-black transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[var(--cc-deep-navy)] text-white shadow-sm'
+                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:border-orange-200 hover:text-orange-700'
+                      }`}
+                    >
+                      <span>{filter.label}</span>
+                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] ${isSelected ? 'bg-white/15 text-orange-200' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                        {filter.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {(selectedCategory !== 'All' || selectedTierFilter !== 'all' || isAiFilterActive) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory('All');
+                    setSelectedTierFilter('all');
+                    setIsAiFilterActive(false);
+                    setAiSearchInsights(null);
+                    setAiMatchingIds(null);
+                  }}
+                  className="h-10 flex-shrink-0 rounded-xl bg-white border border-slate-200 px-3 text-xs font-black text-slate-700 hover:border-orange-200 hover:text-orange-700 transition-colors cursor-pointer"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] font-semibold text-slate-500">
+            {selectedCategory === 'All' ? 'All categories' : selectedCategory}
+            {selectedTierFilter !== 'all' ? ` · ${quickFilters.find((filter) => filter.id === selectedTierFilter)?.label}` : ''}
+          </p>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-4" id="home-community-sectors">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Celina Community Hub</span>
+              <h3 className="font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Browse by Category & Local Sectors</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab?.('directory')}
+              className="inline-flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
+            >
+              View Full Directory <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                title: 'Historic Square & Dining',
+                category: 'Dining',
+                icon: '🍽️',
+                tag: 'Popular',
+                desc: 'Comfort dining, artisan cafes, craft taprooms, and local shops on Celina Square.',
+                count: publicBusinesses.filter(b => b.category === 'Dining').length,
+              },
+              {
+                title: 'Professional & Financial',
+                category: 'Professional Services',
+                icon: '💼',
+                tag: 'Essential',
+                desc: 'Legal advisors, wealth planning, real estate brokers, and insurance specialists.',
+                count: publicBusinesses.filter(b => b.category === 'Professional Services' || b.category === 'Financial Services' || b.category === 'Real Estate').length,
+              },
+              {
+                title: 'Health & Family Care',
+                category: 'Health & Wellness',
+                icon: '🩺',
+                tag: 'Wellness',
+                desc: 'Family practice, dental care, fitness centers, and neighborhood wellness.',
+                count: publicBusinesses.filter(b => b.category === 'Health & Wellness').length,
+              },
+              {
+                title: 'Home & Property Trades',
+                category: 'Home Services',
+                icon: '🏡',
+                tag: 'Trusted',
+                desc: 'Lawn maintenance, HVAC contractors, roofing, remodeling, and electrical.',
+                count: publicBusinesses.filter(b => b.category === 'Home Services' || b.category === 'Home & Garden').length,
+              },
+            ].map((sector) => (
+              <button
+                key={sector.title}
+                type="button"
+                onClick={() => {
+                  setSelectedCategory(sector.category);
+                  if (setActiveTab) setActiveTab('directory');
+                }}
+                className="group relative rounded-2xl bg-white border border-slate-200/80 p-5 text-left transition-all hover:border-orange-300 hover:shadow-md cursor-pointer flex flex-col justify-between space-y-3"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">{sector.icon}</span>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200/60">
+                      {sector.tag}
+                    </span>
+                  </div>
+                  <h4 className="font-display font-black text-[var(--cc-deep-navy)] text-sm group-hover:text-orange-600 transition-colors">
+                    {sector.title}
+                  </h4>
+                  <p className="text-slate-500 text-xs leading-relaxed">
+                    {sector.desc}
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 font-bold">
+                  <span>{sector.count} Local Listings</span>
+                  <ChevronRight className="w-4 h-4 text-orange-500 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {homeMode ? (
         <div id="home-platform-story" className="space-y-8">
           <div className="rounded-3xl bg-white border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-0">
               <div className="p-6 sm:p-8 lg:p-10 space-y-5">
-                <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200">
+                <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cc-deep-navy)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200">
                   <Sparkles className="h-3.5 w-3.5" /> Local discovery, cleaned up
                 </span>
                 <div className="space-y-3">
-                  <h3 className="font-display text-2xl sm:text-4xl font-black tracking-tight text-slate-950 leading-tight">
+                  <h3 className="font-display text-2xl sm:text-4xl font-black tracking-tight text-[var(--cc-deep-navy)] leading-tight">
                     A more useful front door for Celina than another endless list.
                   </h3>
                   <p className="text-sm sm:text-base leading-relaxed text-slate-600 max-w-2xl">
@@ -670,7 +1030,7 @@ export default function DirectoryView({
                   <button
                     type="button"
                     onClick={() => setActiveTab?.('directory')}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-md transition-colors hover:bg-orange-600"
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--cc-deep-navy)] px-5 py-3 text-sm font-black text-white shadow-md transition-colors hover:bg-orange-600"
                   >
                     Browse the full directory <ChevronRight className="h-4 w-4" />
                   </button>
@@ -683,7 +1043,7 @@ export default function DirectoryView({
                   </button>
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-orange-950 p-6 sm:p-8 lg:p-10 text-white flex flex-col justify-between gap-8">
+              <div className="bg-gradient-to-br from-[var(--cc-deep-navy)] via-[#143a63] to-[#143a63] p-6 sm:p-8 lg:p-10 text-white flex flex-col justify-between gap-8">
                 <div className="space-y-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-200">For business owners</p>
                   <h4 className="font-display text-2xl font-black tracking-tight">Your listing should work harder than a Facebook post.</h4>
@@ -729,61 +1089,19 @@ export default function DirectoryView({
                 <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 text-orange-700">
                   {section.icon}
                 </div>
-                <h3 className="font-display text-lg font-black text-slate-950">{section.title}</h3>
+                <h3 className="font-display text-lg font-black text-[var(--cc-deep-navy)]">{section.title}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-slate-600">{section.copy}</p>
               </div>
             ))}
           </div>
-
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm" id="home-directory-faq" aria-labelledby="home-directory-faq-heading">
-            <div className="max-w-2xl space-y-2">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-700">Celina local guide</p>
-              <h2 id="home-directory-faq-heading" className="font-display text-2xl font-black tracking-tight text-slate-950">
-                Quick answers about Celina Connection
-              </h2>
-            </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {[
-                {
-                  question: 'Where can I find local businesses in Celina, Texas?',
-                  answer: 'Use Celina Connection to browse restaurants, shops, service providers, health and beauty businesses, activities, and featured community businesses in Celina, TX.',
-                },
-                {
-                  question: 'How can a Celina business claim a listing?',
-                  answer: 'Business owners can claim a free listing, update business details, add photos, and choose paid visibility plans when they want more placement.',
-                },
-                {
-                  question: 'What types of businesses are listed?',
-                  answer: 'The directory includes dining, shopping, boutiques, home services, professional services, financial services, legal services, real estate, wellness, and community categories.',
-                },
-              ].map((item) => (
-                <div key={item.question} className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
-                  <h3 className="text-sm font-black text-slate-950">{item.question}</h3>
-                  <p className="mt-2 text-xs font-medium leading-relaxed text-slate-600">{item.answer}</p>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
       ) : (
         <>
           {/* Primary Directory List Grid */}
           <div className="space-y-4">
-            {selectedCategoryLanding && (
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm" id="directory-category-intro" aria-labelledby="directory-category-heading">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-700">Celina category guide</p>
-                <h2 id="directory-category-heading" className="mt-2 font-display text-2xl font-black tracking-tight text-slate-950">
-                  {selectedCategoryLanding.title.replace(' | Celina Connection', '')}
-                </h2>
-                <p className="mt-3 max-w-3xl text-sm font-medium leading-relaxed text-slate-600">
-                  {selectedCategoryLanding.intro}
-                </p>
-              </section>
-            )}
-
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <p className="text-sm font-medium text-slate-500">
-                Showing <span className="font-bold text-slate-900">{filteredBusinesses.length}</span>{' '}
+                Showing <span className="font-bold text-[var(--cc-deep-navy)]">{filteredBusinesses.length}</span>{' '}
                 {filteredBusinesses.length === 1 ? 'business' : 'businesses'} in Celina
               </p>
             </div>
@@ -796,246 +1114,412 @@ export default function DirectoryView({
                 <p className="text-slate-400 text-xs">Try searching for different terms or selecting "All" categories.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="directory-grid">
-                {filteredBusinesses.map((b) => {
-                  const isPremium = b.tier === 'premium';
-                  const isPro = b.tier === 'pro';
-                  const isBasic = b.tier === 'basic';
-                  const canShowWebsiteHours = isBasic || isPro || isPremium;
-                  const ratingSum = b.reviews.reduce((sum, r) => sum + r.rating, 0);
-                  const avgRating = b.reviews.length ? (ratingSum / b.reviews.length).toFixed(1) : null;
+              (() => {
+                const top3Premium = filteredClaimedBusinesses.filter((b) => b.tier === 'premium').slice(0, 3);
+                const top3Ids = new Set(top3Premium.map((b) => b.id));
+                const sortedRemaining = filteredClaimedBusinesses.filter((b) => !top3Ids.has(b.id));
 
-                  return (
-                    <motion.div
-                      key={b.id}
-                      layout
-                      onClick={() => onSelectBusiness(b)}
-                      id={`business-card-${b.id}`}
-                      className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-white border cursor-pointer hover:shadow-xl transition-all duration-300 ${
-                        isPremium
-                          ? 'ring-2 ring-amber-400 shadow-md shadow-amber-50/50 border-amber-300'
-                          : isPro
-                          ? 'border-orange-200 shadow-sm'
-                          : 'border-slate-150'
-                      }`}
-                      whileHover={{ y: -4 }}
-                    >
-                      {/* Card Premium Shimmer Top Overlay */}
-                      {isPremium && (
-                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500" />
-                      )}
-
-                      {/* Body Content */}
-                      <div className="p-5 space-y-4">
-                        {/* Header line: Category & Badge */}
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-orange-800 bg-orange-100 px-2 py-0.5 rounded-md">
-                            {b.category}
-                          </span>
-                          {b.isUnclaimed ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-rose-900 text-white uppercase tracking-wide shadow-sm border border-rose-950">
-                              ⚠️ Unclaimed Listing
+                return (
+                  <div className="space-y-8">
+                    {/* Top 3 Premium Map Pack Spotlight */}
+                    {top3Premium.length > 0 && (
+                      <div className="space-y-3" id="top-3-premium-pack">
+                        <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-[var(--cc-deep-navy)] uppercase tracking-wider shadow-sm">
+                              <Star className="w-3 h-3 fill-[var(--cc-deep-navy)]" /> Top 3 Premium Spotlight
                             </span>
-                          ) : (
-                            getTierBadge(b.tier)
-                          )}
+                            <h3 className="font-display text-base font-black text-[var(--cc-deep-navy)]">Featured Premium Partners</h3>
+                          </div>
+                          <span className="text-xs text-slate-500 font-medium hidden sm:inline">Reserved for Premium accounts</span>
                         </div>
 
-                        {/* Business Name & rating */}
-                        <div>
-                          <h4 className="font-display font-bold text-slate-900 group-hover:text-orange-600 transition-colors text-lg leading-snug truncate">
-                            {b.name}
-                          </h4>
-                          {avgRating && (
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <div className="flex text-amber-400">
-                                {[...Array(5)].map((_, i) => (
-                                  <Star
-                                    key={i}
-                                    className={`w-3 h-3 ${
-                                      i < Math.floor(Number(avgRating))
-                                        ? 'fill-amber-400'
-                                        : 'text-slate-200'
-                                      }`}
-                                  />
-                                ))}
-                              </div>
-                              <span className="text-xs font-bold text-slate-700">{avgRating}</span>
-                              <span className="text-[10px] text-slate-600">({b.reviews.length})</span>
-                            </div>
-                          )}
-                        </div>
+                        <div className={`grid grid-cols-1 gap-4 ${
+                          top3Premium.length === 1 ? 'md:grid-cols-1' : top3Premium.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'
+                        }`}>
+                          {top3Premium.map((b) => {
+                            const ratingSum = b.reviews.reduce((sum, r) => sum + r.rating, 0);
+                            const avgRating = b.reviews.length ? (ratingSum / b.reviews.length).toFixed(1) : null;
+                            const bannerImage = primaryListingImage(b);
 
-                        {/* Image / Banner - Only if Pro/Premium, else we show a clean card placeholder */}
-                        {(isPro || isPremium) && b.images && b.images.length > 0 ? (
-                          <div className="h-32 w-full rounded-xl overflow-hidden relative">
-                            <img
-                              src={b.images[0]}
-                              alt={b.name}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                            />
-                          </div>
-                        ) : (
-                          <div className="h-1 bg-slate-50 rounded-xl" /> // Small visual spacing
-                        )}
+                            return (
+                              <motion.div
+                                key={b.id}
+                                layout
+                                onClick={() => onSelectBusiness(b)}
+                                id={`business-card-${b.id}`}
+                                className="group relative flex flex-col justify-between overflow-hidden rounded-2xl bg-white border-2 border-amber-300 ring-2 ring-amber-400/30 shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer p-4 space-y-3"
+                                whileHover={{ y: -3 }}
+                              >
+                                <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500" />
+                                <div className="space-y-2.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md">
+                                      {b.category}
+                                    </span>
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                      {getNewListingBadge(b)}
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-400 text-[var(--cc-deep-navy)] uppercase tracking-wide">
+                                        <Star className="w-2.5 h-2.5 fill-[var(--cc-deep-navy)]" /> PREMIUM
+                                      </span>
+                                    </div>
+                                  </div>
 
-                        {/* Description */}
-                        <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">
-                          {b.description}
-                        </p>
+                                  <div className="flex items-start gap-3">
+                                    {b.logoUrl && (
+                                      <div className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
+                                        <img
+                                          src={b.logoUrl}
+                                          alt={`${b.name} profile image`}
+                                          referrerPolicy="no-referrer"
+                                          className="h-full w-full object-cover"
+                                        />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0">
+                                      <h4 className="font-display font-black text-[var(--cc-deep-navy)] text-base group-hover:text-orange-600 transition-colors leading-snug truncate">
+                                        {b.name}
+                                      </h4>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <div className="flex text-amber-400">
+                                          {[...Array(5)].map((_, i) => (
+                                            <Star
+                                              key={i}
+                                              className={`w-3 h-3 ${
+                                                avgRating && i < Math.floor(Number(avgRating))
+                                                  ? 'fill-amber-400'
+                                                  : 'text-slate-200'
+                                              }`}
+                                            />
+                                          ))}
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-800">{avgRating || '5.0'}</span>
+                                        <span className="text-[10px] text-slate-500">({b.reviews.length} reviews)</span>
+                                      </div>
+                                    </div>
+                                  </div>
 
-                        {/* Active claim notice banner inside card body if unclaimed */}
-                        {b.isUnclaimed && (
-                          <div className="p-2.5 bg-rose-50/70 border border-rose-100 rounded-xl flex items-start gap-1.5 text-[10px] leading-relaxed text-rose-900">
-                            <ShieldAlert className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5 animate-pulse" />
-                            <div>
-                              <p className="font-extrabold text-rose-800">⚠️ Unclaimed Profile</p>
-                              <p className="text-rose-700 font-medium">Secure ownership verification is being connected before instant claiming is enabled.</p>
-                            </div>
-                          </div>
-                        )}
+                                  {bannerImage && (
+                                    <div className="h-28 w-full rounded-xl overflow-hidden relative">
+                                      <img
+                                        src={bannerImage}
+                                        alt={`${b.name} banner image`}
+                                        referrerPolicy="no-referrer"
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                      />
+                                    </div>
+                                  )}
 
-                        {/* Meta details */}
-                        <div className="space-y-1.5 text-slate-500 text-xs pt-2">
-                          {b.address ? (
-                            <div className="flex items-center gap-1.5">
-                              <MapPin className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                              <span className="truncate">{b.address}</span>
-                            </div>
-                          ) : null}
+                                  <p className="text-slate-600 text-xs leading-relaxed line-clamp-2">
+                                    {b.description}
+                                  </p>
 
-                          <div className="flex items-center gap-1.5">
-                            <Phone className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                            <span>{b.phone}</span>
-                          </div>
+                                  <div className="space-y-1 text-slate-500 text-xs pt-1">
+                                    {b.address && (
+                                      <div className="flex items-center gap-1.5">
+                                        <MapPin className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                                        <span className="truncate">{b.address}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-1.5">
+                                      <Phone className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                                      <span>{b.phone}</span>
+                                    </div>
+                                  </div>
+                                </div>
 
-                          {/* Display locked indicator on free tier for Web and Hours */}
-                          {!canShowWebsiteHours && (
-                            <div className="flex items-center gap-1.5 text-slate-600 text-[11px] pt-1 border-t border-slate-100">
-                              <Lock className="w-3 h-3 text-slate-500" />
-                              <span>Unlock website & hours with Basic</span>
-                            </div>
-                          )}
+                                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-700">
+                                  <span className="text-orange-600 group-hover:underline flex items-center gap-0.5">
+                                    View Profile <ChevronRight className="w-3 h-3" />
+                                  </span>
+                                  <div className="flex items-center gap-3">
+                                    {renderLikeButton(b, true)}
+                                    <button
+                                      id={`share-listing-btn-${b.id}`}
+                                      onClick={(e) => handleShareListing(b, e)}
+                                      className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer font-bold"
+                                      title="Share this listing"
+                                    >
+                                      <Share2 className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                                      <span>{copiedShareId === b.id ? 'Copied' : 'Share'}</span>
+                                    </button>
+                                    <button
+                                      id={`show-map-btn-${b.id}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedMapBusiness(b);
+                                      }}
+                                      className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer font-bold"
+                                    >
+                                      <MapPin className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                                      <span>Show on Map</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
                         </div>
                       </div>
+                    )}
 
-                      {/* Card Actions Footer */}
-                      <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3 text-xs font-semibold text-slate-700">
-                        {b.isUnclaimed ? (
-                          <div className="flex flex-col gap-1.5">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setClaimTarget(b);
-                              }}
-                              className="text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-0.5 cursor-pointer font-bold text-left"
-                            >
-                              Claim this listing <ChevronRight className="w-3 h-3" />
-                            </button>
-                            <a
-                              href={removalRequestMailto(b)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
-                            >
-                              <Mail className="w-3 h-3" /> Request to remove this listing
-                            </a>
+                    {/* Under the Top 3: Claimed Listings with New Listings First */}
+                    {sortedRemaining.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                          <div>
+                            <h3 className="font-display font-black text-[var(--cc-deep-navy)] text-sm sm:text-base flex items-center gap-2">
+                              <Award className="w-4 h-4 text-orange-500" />
+                              Celina Community Listings
+                            </h3>
                           </div>
-                        ) : (
-                          <span className="text-orange-600 group-hover:underline flex items-center gap-0.5">
-                            View Profile <ChevronRight className="w-3 h-3" />
-                          </span>
-                        )}
+                          <span className="text-xs font-bold text-slate-500">{sortedRemaining.length} listings</span>
+                        </div>
 
-                        <div className="flex items-center gap-3">
-                          <button
-                            id={`show-map-btn-${b.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedMapBusiness(b);
-                            }}
-                            className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer font-bold"
-                            title="Show location on map"
-                          >
-                            <MapPin className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                            <span>Show on Map</span>
-                          </button>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5" id="directory-grid">
+                          {sortedRemaining.map((b) => {
+                            const isPremium = b.tier === 'premium';
+                            const isPro = b.tier === 'pro';
+                            const isBasic = b.tier === 'basic';
+                            const canShowWebsiteHours = isBasic || isPro || isPremium;
+                            const ratingSum = b.reviews.reduce((sum, r) => sum + r.rating, 0);
+                            const avgRating = b.reviews.length ? (ratingSum / b.reviews.length).toFixed(1) : null;
+                            const cardImage = primaryListingImage(b);
 
-                          {canShowWebsiteHours && b.website && !b.isUnclaimed && (
-                            <span className="text-slate-400 hover:text-slate-600 flex items-center gap-0.5">
-                              <Globe className="w-3.5 h-3.5" /> Website
-                            </span>
-                          )}
+                            return (
+                              <motion.div
+                                key={b.id}
+                                layout
+                                onClick={() => onSelectBusiness(b)}
+                                id={`business-card-${b.id}`}
+                                className={`group relative flex flex-col justify-between overflow-hidden rounded-xl bg-white border border-slate-200/90 ${isNewListing(b) ? 'ring-2 ring-orange-200' : ''} hover:border-orange-300 hover:shadow-md transition-all duration-200 cursor-pointer p-3.5 space-y-2.5`}
+                                whileHover={{ y: -2 }}
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-1.5">
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                                      {b.category}
+                                    </span>
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                      {getNewListingBadge(b)}
+                                      {b.isUnclaimed ? (
+                                        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-[9px] font-black bg-rose-900 text-white uppercase tracking-wide">
+                                          ⚠️ Unclaimed
+                                        </span>
+                                      ) : (
+                                        getTierBadge(b.tier)
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-start gap-2.5">
+                                    {b.logoUrl && (
+                                      <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                                        <img
+                                          src={b.logoUrl}
+                                          alt={`${b.name} profile image`}
+                                          referrerPolicy="no-referrer"
+                                          className="h-full w-full object-cover"
+                                        />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0">
+                                      <h4 className="font-display font-bold text-[var(--cc-deep-navy)] group-hover:text-orange-600 transition-colors text-sm leading-snug truncate">
+                                        {b.name}
+                                      </h4>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        {avgRating ? (
+                                          <>
+                                            <div className="flex text-amber-400">
+                                              {[...Array(5)].map((_, i) => (
+                                                <Star
+                                                  key={i}
+                                                  className={`w-3 h-3 ${
+                                                    i < Math.floor(Number(avgRating))
+                                                      ? 'fill-amber-400'
+                                                      : 'text-slate-200'
+                                                  }`}
+                                                />
+                                              ))}
+                                            </div>
+                                            <span className="text-xs font-extrabold text-slate-800">{avgRating}</span>
+                                            <span className="text-[10px] text-slate-500 font-medium">({b.reviews.length} {b.reviews.length === 1 ? 'review' : 'reviews'})</span>
+                                          </>
+                                        ) : (
+                                          <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                                            <Star className="w-3 h-3 text-slate-300" /> No reviews yet
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {cardImage && (
+                                    <div className="h-24 w-full overflow-hidden rounded-lg bg-slate-100 border border-slate-100">
+                                      <img
+                                        src={cardImage}
+                                        alt={`${b.name} banner image`}
+                                        referrerPolicy="no-referrer"
+                                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                      />
+                                    </div>
+                                  )}
+
+                                  <p className="text-slate-600 text-xs leading-relaxed line-clamp-2">
+                                    {b.description}
+                                  </p>
+
+                                  <div className="space-y-1 text-slate-500 text-[11px]">
+                                    {b.address && (
+                                      <div className="flex items-center gap-1.5">
+                                        <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                        <span className="truncate">{b.address}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-1.5">
+                                      <Phone className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                                      <span>{b.phone}</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5 text-xs font-bold text-slate-700">
+                                  <div className="flex items-center justify-between gap-2">
+                                    {b.isUnclaimed ? (
+                                      <button
+                                        id={`claim-now-btn-${b.id}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setClaimTarget(b);
+                                        }}
+                                        className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-orange-500 text-[var(--cc-deep-navy)] font-black text-xs shadow-sm hover:from-amber-300 hover:to-orange-400 transition-all cursor-pointer flex items-center gap-1"
+                                      >
+                                        <Sparkles className="w-3 h-3 fill-[var(--cc-deep-navy)]" />
+                                        <span>Claim Now</span>
+                                      </button>
+                                    ) : (
+                                      <span className="text-orange-600 group-hover:underline text-[11px]">
+                                        View Profile &gt;
+                                      </span>
+                                    )}
+
+                                    <div className="flex items-center gap-2.5">
+                                      {renderLikeButton(b, true)}
+                                      <button
+                                        id={`share-listing-btn-${b.id}`}
+                                        onClick={(e) => handleShareListing(b, e)}
+                                        className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer text-[11px] font-bold"
+                                        title="Share this listing"
+                                      >
+                                        <Share2 className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                        <span>{copiedShareId === b.id ? 'Copied' : 'Share'}</span>
+                                      </button>
+                                      <button
+                                        id={`show-map-btn-${b.id}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedMapBusiness(b);
+                                        }}
+                                        className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer text-[11px] font-bold"
+                                        title="Show location on map"
+                                      >
+                                        <MapPin className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                        <span>Map</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {b.isUnclaimed && (
+                                    <div className="pt-1 border-t border-slate-100/70 flex items-center justify-between">
+                                      <a
+                                        href={removalRequestMailto(b)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
+                                      >
+                                        <Mail className="w-3 h-3" /> Request to remove this listing
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              </motion.div>
+                            );
+                          })}
                         </div>
                       </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </div>
 
           {/* Community Registry Entries (Unclaimed Profiles) */}
-          {businesses.some((b) => b.isUnclaimed) && (
+          {filteredUnclaimedBusinesses.length > 0 && (
             <div id="unclaimed-listings-registry" className="bg-slate-50 border border-slate-200/80 rounded-3xl p-6 space-y-6 shadow-sm mt-8">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
-                  <h3 className="font-display text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <h3 className="font-display text-base font-extrabold text-[var(--cc-deep-navy)] flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5 text-orange-500" />
-                    Celina Local Business Registry
+                    Unclaimed Community Listings
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium">
-                    Active community profile placeholders awaiting secure owner verification. Instant claiming is paused until verified login is connected.
-                  </p>
                 </div>
+                <span className="rounded-xl bg-white border border-slate-200 px-3 py-2 text-xs font-black text-slate-600">
+                  {filteredUnclaimedBusinesses.length} unclaimed
+                </span>
               </div>
     
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {businesses
-                  .filter((b) => b.isUnclaimed)
+                {filteredUnclaimedBusinesses
                   .map((b) => (
                     <div
                       key={b.id}
                       onClick={() => onSelectBusiness(b)}
-                      className="group flex flex-col gap-3 p-3 bg-white border border-slate-150 hover:border-orange-300 rounded-xl transition-all duration-200 cursor-pointer shadow-xs hover:shadow-sm"
+                      className="group flex flex-col gap-3 p-3 bg-white/80 border border-slate-200 hover:border-orange-300 rounded-xl transition-all duration-200 cursor-pointer shadow-xs hover:shadow-sm"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-slate-800 text-xs truncate pr-2 group-hover:text-orange-600 transition-colors">
                           {b.name}
                         </span>
+                        <span className="text-[9px] uppercase tracking-wider text-slate-400 font-black bg-slate-50 px-1.5 py-0.5 rounded">
+                          {b.category}
+                        </span>
+                      </div>
+                        <p className="text-[11px] text-slate-500 line-clamp-2 leading-relaxed">
+                          {b.description}
+                        </p>
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px]">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setClaimTarget(b);
                           }}
-                          className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 hover:text-rose-950 font-bold text-[10px] rounded-lg border border-rose-200 hover:border-rose-300 transition-colors cursor-pointer"
+                          className="text-orange-600 font-black hover:underline"
                         >
                           Claim this listing
                         </button>
+                        <button
+                          onClick={(e) => handleShareListing(b, e)}
+                          className="text-slate-500 hover:text-orange-600 transition-colors flex items-center gap-1 cursor-pointer font-bold"
+                          title="Share this listing"
+                        >
+                          <Share2 className="w-3 h-3 text-orange-500" />
+                          <span>{copiedShareId === b.id ? 'Copied' : 'Share'}</span>
+                        </button>
+                        {renderLikeButton(b, true)}
                       </div>
-                      <a
-                        href={removalRequestMailto(b)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-[10px] text-slate-500 hover:text-slate-800 hover:underline font-semibold flex items-center gap-1"
-                      >
-                        <Mail className="w-3 h-3" /> Request to remove this listing
-                      </a>
                     </div>
                   ))}
-              </div>
-
-              <div className="flex justify-center pt-4 border-t border-slate-200/60">
-                <button
-                  onClick={() => setActiveTab && setActiveTab('dashboard')}
-                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4 text-orange-400" />
-                  <span>Don't see your business, submit a free listing now</span>
-                </button>
               </div>
             </div>
           )}
         </>
+      )}
+
+      {/* Independent Disclaimer */}
+      {!homeMode && (
+        <div className="mt-10 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] text-slate-500 leading-relaxed">
+          <strong>Disclaimer:</strong> Celina Connection is an independent local business directory compiled from public community records and user submissions. Business names, logos, and trademarks belong to their respective owners. Unclaimed listings do not imply endorsement or official affiliation. Business owners may claim or request removal of their listing at any time.
+        </div>
       )}
 
       {/* Detailed Profile Drawer/Modal */}
@@ -1048,7 +1532,7 @@ export default function DirectoryView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={onCloseDetail}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+              className="fixed inset-0 bg-[rgba(15,45,77,0.62)] backdrop-blur-sm"
             />
 
             {/* Modal Body Container */}
@@ -1059,20 +1543,18 @@ export default function DirectoryView({
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 className="relative w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]"
               >
-                {/* Header Banner Image (Only Pro/Premium) */}
+                {/* Header Banner Image */}
                 <div className="relative h-44 sm:h-56 bg-slate-100 flex-shrink-0">
                   <button
                     onClick={onCloseDetail}
-                    className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-slate-950/40 hover:bg-slate-950/60 text-white backdrop-blur-sm transition-colors cursor-pointer"
+                    className="absolute right-4 top-4 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-[rgba(15,45,77,0.42)] hover:bg-[rgba(15,45,77,0.62)] text-white backdrop-blur-sm transition-colors cursor-pointer"
                   >
                     &times;
                   </button>
 
-                  {(selectedBusiness.tier === 'pro' || selectedBusiness.tier === 'premium') &&
-                  selectedBusiness.images &&
-                  selectedBusiness.images.length > 0 ? (
+                  {primaryListingImage(selectedBusiness) ? (
                     <img
-                      src={selectedBusiness.images[0]}
+                      src={primaryListingImage(selectedBusiness)}
                       alt={selectedBusiness.name}
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover"
@@ -1093,6 +1575,7 @@ export default function DirectoryView({
                   {/* Absolute Badge Overlay */}
                   <div className="absolute bottom-4 left-4 z-10 flex gap-2">
                     {getTierBadge(selectedBusiness.tier)}
+                    {getNewListingBadge(selectedBusiness)}
                   </div>
                 </div>
 
@@ -1103,16 +1586,16 @@ export default function DirectoryView({
                       <div className="flex items-start gap-2.5">
                         <ShieldAlert className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-600" />
                         <div>
-                          <p className="font-extrabold">⚠️ Unclaimed Business Profile</p>
-                          <p className="font-medium mt-1 leading-relaxed text-rose-700">
-                            This business listing is unclaimed. To verify ownership, customize details, upload photos, reply to reviews, and unlock business analytics, please claim this profile.
-                          </p>
+	                          <p className="font-extrabold">Unclaimed Business Listing</p>
+	                          <p className="font-medium mt-1 leading-relaxed text-rose-700">
+	                            Own or manage this business? Claim the listing to update details, add photos, reply to reviews, and see helpful performance insights.
+	                          </p>
                         </div>
                       </div>
                       <div className="flex flex-col gap-2 self-start sm:self-center flex-shrink-0">
                         <button
                           onClick={() => setClaimTarget(selectedBusiness)}
-                          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer"
+                          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer"
                         >
                           Claim this listing
                         </button>
@@ -1128,17 +1611,37 @@ export default function DirectoryView({
 
                   {/* Identity Row */}
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-5">
-                    <div>
-                      <h3 className="font-display text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                        {selectedBusiness.name}
-                      </h3>
-                      <p className="text-sm font-semibold text-orange-600 mt-1">
-                        {selectedBusiness.category}
-                      </p>
+                    <div className="flex items-start gap-3">
+                      {selectedBusiness.logoUrl && (
+                        <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                          <img
+                            src={selectedBusiness.logoUrl}
+                            alt={`${selectedBusiness.name} profile image`}
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <h3 className="font-display text-2xl sm:text-3xl font-extrabold text-[var(--cc-deep-navy)] tracking-tight">
+                          {selectedBusiness.name}
+                        </h3>
+                        <p className="text-sm font-semibold text-orange-600 mt-1">
+                          {selectedBusiness.category}
+                        </p>
+                      </div>
                     </div>
 
                     {/* CTAs */}
-                    <div className="flex flex-wrap gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      {renderLikeButton(selectedBusiness)}
+                      <button
+                        onClick={(event) => handleShareListing(selectedBusiness, event)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 text-sm font-bold"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        <span>{copiedShareId === selectedBusiness.id ? 'Copied' : 'Share'}</span>
+                      </button>
                       {selectedBusiness.tier === 'premium' && selectedBusiness.website && (
                         <a
                           href={selectedBusiness.website}
@@ -1333,7 +1836,7 @@ export default function DirectoryView({
                   {/* Interactive Reviews Section */}
                   <div className="border-t border-slate-100 pt-6 space-y-6">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                      <h4 className="text-sm font-bold text-[var(--cc-deep-navy)] flex items-center gap-1.5">
                         <MessageSquare className="w-5 h-5 text-orange-600" />
                         Customer Reviews ({selectedBusiness.reviews.length})
                       </h4>
@@ -1355,7 +1858,7 @@ export default function DirectoryView({
                             placeholder="Your Name"
                             value={reviewAuthor}
                             onChange={(e) => setReviewAuthor(e.target.value)}
-                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 font-medium"
+                            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] font-medium"
                           />
                         </div>
                         <div className="sm:col-span-4 flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-2 rounded-xl justify-between">
@@ -1385,7 +1888,7 @@ export default function DirectoryView({
                           value={reviewText}
                           onChange={(e) => setReviewText(e.target.value)}
                           rows={2}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 font-medium"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] font-medium"
                         />
                       </div>
 
@@ -1399,7 +1902,7 @@ export default function DirectoryView({
                       <div className="flex justify-end">
                         <button
                           type="submit"
-                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+                          className="px-4 py-2 bg-[var(--cc-deep-navy)] hover:bg-[#143a63] text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-sm transition-all cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" /> Submit Review
                         </button>
@@ -1453,10 +1956,7 @@ export default function DirectoryView({
                 </div>
 
                 {/* Footer Controls */}
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center flex-shrink-0">
-                  <span className="text-[10px] font-medium text-slate-400">
-                    Business ID: {selectedBusiness.id}
-                  </span>
+	                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end items-center flex-shrink-0">
                   <button
                     onClick={onCloseDetail}
                     className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl cursor-pointer"
@@ -1479,7 +1979,7 @@ export default function DirectoryView({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setClaimTarget(null)}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+              className="fixed inset-0 bg-[rgba(15,45,77,0.62)] backdrop-blur-sm"
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -1498,11 +1998,11 @@ export default function DirectoryView({
                 <div className="h-12 w-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center mx-auto">
                   <ShieldCheck className="w-6 h-6" />
                 </div>
-                <h3 className="font-display text-xl font-extrabold text-slate-900">
+                <h3 className="font-display text-xl font-extrabold text-[var(--cc-deep-navy)]">
                   Claim "{claimTarget.name}"
                 </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-                  Submit a secure claim request. An admin will review it before owner access is enabled.
+	                  Tell us a little about your connection to this business. Our team will review it and help you get access.
                 </p>
               </div>
 
@@ -1530,7 +2030,7 @@ export default function DirectoryView({
                     setClaimRole('Owner');
                     setClaimNotes('');
                   } catch (error) {
-                    setClaimError(error instanceof Error ? error.message : 'Claim request failed.');
+                    setClaimError(error instanceof Error ? error.message : 'We could not send your claim request right now. Please try again.');
                   } finally {
                     setClaimSubmitting(false);
                   }
@@ -1546,7 +2046,7 @@ export default function DirectoryView({
                       placeholder="Jane Owner"
                       value={claimName}
                       onChange={(e) => setClaimName(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                     />
                   </div>
                   <div>
@@ -1557,7 +2057,7 @@ export default function DirectoryView({
                       placeholder="Owner / Manager"
                       value={claimRole}
                       onChange={(e) => setClaimRole(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
@@ -1572,7 +2072,7 @@ export default function DirectoryView({
                     placeholder="owner@yourcelinabusiness.com"
                     value={claimEmail}
                     onChange={(e) => setClaimEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
@@ -1584,7 +2084,7 @@ export default function DirectoryView({
                     placeholder="(972) 555-1234"
                     value={claimPhone}
                     onChange={(e) => setClaimPhone(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
@@ -1594,21 +2094,21 @@ export default function DirectoryView({
                     placeholder="Anything that helps verify ownership"
                     value={claimNotes}
                     onChange={(e) => setClaimNotes(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 min-h-20"
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)] min-h-20"
                   />
                 </div>
 
                 {claimError && <p className="text-rose-600 text-[11px] font-bold">{claimError}</p>}
 
                 <div className="text-[10px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-150 rounded-xl p-3.5 space-y-1">
-                  <span className="font-bold text-slate-700 block">Secure Review:</span>
-                  <p>Submitting this does not grant dashboard access. Admin approval is required first.</p>
+	                  <span className="font-bold text-slate-700 block">What happens next:</span>
+	                  <p>We will review your request and follow up before making changes to the listing.</p>
                 </div>
 
                 <button
                   type="submit"
                   disabled={claimSubmitting}
-                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-slate-950 font-bold text-xs rounded-xl disabled:opacity-60"
+                  className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl disabled:opacity-60"
                 >
                   {claimSubmitting ? 'Submitting...' : 'Submit Claim Request'}
                 </button>

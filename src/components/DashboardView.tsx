@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Business, Review, Tier, UserProfile, ReportedBug, LegacyHillsPetitionSignature } from '../types';
+import { Business, BusinessEvent, Review, Tier, UserProfile, ReportedBug, LegacyHillsPetitionSignature } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
+import { countOutsideUserClaimedListings } from '../lib/listingVisuals';
 import {
   Building2,
   Bug,
+  Calendar,
   Lock,
   Star,
   Zap,
@@ -14,14 +16,13 @@ import {
   MessageSquare,
   ShieldAlert,
   ChevronRight,
-  TrendingUp,
   Globe,
   Clock,
   MapPin,
   Phone,
   Mail,
+  Megaphone,
   Receipt,
-  Eye,
   CheckCircle,
   HelpCircle,
   Trash2,
@@ -33,10 +34,17 @@ import {
   Upload,
   FileText,
   Download,
-  ExternalLink
+  ExternalLink,
+  LayoutDashboard,
+  Store,
+  Table2,
+  LayoutGrid,
+  ArrowUpDown,
+  Save,
+  X
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { api } from '../lib/api';
+import { api, type BusinessDiscoveryDraft } from '../lib/api';
 import { buildOwnerProfilePatch } from '../lib/ownerProfilePatch';
 
 interface DashboardViewProps {
@@ -52,6 +60,7 @@ interface DashboardViewProps {
     updatedFields: Partial<Business> | ((b: Business) => Partial<Business>)
   ) => void | Promise<void>;
   onUpgradePrompt: (tier: Tier) => void;
+  onPromoteEvent?: (eventId?: string) => Promise<void> | void;
   onDeleteBusiness?: (businessIdOrIds: string | string[]) => void | Promise<void>;
   onResetDatabase?: () => void | Promise<void>;
   reportedBugs?: ReportedBug[];
@@ -59,13 +68,14 @@ interface DashboardViewProps {
   onDeleteBugStatus?: (bugId: string) => void | Promise<void>;
   portalMode: 'owner' | 'admin';
   setPortalMode: (mode: 'owner' | 'admin') => void;
-  defaultOwnerView?: 'register' | 'login';
+  defaultOwnerView?: 'register' | 'login' | 'reset';
+  passwordResetToken?: string;
   locationHash?: string;
 }
 
-export type DashboardSubTab = 'profile' | 'media' | 'reviews' | 'billing' | 'metrics' | 'admin-dashboard' | 'admin-listings' | 'admin-bugs' | 'admin-petition';
+export type DashboardSubTab = 'profile' | 'media' | 'events' | 'reviews' | 'billing' | 'admin-dashboard' | 'admin-listings' | 'admin-events' | 'admin-bugs' | 'admin-petition';
 
-export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'reviews', 'billing', 'metrics', 'admin-dashboard', 'admin-listings', 'admin-bugs', 'admin-petition'];
+export const dashboardSubTabs: DashboardSubTab[] = ['profile', 'media', 'events', 'reviews', 'billing', 'admin-dashboard', 'admin-listings', 'admin-events', 'admin-bugs', 'admin-petition'];
 
 export function getDashboardSectionFromHash(
   hash: string = typeof window === 'undefined' ? '' : window.location.hash,
@@ -77,29 +87,193 @@ export function getDashboardSectionFromHash(
 
   if (!isKnownSection) return fallbackSection;
 
-  const isAdminOnlySection = hashSection === 'admin-dashboard' || hashSection === 'admin-listings' || hashSection === 'admin-bugs' || hashSection === 'admin-petition';
+  const isAdminOnlySection = hashSection === 'admin-dashboard' || hashSection === 'admin-listings' || hashSection === 'admin-events' || hashSection === 'admin-bugs' || hashSection === 'admin-petition';
   if (isAdminOnlySection && role && role !== 'admin') return 'profile';
 
-  return hashSection;
+  return hashSection === 'admin-dashboard' ? 'admin-listings' : hashSection;
 }
 
-export type AdminActiveTab = 'listings' | 'bugs' | 'petition';
+export type AdminActiveTab = 'dashboard' | 'listings' | 'events' | 'bugs' | 'petition';
+type AdminListingSortKey = 'name' | 'category' | 'tier' | 'status' | 'email' | 'createdAt';
 
 export function getAdminTabFromDashboardSection(sectionOrHash: DashboardSubTab | string): AdminActiveTab {
   if (sectionOrHash === 'admin-dashboard' || sectionOrHash === '#dashboard-admin-dashboard') return 'listings';
+  if (sectionOrHash === 'admin-listings' || sectionOrHash === '#dashboard-admin-listings') return 'listings';
+  if (sectionOrHash === 'admin-events' || sectionOrHash === '#dashboard-admin-events') return 'events';
   if (sectionOrHash === 'admin-petition' || sectionOrHash === '#dashboard-admin-petition') return 'petition';
-  return sectionOrHash === 'admin-bugs' || sectionOrHash === '#dashboard-admin-bugs' ? 'bugs' : 'listings';
+  if (sectionOrHash === 'admin-bugs' || sectionOrHash === '#dashboard-admin-bugs') return 'bugs';
+  return 'listings';
 }
 
 export function shouldFocusAdminListings(hash: string, adminTab: AdminActiveTab) {
   return adminTab === 'listings' && hash === '#dashboard-admin-listings';
 }
 
-const ADMIN_HIDDEN_UNCLAIMED_LISTING_IDS = new Set(['lucys-on-the-square', 'annie-jack-boutique']);
-
-export function isHiddenFromAdminListings(business: Pick<Business, 'id' | 'isUnclaimed'>) {
-  return business.isUnclaimed && ADMIN_HIDDEN_UNCLAIMED_LISTING_IDS.has(business.id);
+export function isHiddenFromAdminListings(_business: Pick<Business, 'id' | 'isUnclaimed'>) {
+  return false;
 }
+
+function hasRequiredListingVisuals(business: Pick<Business, 'logoUrl' | 'images'>) {
+  return Boolean(business.logoUrl?.trim()) && Boolean(business.images?.some((image) => image.trim()));
+}
+
+const listingVisualsRequiredMessage = 'Please add both a profile image and a banner image before approving this listing.';
+
+const EVENT_PROMOTION_WINDOW_DAYS = 30;
+const NEW_LISTING_BADGE_DAYS = 30;
+
+type ProfileCompletionItem = {
+  label: string;
+  complete: boolean;
+  hint: string;
+};
+
+function hasText(value: unknown, minLength = 1) {
+  return String(value || '').trim().length >= minLength;
+}
+
+function hasHours(hours: Business['hours']) {
+  if (!hours) return false;
+  return hasText(hours.monFri) || hasText(hours.sat) || hasText(hours.sun);
+}
+
+function isRecentlyAddedListing(business: Pick<Business, 'createdAt'>) {
+  const createdAt = new Date(business.createdAt).getTime();
+  if (!Number.isFinite(createdAt)) return false;
+  return Date.now() - createdAt <= NEW_LISTING_BADGE_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function getProfileCompletion(business: Business) {
+  const canUseWebsiteHours = business.tier === 'basic' || business.tier === 'pro' || business.tier === 'premium';
+  const isPremium = business.tier === 'premium';
+  const items: ProfileCompletionItem[] = [
+    { label: 'Business name', complete: hasText(business.name), hint: 'Add the name neighbors already know.' },
+    { label: 'Category', complete: hasText(business.category), hint: 'Choose the closest local category.' },
+    { label: 'Helpful business summary', complete: hasText(business.description, 80), hint: 'Add a warm summary with services, specialties, or who you help.' },
+    { label: 'Phone number', complete: hasText(business.phone), hint: 'Add the best public phone number.' },
+    { label: 'Contact email', complete: hasText(business.email), hint: 'Add the best owner or business email.' },
+    { label: 'Celina-area address', complete: hasText(business.address), hint: 'Add an address or service-area note.' },
+    { label: 'Profile image', complete: hasText(business.logoUrl), hint: 'Add a logo, storefront, or owner photo.' },
+    { label: 'Banner image', complete: Boolean(business.images?.some((image) => hasText(image))), hint: 'Add a wide photo that makes the listing feel familiar.' },
+  ];
+
+  if (canUseWebsiteHours) {
+    items.push(
+      { label: 'Website link', complete: hasText(business.website), hint: 'Add the best website or booking link.' },
+      { label: 'Business hours', complete: hasHours(business.hours), hint: 'Add hours so neighbors know when to reach you.' },
+    );
+  }
+
+  if (isPremium) {
+    items.push(
+      { label: 'Custom button', complete: hasText(business.ctaText), hint: 'Add a clear action like Book Now or Request a Quote.' },
+      { label: 'Social link', complete: Boolean(business.socialLinks && Object.values(business.socialLinks).some((link) => hasText(link))), hint: 'Add one social page where customers can follow along.' },
+    );
+  }
+
+  const completedCount = items.filter((item) => item.complete).length;
+  return {
+    items,
+    completedCount,
+    totalCount: items.length,
+    percent: Math.round((completedCount / items.length) * 100),
+    nextItems: items.filter((item) => !item.complete).slice(0, 3),
+  };
+}
+
+function getOwnerBadges(business: Business) {
+  const badges = [
+    {
+      label: business.tier === 'premium'
+        ? 'Premium Partner'
+        : business.tier === 'pro'
+          ? 'Celina Champion'
+          : business.tier === 'basic'
+            ? 'Local Pioneer'
+            : 'Free Listing',
+      earned: true,
+      tone: business.tier === 'premium' ? 'amber' : business.tier === 'pro' ? 'orange' : business.tier === 'basic' ? 'emerald' : 'slate',
+    },
+    { label: 'Verified Owner', earned: Boolean(business.ownerId && !business.isUnclaimed), tone: 'emerald' },
+    { label: 'Photo Ready', earned: hasRequiredListingVisuals(business), tone: 'orange' },
+    { label: 'New in Celina', earned: isRecentlyAddedListing(business), tone: 'blue' },
+    { label: 'Local Details Added', earned: hasText(business.address) && hasText(business.phone) && hasText(business.email), tone: 'slate' },
+    { label: 'Event Host', earned: Boolean(business.events?.length), tone: 'blue' },
+    { label: 'Community Loved', earned: Number(business.votesCount || 0) > 0, tone: 'rose' },
+  ];
+
+  return badges.filter((badge) => badge.earned);
+}
+
+function ownerBadgeClass(tone: string) {
+  switch (tone) {
+    case 'amber':
+      return 'bg-amber-50 text-amber-800 border-amber-200';
+    case 'orange':
+      return 'bg-orange-50 text-orange-700 border-orange-200';
+    case 'emerald':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'blue':
+      return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'rose':
+      return 'bg-rose-50 text-rose-700 border-rose-200';
+    default:
+      return 'bg-slate-50 text-slate-700 border-slate-200';
+  }
+}
+
+function calculateGrowthCredits(business: Business, completionPercent: number) {
+  const shareClicks = Number(business.growthCredits?.shareClicks || 0);
+  const referralVisits = Number(business.growthCredits?.referralVisits || 0);
+  const activeEvents = (business.events || []).filter((event) => event.status === 'active').length;
+  const credits = Math.min(20, shareClicks * 10)
+    + Math.min(50, referralVisits * 2)
+    + Math.min(100, Number(business.votesCount || 0) * 5)
+    + Math.min(90, (business.reviews || []).length * 15)
+    + Math.min(30, activeEvents * 10)
+    + (completionPercent >= 100 ? 20 : 0);
+  return {
+    total: Math.min(100, credits),
+    shareClicks,
+    referralVisits,
+    activeEvents,
+    reviews: business.reviews?.length || 0,
+    likes: Number(business.votesCount || 0),
+  };
+}
+
+const dateInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const todayDateInputValue = () => dateInputValue(new Date());
+
+const maxEventPromotionDateInputValue = () => {
+  const maxDate = new Date();
+  maxDate.setDate(maxDate.getDate() + EVENT_PROMOTION_WINDOW_DAYS);
+  return dateInputValue(maxDate);
+};
+
+const eventDateEndIso = (eventDate: string) => new Date(`${eventDate}T23:59:59`).toISOString();
+
+const eventDateIsPast = (eventDate: string) => {
+  if (!eventDate) return false;
+  return new Date(`${eventDate}T23:59:59`).getTime() < Date.now();
+};
+
+const eventDateIsTooFarAway = (eventDate: string) => {
+  if (!eventDate) return false;
+  return new Date(`${eventDate}T00:00:00`).getTime() > new Date(`${maxEventPromotionDateInputValue()}T23:59:59`).getTime();
+};
+
+const eventHasExpired = (event: BusinessEvent) => {
+  if (event.status === 'expired') return true;
+  if (event.eventDate) return eventDateIsPast(event.eventDate);
+  return Boolean(event.expiresAt && new Date(event.expiresAt).getTime() < Date.now());
+};
 
 export default function DashboardView({
   currentUser,
@@ -111,6 +285,7 @@ export default function DashboardView({
   onOwnerUpdateBusiness,
   onUpdateBusiness,
   onUpgradePrompt,
+  onPromoteEvent,
   onDeleteBusiness,
   onResetDatabase,
   reportedBugs = [],
@@ -119,14 +294,23 @@ export default function DashboardView({
   portalMode,
   setPortalMode,
   defaultOwnerView = 'register',
+  passwordResetToken = '',
   locationHash,
 }: DashboardViewProps) {
-  const [isSigningIn, setIsSigningIn] = useState(defaultOwnerView === 'login'); // Toggle Owner Register vs Owner Login
+  const [isSigningIn, setIsSigningIn] = useState(defaultOwnerView === 'login' || defaultOwnerView === 'reset'); // Toggle Owner Register vs Owner Login
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
 
   // Owner Login State
   const [ownerLoginEmail, setOwnerLoginEmail] = useState('');
   const [ownerLoginPassword, setOwnerLoginPassword] = useState('');
   const [ownerLoginError, setOwnerLoginError] = useState('');
+  const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
+  const [forgotPasswordError, setForgotPasswordError] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetPasswordConfirm, setResetPasswordConfirm] = useState('');
+  const [resetPasswordError, setResetPasswordError] = useState('');
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   // Admin Login State
   const [adminEmail, setAdminEmail] = useState('');
@@ -143,7 +327,7 @@ export default function DashboardView({
   const [acEmail, setAcEmail] = useState('');
   const [acDesc, setAcDesc] = useState('');
   const [acIsUnclaimed, setAcIsUnclaimed] = useState(true);
-  const [acTier, setAcTier] = useState<Tier>('basic');
+  const [acTier, setAcTier] = useState<Tier>('free');
   const [acAddress, setAcAddress] = useState('');
   const [acWebsite, setAcWebsite] = useState('');
 
@@ -154,7 +338,17 @@ export default function DashboardView({
   const [regCategory, setRegCategory] = useState('Dining');
   const [regPhone, setRegPhone] = useState('');
   const [regDesc, setRegDesc] = useState('');
+  const [regAddress, setRegAddress] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regLogoUrl, setRegLogoUrl] = useState('');
+  const [regCoverImageUrl, setRegCoverImageUrl] = useState('');
+  const [regWebsite, setRegWebsite] = useState('');
+  const [discoveryWebsite, setDiscoveryWebsite] = useState('');
+  const [isDiscoveringBusiness, setIsDiscoveringBusiness] = useState(false);
+  const [discoveryDraft, setDiscoveryDraft] = useState<BusinessDiscoveryDraft | null>(null);
+  const [discoveryMessage, setDiscoveryMessage] = useState('');
+  const [discoveryError, setDiscoveryError] = useState('');
+  const [registrationMode, setRegistrationMode] = useState<'guided' | 'review' | 'manual'>('guided');
   const [regCompany, setRegCompany] = useState('');
   const [regFormStartedAt, setRegFormStartedAt] = useState(Date.now());
   
@@ -169,7 +363,8 @@ export default function DashboardView({
 
   React.useEffect(() => {
     if (!currentUser.isLoggedIn && portalMode === 'owner') {
-      setIsSigningIn(defaultOwnerView === 'login');
+      setIsSigningIn(defaultOwnerView === 'login' || defaultOwnerView === 'reset');
+      setIsForgotPassword(defaultOwnerView === 'reset');
       setRegFormStartedAt(Date.now());
     }
   }, [defaultOwnerView, portalMode, currentUser.isLoggedIn]);
@@ -177,7 +372,7 @@ export default function DashboardView({
   // Multi-business list and active selection
   const adminOwnedBusinesses = businesses.filter((b) => b.ownerId === currentUser.id && !b.isUnclaimed);
   const myBusinesses = currentUser.role === 'admin'
-    ? adminOwnedBusinesses
+    ? (adminOwnedBusinesses.length > 0 ? adminOwnedBusinesses : businesses)
     : businesses.filter(
         (b) => b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase())
       );
@@ -223,6 +418,16 @@ export default function DashboardView({
 
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [replyInputs, setReplyInputs] = useState<{ [reviewId: string]: string }>({});
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
+  const [eventLocation, setEventLocation] = useState('');
+  const [eventStatus, setEventStatus] = useState<BusinessEvent['status']>('draft');
+  const [eventPromotionPaid, setEventPromotionPaid] = useState(false);
+  const [isOpeningEventCheckout, setIsOpeningEventCheckout] = useState(false);
+  const [eventMessage, setEventMessage] = useState('');
 
   // Sync edit fields if business changes or loads
   React.useEffect(() => {
@@ -241,6 +446,15 @@ export default function DashboardView({
       setEditFacebook(myBusiness.socialLinks?.facebook || '');
       setEditInstagram(myBusiness.socialLinks?.instagram || '');
       setEditTwitter(myBusiness.socialLinks?.twitter || '');
+      setEditingEventId(null);
+      setEventTitle('');
+      setEventDescription('');
+      setEventDate('');
+      setEventTime('');
+      setEventLocation('');
+      setEventStatus('draft');
+      setEventPromotionPaid(false);
+      setEventMessage('');
     }
   }, [myBusiness?.id, activeSubTab]);
 
@@ -258,7 +472,57 @@ export default function DashboardView({
       setSelectedListingId(result.business.id);
       setActiveSubTab('profile');
     } catch (error) {
-      setOwnerLoginError(error instanceof Error ? error.message : 'Owner login failed.');
+      setOwnerLoginError(error instanceof Error ? error.message : 'We could not sign you in. Please check your email and password.');
+    }
+  };
+
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotPasswordError('');
+    setForgotPasswordMessage('');
+    if (!ownerLoginEmail.trim()) {
+      setForgotPasswordError('Please enter your owner email.');
+      return;
+    }
+
+    setIsSendingReset(true);
+    try {
+      const result = await api.ownerForgotPassword(ownerLoginEmail.trim());
+      setForgotPasswordMessage(result.message || 'If that owner account exists, a password reset link has been sent.');
+    } catch (error) {
+      setForgotPasswordError(error instanceof Error ? error.message : 'We could not send the reset email right now. Please try again.');
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetPasswordError('');
+    if (!passwordResetToken) {
+      setResetPasswordError('This reset link is incomplete. Please request a new link.');
+      return;
+    }
+    if (resetPassword.length < 10) {
+      setResetPasswordError('Please use a password of at least 10 characters.');
+      return;
+    }
+    if (resetPassword !== resetPasswordConfirm) {
+      setResetPasswordError('Passwords do not match.');
+      return;
+    }
+
+    setIsResettingPassword(true);
+    try {
+      const result = await api.ownerResetPassword(passwordResetToken, resetPassword);
+      setCurrentUser(result.currentUser);
+      setSelectedListingId(result.business.id);
+      setActiveSubTab('profile');
+      window.history.replaceState({}, '', '/dashboard');
+    } catch (error) {
+      setResetPasswordError(error instanceof Error ? error.message : 'We could not reset your password right now. Please try again.');
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -267,6 +531,8 @@ export default function DashboardView({
     setAdminError('');
     try {
       await api.adminLogin(adminPassword);
+      setPortalMode('admin');
+      window.location.hash = 'dashboard-admin-listings';
       setCurrentUser({
         id: 'admin',
         email: adminEmail || 'admin@celinaconnection.com',
@@ -277,7 +543,44 @@ export default function DashboardView({
       });
       setActiveSubTab('admin-listings');
     } catch (error) {
-      setAdminError(error instanceof Error ? error.message : 'Admin login failed.');
+      setAdminError(error instanceof Error ? error.message : 'Team sign-in failed.');
+    }
+  };
+
+  const applyDiscoveryDraft = (draft: BusinessDiscoveryDraft) => {
+    setRegBusinessName(draft.name || regBusinessName);
+    if (draft.category) setRegCategory(draft.category);
+    setRegDesc(draft.description || regDesc);
+    setRegPhone(draft.phone || regPhone);
+    setRegEmail((current) => current || draft.email || '');
+    setRegWebsite(draft.website || discoveryWebsite || regWebsite);
+    if (draft.address) setRegAddress(draft.address);
+    if (draft.logoUrl) setRegLogoUrl(draft.logoUrl);
+    if (draft.coverImageUrl) setRegCoverImageUrl(draft.coverImageUrl);
+  };
+
+  const handleBusinessDiscovery = async () => {
+    setDiscoveryError('');
+    setDiscoveryMessage('');
+    if (!regBusinessName.trim() || !discoveryWebsite.trim()) {
+      setDiscoveryError('Enter your business name and website to build a starter profile.');
+      return;
+    }
+    setIsDiscoveringBusiness(true);
+    try {
+      const result = await api.discoverBusiness({
+        businessName: regBusinessName.trim(),
+        website: discoveryWebsite.trim(),
+      });
+      setDiscoveryDraft(result.draft);
+      applyDiscoveryDraft(result.draft);
+      setRegistrationMode('review');
+      setDiscoveryMessage('Starter profile created. Please review each field before registering.');
+    } catch (error) {
+      setDiscoveryError(error instanceof Error ? error.message : 'We could not build a starter profile from that website. You can still finish manually.');
+    } finally {
+      setIsDiscoveringBusiness(false);
+      setRegFormStartedAt(Date.now());
     }
   };
 
@@ -291,9 +594,13 @@ export default function DashboardView({
       alert('Please use a password of at least 10 characters.');
       return;
     }
+    if (!regLogoUrl.trim() || !regCoverImageUrl.trim()) {
+      alert('Please add both a profile image and a banner image before submitting your listing.');
+      return;
+    }
 
     // Enforce 100 free listings competitive cap
-    const claimedBasicCount = Math.min(100, 92 + businesses.filter(b => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length);
+    const claimedBasicCount = countOutsideUserClaimedListings(businesses);
     if (claimedBasicCount >= 100) {
       alert("⚠️ We've reached our competitive cap of 100 free listings! If you have an unclaimed listing on the front page, please claim it, or choose one of our Premium/Pro packages to activate a premium presence immediately.");
       return;
@@ -307,8 +614,12 @@ export default function DashboardView({
         description: regDesc,
         phone: regPhone,
         email: regEmail,
+        address: regAddress,
         password: regPassword,
         tier: 'free',
+        website: regWebsite,
+        logoUrl: regLogoUrl,
+        images: [regCoverImageUrl],
         startedAt: regFormStartedAt,
         company: regCompany,
       });
@@ -318,6 +629,15 @@ export default function DashboardView({
         setIsSigningIn(true);
         setOwnerLoginEmail(regEmail);
         setRegPassword('');
+        setRegLogoUrl('');
+        setRegCoverImageUrl('');
+        setRegWebsite('');
+        setDiscoveryWebsite('');
+        setRegAddress('');
+        setDiscoveryDraft(null);
+        setDiscoveryMessage('');
+        setDiscoveryError('');
+        setRegistrationMode('guided');
         return;
       }
 
@@ -325,7 +645,7 @@ export default function DashboardView({
       setSelectedListingId(result.business.id);
       setActiveSubTab('profile');
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Registration failed. Please try again.');
+      alert(error instanceof Error ? error.message : 'We could not finish your registration right now. Please try again.');
       setRegFormStartedAt(Date.now());
     } finally {
       setIsRegistering(false);
@@ -335,7 +655,7 @@ export default function DashboardView({
   const handleNewListingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUser.id === 'owner-lucy') {
-      alert('This feature is available in preview mode. Actions and modifications are disabled to preserve the demo environment.');
+      alert('This sample account is view-only. Please sign in with your own owner account to make changes.');
       return;
     }
     if (currentUser.tier === 'free' || currentUser.tier === 'basic') {
@@ -370,7 +690,7 @@ export default function DashboardView({
     if (!myBusiness) return;
 
     if (currentUser.id === 'owner-lucy') {
-      alert('This feature is available in preview mode. Profile editing is disabled to preserve the demo environment.');
+      alert('This sample account is view-only. Please sign in with your own owner account to edit a listing.');
       return;
     }
 
@@ -416,7 +736,7 @@ export default function DashboardView({
   const handleReplySubmit = (reviewId: string) => {
     if (!myBusiness) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This feature is available in preview mode. Review replies are disabled to preserve the demo environment.');
+      alert('This sample account is view-only. Please sign in with your own owner account to reply to reviews.');
       return;
     }
     const replyText = replyInputs[reviewId];
@@ -443,10 +763,34 @@ export default function DashboardView({
       reader.readAsDataURL(file);
     });
 
+  const handleRegistrationLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      setRegLogoUrl(await readFileAsDataUrl(file));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to upload the selected profile image.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleRegistrationCoverUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      setRegCoverImageUrl(await readFileAsDataUrl(file));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to upload the selected banner image.');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   const handleGalleryUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!myBusiness) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This feature is available in preview mode. Uploading new images is disabled to preserve the demo environment.');
+      alert('This sample account is view-only. Please sign in with your own owner account to add photos.');
       event.target.value = '';
       return;
     }
@@ -455,11 +799,11 @@ export default function DashboardView({
     if (selectedFiles.length === 0) return;
 
     const currentImages = myBusiness.images || [];
-    const max = myBusiness.tier === 'free' || myBusiness.tier === 'basic' ? 1 : myBusiness.tier === 'pro' ? 5 : 10;
+    const max = myBusiness.tier === 'free' ? 1 : myBusiness.tier === 'basic' ? 5 : myBusiness.tier === 'pro' ? 10 : 20;
     const remainingSlots = max - currentImages.length;
 
     if (remainingSlots <= 0) {
-      alert('Tier limit reached! Basic members get 1, Pro get 5, and Premium get 10. Upgrade to add more!');
+      alert('Photo limit reached. Free listings include 1 image, Local Pioneer includes 5, Celina Champion includes 10, and Preston Elite includes 20.');
       event.target.value = '';
       return;
     }
@@ -484,7 +828,7 @@ export default function DashboardView({
   const handleRemovePhoto = (index: number) => {
     if (!myBusiness || !myBusiness.images) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This feature is available in preview mode. Modifying images is disabled to preserve the demo environment.');
+      alert('This sample account is view-only. Please sign in with your own owner account to change photos.');
       return;
     }
     const filtered = myBusiness.images.filter((_, idx) => idx !== index);
@@ -494,7 +838,7 @@ export default function DashboardView({
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!myBusiness) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This feature is available in preview mode. Changing the business logo is disabled to preserve the demo environment.');
+      alert('This sample account is view-only. Please sign in with your own owner account to change the business logo.');
       event.target.value = '';
       return;
     }
@@ -515,82 +859,238 @@ export default function DashboardView({
   const handleRemoveLogo = () => {
     if (!myBusiness) return;
     if (currentUser.id === 'owner-lucy') {
-      alert('This feature is available in preview mode. Changing the business logo is disabled to preserve the demo environment.');
+      alert('This sample account is view-only. Please sign in with your own owner account to change the business logo.');
       return;
     }
 
     updateMyBusiness({ logoUrl: '' });
   };
 
+  const resetEventForm = () => {
+    setEditingEventId(null);
+    setEventTitle('');
+    setEventDescription('');
+    setEventDate('');
+    setEventTime('');
+    setEventLocation('');
+    setEventStatus('draft');
+    setEventPromotionPaid(false);
+  };
+
+  const startEventEdit = (event: BusinessEvent) => {
+    setEditingEventId(event.id);
+    setEventTitle(event.title);
+    setEventDescription(event.description);
+    setEventDate(event.eventDate);
+    setEventTime(event.eventTime);
+    setEventLocation(event.location);
+    setEventStatus(event.status);
+    setEventPromotionPaid(Boolean(event.promotionPaid));
+    setEventMessage('');
+  };
+
+  const handleEventSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myBusiness) return;
+    const existingEvents = myBusiness.events || [];
+    const existingEvent = editingEventId ? existingEvents.find((event) => event.id === editingEventId) : null;
+    const now = new Date().toISOString();
+    if (eventDateIsPast(eventDate)) {
+      setEventMessage('Please choose today or an upcoming date. Event listings expire after the event date.');
+      return;
+    }
+    if (eventDateIsTooFarAway(eventDate)) {
+      setEventMessage('Event promotions can only be scheduled up to 30 days before the event date.');
+      return;
+    }
+    const expiresAt = eventDateEndIso(eventDate);
+    const nextStatus = eventDateIsPast(eventDate)
+      ? 'expired'
+      : currentUser.role === 'admin'
+        ? eventStatus
+        : existingEvent?.promotionPaid ? 'active' : 'draft';
+    const nextEvent: BusinessEvent = {
+      id: existingEvent?.id || `event-${Date.now()}`,
+      title: eventTitle.trim(),
+      description: eventDescription.trim(),
+      eventDate,
+      eventTime: eventTime.trim(),
+      location: eventLocation.trim(),
+      status: nextStatus,
+      promotionPaid: currentUser.role === 'admin' ? eventPromotionPaid : Boolean(existingEvent?.promotionPaid),
+      paidAt: currentUser.role === 'admin' && eventPromotionPaid ? existingEvent?.paidAt || now : existingEvent?.paidAt,
+      expiresAt,
+      createdAt: existingEvent?.createdAt || now,
+      updatedAt: now,
+    };
+    const nextEvents = existingEvent
+      ? existingEvents.map((event) => event.id === existingEvent.id ? nextEvent : event)
+      : [nextEvent, ...existingEvents];
+    await updateMyBusiness({ events: nextEvents });
+    setEventMessage(currentUser.role === 'admin' ? 'Event saved for this listing.' : 'Event details saved. Purchase promotion when you are ready for review.');
+    resetEventForm();
+  };
+
+  const handleEventDelete = async (eventId: string) => {
+    if (!myBusiness) return;
+    if (!window.confirm('Remove this event from the listing workspace?')) return;
+    await updateMyBusiness({ events: (myBusiness.events || []).filter((event) => event.id !== eventId) });
+  };
+
+  const handleEventPromotionFromDashboard = async (eventId?: string) => {
+    if (!onPromoteEvent) return;
+    setIsOpeningEventCheckout(true);
+    setEventMessage('');
+    try {
+      await onPromoteEvent(eventId);
+    } catch (error) {
+      setEventMessage(error instanceof Error ? error.message : 'We could not open event promotion checkout right now.');
+    } finally {
+      setIsOpeningEventCheckout(false);
+    }
+  };
+
   // If NOT logged in, show onboarding portal
   if (!currentUser.isLoggedIn) {
+    const freeSpotUsedCount = countOutsideUserClaimedListings(businesses);
+    const freeSpotRemainingCount = Math.max(0, 100 - freeSpotUsedCount);
+
     return (
-      <div className="py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch" id="dashboard-login-portal">
+      <div className="mx-auto grid min-h-[calc(100vh-8rem)] max-w-7xl grid-cols-1 items-center gap-8 px-4 py-8 sm:px-6 lg:grid-cols-12 lg:py-12" id="dashboard-login-portal">
         {/* Left Side: Welcoming intro */}
         <div className="lg:col-span-7 flex flex-col justify-center space-y-6">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 uppercase tracking-wider self-start">
-            <Building2 className="w-3.5 h-3.5" /> {portalMode === 'admin' ? 'Celina Admin Center' : 'Celina Owner Center'}
-          </span>
-          <h2 className="font-display text-3xl sm:text-4.5xl font-extrabold text-slate-950 tracking-tight leading-tight">
-            {portalMode === 'admin' ? 'Manage Celina Directory' : 'Claim Your Spot on the'}{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">
-              {portalMode === 'admin' ? 'Listings Database' : 'Celina Directory Map'}
-            </span>
-          </h2>
-          <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            {portalMode === 'admin'
-              ? 'Sign in to review, edit, claim, tier, and maintain every active Celina business listing from one admin workspace.'
-              : 'Welcome, Celina business owners! Whether your business is on the historic Downtown Square, Preston Road, or serving our community home-to-home, register in seconds to make sure local families can find you.'}
-          </p>
+          {portalMode === 'admin' ? (
+            <>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[rgba(212,185,94,0.18)] text-[var(--cc-deep-navy)] border border-[rgba(212,185,94,0.35)] uppercase tracking-wider self-start">
+                <Building2 className="w-3.5 h-3.5" /> Celina Team Center
+              </span>
+              <h2 className="font-display text-3xl sm:text-4.5xl font-extrabold text-[var(--cc-deep-navy)] tracking-tight leading-tight">
+                Manage Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--cc-copper)] to-[var(--cc-harvest-gold)]">Listing Directory</span>
+              </h2>
+              <p className="text-[var(--cc-charcoal)] text-sm sm:text-base leading-relaxed">
+                Sign in to review, edit, claim, feature, and care for Celina business listings from one team workspace.
+              </p>
+            </>
+          ) : (
+            <>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-[rgba(212,185,94,0.18)] text-[var(--cc-deep-navy)] border border-[rgba(212,185,94,0.35)] uppercase tracking-wider self-start">
+                <Sparkles className="w-3.5 h-3.5" /> Free launch listing
+              </span>
+              <div className="max-w-3xl space-y-4">
+                <h2 className="font-display text-4xl sm:text-5xl font-black text-[var(--cc-deep-navy)] tracking-tight leading-[1.05]">
+                  Let Celina find your business without filling out a long form.
+                </h2>
+                <p className="text-[var(--cc-charcoal)] text-base sm:text-lg leading-8 font-semibold">
+                  Enter your business name and website. Celina Connection builds a starter profile for you to review, then you verify by email and manage everything from your owner dashboard.
+                </p>
+              </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl">
+                <div className="rounded-2xl border border-[rgba(15,45,77,0.12)] bg-[var(--cc-warm-white)] p-4 shadow-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(215,152,41,0.16)] text-[var(--cc-copper)]">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-3 text-sm font-black text-[var(--cc-deep-navy)]">Profile drafted for you</h3>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-[var(--cc-slate-gray)]">We look for public business details and turn them into a cleaner starter listing.</p>
+                </div>
+                <div className="rounded-2xl border border-[rgba(15,45,77,0.12)] bg-[var(--cc-warm-white)] p-4 shadow-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(102,122,69,0.14)] text-[var(--cc-sage-green)]">
+                    <CheckCircle className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-3 text-sm font-black text-[var(--cc-deep-navy)]">You approve the details</h3>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-[var(--cc-slate-gray)]">Nothing is submitted until you review the listing and confirm it looks right.</p>
+                </div>
+                <div className="rounded-2xl border border-[rgba(15,45,77,0.12)] bg-[var(--cc-warm-white)] p-4 shadow-sm">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(202,227,227,0.55)] text-[var(--cc-deep-navy)]">
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-3 text-sm font-black text-[var(--cc-deep-navy)]">Built for future growth</h3>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-[var(--cc-slate-gray)]">Your profile helps us understand local needs for events, reviews, websites, and promotions.</p>
+                </div>
+              </div>
+
+              <div className="max-w-3xl rounded-3xl border border-[rgba(212,185,94,0.35)] bg-[var(--cc-warm-white)] p-5 shadow-sm">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--cc-deep-navy)] text-white">
+                    <Store className="h-7 w-7" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[var(--cc-slate-gray)]">Launch cap progress</p>
+                    <p className="mt-1 text-sm font-bold text-[var(--cc-charcoal)]">
+                      {freeSpotRemainingCount} of the first 100 free listing spots remain.
+                    </p>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-[rgba(202,227,227,0.65)]">
+                      <div className="h-full rounded-full bg-gradient-to-r from-[var(--cc-harvest-gold)] to-[var(--cc-wheat-gold)]" style={{ width: `${freeSpotUsedCount}%` }} />
+                    </div>
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <p className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{freeSpotUsedCount}</p>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-[var(--cc-slate-gray)]">spots used</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right Side: Tabbed Login/Register/Admin Forms */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden flex flex-col justify-between animate-fade-in" id="portal-form-container">
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-orange-500 to-amber-500" />
+        <div className="lg:col-span-5 w-full max-w-xl justify-self-end bg-[var(--cc-warm-white)] border border-[rgba(15,45,77,0.14)] rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden flex flex-col justify-between animate-fade-in" id="portal-form-container">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[var(--cc-copper)] via-[var(--cc-harvest-gold)] to-[var(--cc-wheat-gold)]" />
           
           <div className="space-y-4">
             {/* Top portal mode selector tabs removed to prevent confusion. Admin entrance is placed in the footer. */}
 
             {/* Portal Heading descriptions */}
             <div>
-              <h3 className="font-display text-xl font-extrabold text-slate-900">
-                {portalMode === 'admin' 
-                  ? 'Master Admin Dashboard' 
-                  : isSigningIn 
-                  ? 'Owner Sign-In' 
-                  : 'Register Free Spot'}
+              <h3 className="font-display text-xl font-extrabold text-[var(--cc-deep-navy)]">
+	                {portalMode === 'admin' 
+		                  ? 'Celina Team Dashboard' 
+	                  : defaultOwnerView === 'reset'
+	                  ? 'Reset Password'
+	                  : isForgotPassword
+	                  ? 'Forgot Password'
+	                  : isSigningIn 
+	                  ? 'Owner Sign-In' 
+	                  : 'Build your free business profile'}
               </h3>
-              <p className="text-xs text-slate-500 mt-1 leading-normal">
-                {portalMode === 'admin' 
-                  ? 'Enter administrative system credentials to access all local listings.' 
-                  : isSigningIn 
-                  ? 'Access your existing profile metrics, reviews, and media settings.' 
-                  : 'List your Celina business. Strictly capped for the first 100 claimed profiles!'}
+              <p className="text-xs text-[var(--cc-slate-gray)] mt-1 leading-normal">
+	                {portalMode === 'admin' 
+		                  ? 'Sign in to manage Celina Connection listings and community requests.' 
+	                  : defaultOwnerView === 'reset'
+	                  ? 'Create a new password for your Celina Connection owner dashboard.'
+	                  : isForgotPassword
+	                  ? 'Enter your owner email and we will send a secure reset link.'
+	                  : isSigningIn 
+	                  ? 'Access your existing profile, reviews, and media settings.' 
+	                  : 'Start with your website. We will help draft the listing, then you review and verify.'}
               </p>
             </div>
 
             {/* Owner Register / Owner Login Inner Tabs */}
             {portalMode === 'owner' && (
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+              <div className="flex items-center gap-2 border-b border-[rgba(15,45,77,0.1)] pb-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsSigningIn(false);
-                    setRegFormStartedAt(Date.now());
-                  }}
+	                  onClick={() => {
+	                    setIsForgotPassword(false);
+	                    setIsSigningIn(false);
+	                    setRegFormStartedAt(Date.now());
+	                  }}
                   className={`text-[11px] font-bold pb-1 cursor-pointer transition-all ${
-                    !isSigningIn ? 'text-orange-600 border-b-2 border-orange-500' : 'text-slate-400 hover:text-slate-600'
+                    !isSigningIn ? 'text-[var(--cc-copper)] border-b-2 border-[var(--cc-harvest-gold)]' : 'text-[var(--cc-slate-gray)] hover:text-[var(--cc-charcoal)]'
                   }`}
                 >
-                  Register Spot
+                  Set Up Listing
                 </button>
                 <span className="text-slate-200 text-xs">|</span>
                 <button
                   type="button"
-                  onClick={() => setIsSigningIn(true)}
+	                  onClick={() => {
+	                    setIsForgotPassword(false);
+	                    setIsSigningIn(true);
+	                  }}
                   className={`text-[11px] font-bold pb-1 cursor-pointer transition-all ${
-                    isSigningIn ? 'text-orange-600 border-b-2 border-orange-500' : 'text-slate-400 hover:text-slate-600'
+                    isSigningIn ? 'text-[var(--cc-copper)] border-b-2 border-[var(--cc-harvest-gold)]' : 'text-[var(--cc-slate-gray)] hover:text-[var(--cc-charcoal)]'
                   }`}
                 >
                   Sign In with Email
@@ -604,22 +1104,22 @@ export default function DashboardView({
             {portalMode === 'admin' ? (
               <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Admin Email Address
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[var(--cc-slate-gray)] mb-1">
+	                    Team Email Address
                   </label>
                   <input
                     type="email"
                     required
-                    placeholder="admin email"
+	                    placeholder="team email"
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-white border border-[rgba(15,45,77,0.14)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[var(--cc-harvest-gold)] font-semibold text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    System Password
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[var(--cc-slate-gray)] mb-1">
+	                    Password
                   </label>
                   <input
                     type="password"
@@ -627,7 +1127,7 @@ export default function DashboardView({
                     placeholder="••••••••••••"
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-white border border-[rgba(15,45,77,0.14)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[var(--cc-harvest-gold)] font-semibold text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
@@ -635,7 +1135,7 @@ export default function DashboardView({
 
                 <button
                   type="submit"
-                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  className="w-full py-3 bg-[var(--cc-deep-navy)] hover:bg-[var(--cc-copper)] text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
                 >
                   Sign In Securely
                 </button>
@@ -648,7 +1148,91 @@ export default function DashboardView({
                   ← Back to Owner Portal
                 </button>
               </form>
-            ) : isSigningIn ? (
+	            ) : defaultOwnerView === 'reset' ? (
+	              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+                <div className="p-3 bg-[rgba(215,152,41,0.12)] border border-[rgba(212,185,94,0.35)] rounded-xl">
+	                  <p className="text-xs font-bold text-[var(--cc-deep-navy)]">Choose a new owner password</p>
+	                  <p className="text-[11px] text-[var(--cc-charcoal)] mt-1 leading-normal">Use at least 10 characters. You will be signed in after the reset is complete.</p>
+	                </div>
+
+	                <div>
+	                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+	                    New Password
+	                  </label>
+	                  <input
+	                    type="password"
+	                    required
+	                    placeholder="Enter a new password"
+	                    value={resetPassword}
+	                    onChange={(e) => setResetPassword(e.target.value)}
+	                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
+	                  />
+	                </div>
+
+	                <div>
+	                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+	                    Confirm Password
+	                  </label>
+	                  <input
+	                    type="password"
+	                    required
+	                    placeholder="Re-enter your new password"
+	                    value={resetPasswordConfirm}
+	                    onChange={(e) => setResetPasswordConfirm(e.target.value)}
+	                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
+	                  />
+	                </div>
+
+	                {resetPasswordError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{resetPasswordError}</p>}
+
+	                <button
+	                  type="submit"
+	                  disabled={isResettingPassword}
+	                  className="w-full py-3 bg-gradient-to-r from-[var(--cc-harvest-gold)] to-[var(--cc-wheat-gold)] text-[var(--cc-deep-navy)] font-black text-xs rounded-xl hover:brightness-95 shadow-md shadow-[rgba(215,152,41,0.18)] transition-all cursor-pointer disabled:opacity-60"
+	                >
+	                  {isResettingPassword ? 'Resetting Password...' : 'Reset Password'}
+	                </button>
+	              </form>
+	            ) : isSigningIn && isForgotPassword ? (
+	              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+	                <div>
+	                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+	                    Owner Email Address
+	                  </label>
+	                  <input
+	                    type="email"
+	                    required
+	                    placeholder="owner@yourcelinabusiness.com"
+	                    value={ownerLoginEmail}
+	                    onChange={(e) => setOwnerLoginEmail(e.target.value)}
+	                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
+	                  />
+	                </div>
+
+	                {forgotPasswordMessage && <p className="text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-[11px] font-semibold leading-normal">{forgotPasswordMessage}</p>}
+	                {forgotPasswordError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{forgotPasswordError}</p>}
+
+	                <button
+	                  type="submit"
+	                  disabled={isSendingReset}
+	                  className="w-full py-3 bg-gradient-to-r from-[var(--cc-harvest-gold)] to-[var(--cc-wheat-gold)] text-[var(--cc-deep-navy)] font-black text-xs rounded-xl hover:brightness-95 shadow-md shadow-[rgba(215,152,41,0.18)] transition-all cursor-pointer disabled:opacity-60"
+	                >
+	                  {isSendingReset ? 'Sending Reset Link...' : 'Send Reset Link'}
+	                </button>
+
+	                <button
+	                  type="button"
+	                  onClick={() => {
+	                    setIsForgotPassword(false);
+	                    setForgotPasswordError('');
+	                    setForgotPasswordMessage('');
+	                  }}
+	                  className="w-full py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs rounded-xl cursor-pointer"
+	                >
+	                  Back to Sign In
+	                </button>
+	              </form>
+	            ) : isSigningIn ? (
               <form onSubmit={handleOwnerLoginSubmit} className="space-y-4">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
@@ -660,7 +1244,7 @@ export default function DashboardView({
                     placeholder="owner@yourcelinabusiness.com"
                     value={ownerLoginEmail}
                     onChange={(e) => setOwnerLoginEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
@@ -674,21 +1258,133 @@ export default function DashboardView({
                     placeholder="Enter your owner password"
                     value={ownerLoginPassword}
                     onChange={(e) => setOwnerLoginPassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
-                {ownerLoginError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{ownerLoginError}</p>}
+	                {ownerLoginError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{ownerLoginError}</p>}
 
-                <button
+	                <button
+	                  type="button"
+	                  onClick={() => {
+	                    setIsForgotPassword(true);
+	                    setOwnerLoginError('');
+	                    setForgotPasswordError('');
+	                    setForgotPasswordMessage('');
+	                  }}
+	                  className="text-[11px] font-bold text-[var(--cc-copper)] hover:text-[var(--cc-burgundy)] cursor-pointer"
+	                >
+	                  Forgot password?
+	                </button>
+
+	                <button
                   type="submit"
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-100 transition-all cursor-pointer"
+                  className="w-full py-3 bg-gradient-to-r from-[var(--cc-harvest-gold)] to-[var(--cc-wheat-gold)] text-[var(--cc-deep-navy)] font-black text-xs rounded-xl hover:brightness-95 shadow-md shadow-[rgba(215,152,41,0.18)] transition-all cursor-pointer"
                 >
                   Sign In to Dashboard
                 </button>
               </form>
             ) : (
               <form onSubmit={handleRegisterSubmit} className="space-y-4">
+                <div className="rounded-2xl border border-[rgba(212,185,94,0.35)] bg-gradient-to-br from-[rgba(215,152,41,0.12)] via-white to-[rgba(202,227,227,0.28)] p-4 space-y-3">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[var(--cc-copper)] border border-[rgba(212,185,94,0.35)] shadow-sm">
+                      <Sparkles className="h-3.5 w-3.5" /> 1-Click Business Setup
+                    </span>
+                    <h4 className="mt-3 font-display text-lg font-black text-[var(--cc-deep-navy)]">We build the first draft.</h4>
+                    <p className="mt-1 text-xs font-semibold leading-relaxed text-[var(--cc-charcoal)]">
+                      Your website gives us the best starting point for contact info, category, photos, and a cleaner business summary.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        Business Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Celina Cafe / Plumbing Services"
+                        value={regBusinessName}
+                        onChange={(e) => setRegBusinessName(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white border border-[rgba(212,185,94,0.35)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[var(--cc-harvest-gold)] font-semibold text-[var(--cc-deep-navy)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        Website
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://yourbusiness.com"
+                        value={discoveryWebsite}
+                        onChange={(e) => {
+                          setDiscoveryWebsite(e.target.value);
+                          setRegWebsite(e.target.value);
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-white border border-[rgba(212,185,94,0.35)] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[var(--cc-harvest-gold)] font-semibold text-[var(--cc-deep-navy)]"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBusinessDiscovery}
+                    disabled={isDiscoveringBusiness || !discoveryWebsite.trim()}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--cc-deep-navy)] px-4 py-3 text-xs font-black uppercase tracking-wider text-white shadow-sm hover:bg-[var(--cc-copper)] disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {isDiscoveringBusiness ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    {isDiscoveringBusiness ? 'Building Starter Profile...' : 'Build My Starter Profile'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegistrationMode('manual');
+                      setDiscoveryError('');
+                      setDiscoveryMessage('Manual setup is open. Add the basics and we will still make it easy.');
+                      setRegFormStartedAt(Date.now());
+                    }}
+                    className="w-full rounded-xl border border-transparent bg-transparent px-4 py-2 text-xs font-bold text-[var(--cc-slate-gray)] hover:text-[var(--cc-copper)]"
+                  >
+                    I do not have a website, enter details manually
+                  </button>
+                  {discoveryMessage && (
+                    <p className="rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[11px] font-bold text-emerald-700">
+                      {discoveryMessage}
+                    </p>
+                  )}
+                  {discoveryError && (
+                    <p className="rounded-xl border border-rose-100 bg-white px-3 py-2 text-[11px] font-bold text-rose-600">
+                      {discoveryError}
+                    </p>
+                  )}
+                  {discoveryDraft?.confidenceNotes?.length ? (
+                    <div className="rounded-xl border border-white bg-white/80 px-3 py-2">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">What we found</p>
+                      <ul className="mt-1 space-y-1 text-[11px] font-semibold leading-5 text-slate-600">
+                        {discoveryDraft.confidenceNotes.map((note) => (
+                          <li key={note} className="flex gap-1.5">
+                            <CheckCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
+                            <span>{note}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+
+                {registrationMode !== 'guided' && (
+                  <>
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">
+                    {registrationMode === 'manual' ? 'Manual setup' : 'Review your starter profile'}
+                  </p>
+                  <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">
+                    {registrationMode === 'manual'
+                      ? 'Add the basics below. You can always improve the listing after email verification.'
+                      : 'The setup assistant filled in what it could find. Please confirm the details before registering.'}
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                     Owner Email Address
@@ -699,21 +1395,7 @@ export default function DashboardView({
                     placeholder="owner@yourcelinabusiness.com"
                     value={regEmail}
                     onChange={(e) => setRegEmail(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Business Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Celina Cafe / Plumbing Services"
-                    value={regBusinessName}
-                    onChange={(e) => setRegBusinessName(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
@@ -725,7 +1407,7 @@ export default function DashboardView({
                     <select
                       value={regCategory}
                       onChange={(e) => setRegCategory(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900 cursor-pointer"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)] cursor-pointer"
                     >
                       {CATEGORIES.filter(c => c !== 'All').map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -743,7 +1425,38 @@ export default function DashboardView({
                       placeholder="(972) 555-0199"
                       value={regPhone}
                       onChange={(e) => setRegPhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Website
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://yourbusiness.com"
+                      value={regWebsite}
+                      onChange={(e) => {
+                        setRegWebsite(e.target.value);
+                        setDiscoveryWebsite(e.target.value);
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
+                    />
+                    <p className="mt-1 text-[10px] font-semibold text-slate-400">Saved for your profile. Public website links unlock on paid plans.</p>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                      Address or Service Area
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Celina, TX or full public address"
+                      value={regAddress}
+                      onChange={(e) => setRegAddress(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
@@ -758,8 +1471,47 @@ export default function DashboardView({
                     value={regDesc}
                     onChange={(e) => setRegDesc(e.target.value)}
                     rows={2.5}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
                   />
+                </div>
+
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/50 p-4 space-y-3">
+                  <div>
+                    <h4 className="text-xs font-black text-[var(--cc-deep-navy)]">Required Listing Images</h4>
+                    <p className="text-[10px] font-semibold leading-relaxed text-slate-500">
+                      Add a profile image and a banner image so your listing can be reviewed and approved.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white bg-white p-3 shadow-sm">
+                      <div className="h-20 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center">
+                        {regLogoUrl ? (
+                          <img src={regLogoUrl} alt="Profile image preview" className="h-full w-full object-cover" />
+                        ) : (
+                          <Building2 className="h-7 w-7 text-slate-300" />
+                        )}
+                      </div>
+                      <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-orange-700 hover:bg-orange-100">
+                        <Upload className="h-3.5 w-3.5" />
+                        Profile Image
+                        <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" onChange={handleRegistrationLogoUpload} className="hidden" />
+                      </label>
+                    </div>
+                    <div className="rounded-2xl border border-white bg-white p-3 shadow-sm">
+                      <div className="h-20 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center">
+                        {regCoverImageUrl ? (
+                          <img src={regCoverImageUrl} alt="Cover image preview" className="h-full w-full object-cover" />
+                        ) : (
+                          <ImageIcon className="h-7 w-7 text-slate-300" />
+                        )}
+                      </div>
+                      <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-orange-700 hover:bg-orange-100">
+                        <Upload className="h-3.5 w-3.5" />
+                        Banner Image
+                        <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif" onChange={handleRegistrationCoverUpload} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -773,7 +1525,7 @@ export default function DashboardView({
                     placeholder="At least 10 characters"
                     value={regPassword}
                     onChange={(e) => setRegPassword(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-[var(--cc-deep-navy)]"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">You’ll use this to return and manage your free listing.</p>
                 </div>
@@ -792,10 +1544,12 @@ export default function DashboardView({
                 <button
                   type="submit"
                   disabled={isRegistering}
-                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-100 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full py-3 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-black text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 shadow-md shadow-orange-100 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isRegistering ? 'Creating Secure Listing…' : 'Register Free Listing'}
                 </button>
+                  </>
+                )}
               </form>
             )}
           </div>
@@ -804,10 +1558,8 @@ export default function DashboardView({
     );
   }
 
-  // Admin dashboard routes should always render the admin workspace directly.
-  // Do this before owner-business fallbacks: admins may have listings assigned
-  // to them, and that must not trap Manage Listings inside the owner editor.
-  if (currentUser.role === 'admin' && (activeSubTab === 'admin-dashboard' || activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs' || activeSubTab === 'admin-petition')) {
+  // Admin dashboard routes should render AdminDashboardView for admin- specific sections
+  if (currentUser.role === 'admin' && activeSubTab.startsWith('admin-')) {
     return (
       <AdminDashboardView
         activeDashboardSection={activeSubTab}
@@ -820,6 +1572,12 @@ export default function DashboardView({
         reportedBugs={reportedBugs}
         onUpdateBugStatus={onUpdateBugStatus}
         onDeleteBugStatus={onDeleteBugStatus}
+        onOpenPersonalListing={(businessId) => {
+          setSelectedListingId(businessId);
+          setIsAddingListing(false);
+          setActiveSubTab('profile');
+          window.location.hash = 'dashboard-profile';
+        }}
       />
     );
   }
@@ -832,13 +1590,13 @@ export default function DashboardView({
         <div className="py-12 text-center max-w-md mx-auto space-y-4">
           <ShieldAlert className="w-12 h-12 text-orange-500 mx-auto" />
           <h3 className="font-display text-xl font-bold">No Listing Selected</h3>
-          <p className="text-slate-500 text-xs">This admin account does not have a personal listing selected. Use Manage Listings for the full directory manager.</p>
+	          <p className="text-slate-500 text-xs">No personal listing is selected. Open Manage Listings to care for the full directory.</p>
           <button
             onClick={() => {
               setActiveSubTab('admin-listings');
               window.location.hash = 'dashboard-admin-listings';
             }}
-            className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg cursor-pointer"
+            className="px-4 py-2 bg-[var(--cc-deep-navy)] text-white font-bold text-xs rounded-lg cursor-pointer"
           >
             Manage Listings
           </button>
@@ -852,8 +1610,8 @@ export default function DashboardView({
         <h3 className="font-display text-xl font-bold">Business Registry Out of Sync</h3>
         <p className="text-slate-500 text-xs">Could not locate an active directory entry tied to your owner ID.</p>
         <button
-          onClick={() => setCurrentUser({ id: '', email: '', businessName: '', tier: 'basic', isLoggedIn: false })}
-          className="px-4 py-2 bg-slate-900 text-white font-bold text-xs rounded-lg cursor-pointer"
+          onClick={() => setCurrentUser({ id: '', email: '', businessName: '', tier: 'free', isLoggedIn: false })}
+          className="px-4 py-2 bg-[var(--cc-deep-navy)] text-white font-bold text-xs rounded-lg cursor-pointer"
         >
           Reset and Retry
         </button>
@@ -867,6 +1625,16 @@ export default function DashboardView({
   const isPremium = myBusiness.tier === 'premium';
   const isEntryLevel = isFree || isBasic;
   const canUseWebsiteHours = isBasic || isPro || isPremium;
+  const ownerGalleryImageLimit = myBusiness.tier === 'free' ? 1 : isBasic ? 5 : isPro ? 10 : 20;
+  const profileCompletion = getProfileCompletion(myBusiness);
+  const growthCreditSummary = calculateGrowthCredits(myBusiness, profileCompletion.percent);
+  const referralUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://www.celinaconnection.com'}/business/${myBusiness.slug || myBusiness.id}?ref=${encodeURIComponent(myBusiness.id)}`;
+  const ownerBadges = getOwnerBadges(myBusiness);
+  const completionMessage = profileCompletion.percent >= 100
+    ? 'Your listing looks ready for neighbors to explore.'
+    : profileCompletion.percent >= 75
+      ? 'Your listing is in good shape. A few finishing touches can help it stand out.'
+      : 'A more complete listing helps neighbors feel confident reaching out.';
 
   return (
     <div className="py-4 space-y-6" id="owner-active-dashboard">
@@ -874,7 +1642,7 @@ export default function DashboardView({
       <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Managing Listing</span>
-          <h2 className="font-display text-xl sm:text-2xl font-black text-slate-900">
+          <h2 className="font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)]">
             {isAddingListing ? 'New Business Registry Onboarding' : myBusiness?.name || 'My Listing'}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -905,6 +1673,147 @@ export default function DashboardView({
         </div>
       </div>
 
+      {!isAddingListing && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+          <div className="xl:col-span-7 rounded-3xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-orange-700 border border-orange-100">
+                  <Sparkles className="w-3.5 h-3.5" /> Listing Progress
+                </span>
+                <h3 className="mt-3 font-display text-lg font-black text-[var(--cc-deep-navy)]">Make your listing easier to choose</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-600 max-w-xl">{completionMessage}</p>
+              </div>
+              <div className="shrink-0 text-left sm:text-right">
+                <div className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{profileCompletion.percent}%</div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  {profileCompletion.completedCount} of {profileCompletion.totalCount} complete
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 h-3 rounded-full bg-white border border-orange-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all"
+                style={{ width: `${profileCompletion.percent}%` }}
+              />
+            </div>
+
+            {profileCompletion.nextItems.length > 0 ? (
+              <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {profileCompletion.nextItems.map((item) => {
+                  const targetTab = item.label.includes('image') ? 'media' : 'profile';
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setActiveSubTab(targetTab as DashboardSubTab);
+                        window.location.hash = `dashboard-${targetTab}`;
+                      }}
+                      className="rounded-2xl border border-orange-100 bg-white p-4 text-left hover:border-orange-300 hover:shadow-sm transition-all cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2 text-xs font-black text-[var(--cc-deep-navy)]">
+                        <ChevronRight className="w-4 h-4 text-orange-500" /> {item.label}
+                      </span>
+                      <span className="mt-1 block text-[11px] leading-5 font-semibold text-slate-500">{item.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-xs font-bold text-emerald-700 flex items-center gap-2">
+                <CheckCircle className="w-4 h-4" /> Nice work. Your plan-ready profile details are filled in.
+              </div>
+            )}
+          </div>
+
+          <div className="xl:col-span-5 rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Earned Badges</span>
+                <h3 className="mt-1 font-display text-lg font-black text-[var(--cc-deep-navy)]">Recognition that helps customers trust you</h3>
+              </div>
+              <Award className="w-6 h-6 text-amber-500 shrink-0" />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {ownerBadges.map((badge) => (
+                <span
+                  key={badge.label}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${ownerBadgeClass(badge.tone)}`}
+                >
+                  <Star className="w-3 h-3" /> {badge.label}
+                </span>
+              ))}
+            </div>
+            <p className="mt-4 text-[11px] leading-5 font-semibold text-slate-500">
+              Badges appear as your listing becomes more complete, verified, and active in the Celina community.
+            </p>
+          </div>
+
+          <div className="xl:col-span-12 rounded-3xl border border-emerald-100 bg-white p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+              <div className="max-w-2xl">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-700 border border-emerald-100">
+                  <Award className="w-3.5 h-3.5" /> Growth Credits
+                </span>
+                <h3 className="mt-3 font-display text-lg font-black text-[var(--cc-deep-navy)]">Earn toward a free event promotion</h3>
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  Share your listing, bring neighbors back to your profile, collect likes and reviews, and keep your listing useful.
+                </p>
+              </div>
+              <div className="min-w-[220px]">
+                <div className="flex items-end justify-between gap-3">
+                  <div className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{growthCreditSummary.total}</div>
+                  <div className="pb-1 text-[10px] font-black uppercase tracking-wider text-slate-400">of 100 credits</div>
+                </div>
+                <div className="mt-2 h-3 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-orange-400" style={{ width: `${growthCreditSummary.total}%` }} />
+                </div>
+                <p className="mt-2 text-[11px] font-bold text-slate-500">
+                  {growthCreditSummary.total >= 100 ? 'Reward ready: ask admin to apply your free event promotion.' : `${100 - growthCreditSummary.total} credits until a free event promotion.`}
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 md:grid-cols-5 gap-2 text-center">
+              {[
+                ['Shares', growthCreditSummary.shareClicks],
+                ['Referral visits', growthCreditSummary.referralVisits],
+                ['Likes', growthCreditSummary.likes],
+                ['Reviews', growthCreditSummary.reviews],
+                ['Active events', growthCreditSummary.activeEvents],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                  <div className="font-display text-xl font-black text-[var(--cc-deep-navy)]">{value}</div>
+                  <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+              <h4 className="text-xs font-black uppercase tracking-wider text-emerald-800">How to earn</h4>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Share this link with customers, neighbors, email lists, and social pages. Visits from this link help your listing earn referral credits.
+              </p>
+              <div className="mt-3 flex flex-col md:flex-row gap-2">
+                <input
+                  readOnly
+                  value={referralUrl}
+                  onFocus={(event) => event.currentTarget.select()}
+                  className="min-w-0 flex-1 rounded-xl border border-emerald-100 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(referralUrl)}
+                  className="rounded-xl bg-[var(--cc-deep-navy)] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white hover:bg-orange-600"
+                >
+                  Copy Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Grid: Tabs + Workspace Panel */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left column: Listing switch and workspace sidebar navigation */}
@@ -926,14 +1835,14 @@ export default function DashboardView({
                     }}
                     className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer border ${
                       isActive
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        ? 'bg-[var(--cc-deep-navy)] text-white border-slate-900 shadow-sm'
                         : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200/60'
                     }`}
                   >
                     <span className="truncate pr-2">{b.name}</span>
                     <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded ${
                       b.tier === 'premium' 
-                        ? 'bg-amber-500 text-slate-950' 
+                        ? 'bg-amber-500 text-[var(--cc-deep-navy)]' 
                         : b.tier === 'pro' 
                           ? 'bg-orange-500 text-white' 
                           : 'bg-slate-200 text-slate-600'
@@ -977,16 +1886,9 @@ export default function DashboardView({
               {[
                 { id: 'profile', label: 'Business Profile', icon: <Building2 className="w-4 h-4" /> },
                 { id: 'media', label: 'Gallery & Logo', icon: <ImageIcon className="w-4 h-4" /> },
+                { id: 'events', label: 'Events', icon: <Calendar className="w-4 h-4" /> },
                 { id: 'reviews', label: 'Review Responder', icon: <MessageSquare className="w-4 h-4" /> },
-                { id: 'metrics', label: 'Traffic Metrics', icon: <TrendingUp className="w-4 h-4" /> },
                 { id: 'billing', label: 'Billing & Tiers', icon: <Receipt className="w-4 h-4" /> },
-                ...(currentUser.role === 'admin'
-                  ? [
-                      { id: 'admin-listings', label: 'Manage Listings', icon: <ShieldAlert className="w-4 h-4" /> },
-                      { id: 'admin-petition', label: 'Petition Signatures', icon: <FileText className="w-4 h-4" /> },
-                      { id: 'admin-bugs', label: 'Bug Reports', icon: <Bug className="w-4 h-4" /> },
-                    ]
-                  : []),
               ].map((tab) => {
                 const isSelected = activeSubTab === tab.id;
                 return (
@@ -1001,7 +1903,7 @@ export default function DashboardView({
                     className={`w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all ${
                       isSelected
                         ? 'bg-orange-50 text-orange-700 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                        : 'text-slate-500 hover:text-[var(--cc-deep-navy)] hover:bg-slate-50'
                     }`}
                   >
                     {tab.icon}
@@ -1019,7 +1921,7 @@ export default function DashboardView({
           {isAddingListing ? (
             <form onSubmit={handleNewListingSubmit} className="space-y-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-950">Add Additional Business Listing</h3>
+                <h3 className="font-display text-lg font-bold text-[var(--cc-deep-navy)]">Add Additional Business Listing</h3>
                 <p className="text-xs text-slate-500 mt-0.5">Register an additional business location or service line under your account.</p>
               </div>
 
@@ -1035,7 +1937,7 @@ export default function DashboardView({
                       placeholder="e.g. Celina Boutique"
                       value={newBusName}
                       onChange={(e) => setNewBusName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
 
@@ -1046,7 +1948,7 @@ export default function DashboardView({
                     <select
                       value={newBusCategory}
                       onChange={(e) => setNewBusCategory(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                     >
                       {CATEGORIES.filter(c => c !== 'All').map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -1066,7 +1968,7 @@ export default function DashboardView({
                       placeholder="(972) 555-0100"
                       value={newBusPhone}
                       onChange={(e) => setNewBusPhone(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
 
@@ -1080,7 +1982,7 @@ export default function DashboardView({
                       placeholder="owner@yourcelinabusiness.com"
                       value={newBusEmail}
                       onChange={(e) => setNewBusEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
@@ -1095,7 +1997,7 @@ export default function DashboardView({
                     value={newBusDesc}
                     onChange={(e) => setNewBusDesc(e.target.value)}
                     rows={3}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                   />
                 </div>
               </div>
@@ -1125,7 +2027,7 @@ export default function DashboardView({
                 </button>
               </div>
             </form>
-          ) : (activeSubTab === 'admin-listings' || activeSubTab === 'admin-bugs' || activeSubTab === 'admin-petition') && currentUser.role === 'admin' ? (
+          ) : (activeSubTab === 'admin-listings' || activeSubTab === 'admin-events' || activeSubTab === 'admin-bugs' || activeSubTab === 'admin-petition') && currentUser.role === 'admin' ? (
             <AdminDashboardView
               activeDashboardSection={activeSubTab}
               businesses={businesses}
@@ -1137,6 +2039,12 @@ export default function DashboardView({
               reportedBugs={reportedBugs}
               onUpdateBugStatus={onUpdateBugStatus}
               onDeleteBugStatus={onDeleteBugStatus}
+              onOpenPersonalListing={(businessId) => {
+                setSelectedListingId(businessId);
+                setIsAddingListing(false);
+                setActiveSubTab('profile');
+                window.location.hash = 'dashboard-profile';
+              }}
             />
           ) : !myBusiness ? (
             <div className="py-12 text-center max-w-sm mx-auto space-y-3">
@@ -1150,15 +2058,15 @@ export default function DashboardView({
               {activeSubTab === 'profile' && (
             <form onSubmit={handleProfileSave} className="space-y-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-950">
-                  {currentUser.role === 'admin' ? 'Listing Edit Page' : 'Business Profile Info'}
+                <h3 className="font-display text-lg font-bold text-[var(--cc-deep-navy)]">
+	                  {currentUser.role === 'admin' ? 'Edit Listing' : 'Business Profile'}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">Edit basic, pro, and premium fields regarding your Celina directory card.</p>
+	                <p className="text-xs text-slate-500 mt-0.5">Keep your Celina listing accurate, welcoming, and easy for neighbors to use.</p>
               </div>
 
               {saveSuccess && (
                 <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 animate-pulse">
-                  <CheckCircle className="w-4 h-4" /> Changes saved successfully! Updated listing immediately.
+	                  <CheckCircle className="w-4 h-4" /> Changes saved. Your listing is up to date.
                 </div>
               )}
 
@@ -1176,7 +2084,7 @@ export default function DashboardView({
                       required
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
 
@@ -1187,7 +2095,7 @@ export default function DashboardView({
                     <select
                       value={editCategory}
                       onChange={(e) => setEditCategory(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                     >
                       {CATEGORIES.filter(c => c !== 'All').map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
@@ -1206,7 +2114,7 @@ export default function DashboardView({
                       required
                       value={editPhone}
                       onChange={(e) => setEditPhone(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
 
@@ -1219,7 +2127,7 @@ export default function DashboardView({
                       required
                       value={editEmail}
                       onChange={(e) => setEditEmail(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
@@ -1233,7 +2141,7 @@ export default function DashboardView({
                     value={editDesc}
                     onChange={(e) => setEditDesc(e.target.value)}
                     rows={3}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                   />
                 </div>
               </div>
@@ -1260,7 +2168,7 @@ export default function DashboardView({
                       placeholder="127 N Ohio St, Celina, TX 75009"
                       value={editAddress}
                       onChange={(e) => setEditAddress(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
                   {isBasic && (
@@ -1302,7 +2210,7 @@ export default function DashboardView({
                         placeholder="https://www.yourbusiness.com"
                         value={editWebsite}
                         onChange={(e) => setEditWebsite(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                       />
                     </div>
                   </div>
@@ -1371,7 +2279,7 @@ export default function DashboardView({
                       placeholder="Book a Table / Check Workshop"
                       value={editCtaText}
                       onChange={(e) => setEditCtaText(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                     />
                   </div>
 
@@ -1385,7 +2293,7 @@ export default function DashboardView({
                       placeholder="https://facebook.com/yourpage"
                       value={editFacebook}
                       onChange={(e) => setEditFacebook(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
@@ -1401,7 +2309,7 @@ export default function DashboardView({
                       placeholder="https://instagram.com/yourhandle"
                       value={editInstagram}
                       onChange={(e) => setEditInstagram(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                     />
                   </div>
 
@@ -1415,7 +2323,7 @@ export default function DashboardView({
                       placeholder="https://twitter.com/yourhandle"
                       value={editTwitter}
                       onChange={(e) => setEditTwitter(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                      className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
@@ -1433,13 +2341,291 @@ export default function DashboardView({
             </form>
           )}
 
+          {/* EVENTS SUBTAB */}
+          {activeSubTab === 'events' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div>
+                  <h3 className="font-display text-lg font-bold text-[var(--cc-deep-navy)]">Events for This Listing</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Add, review, and update special events tied to this business listing. Each promoted event has its own expiration date.
+                  </p>
+                </div>
+                {currentUser.role === 'owner' ? (
+                  <button
+                    type="button"
+                    onClick={handleEventPromotionFromDashboard}
+                    disabled={isOpeningEventCheckout}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-[var(--cc-deep-navy)] shadow-sm transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {isOpeningEventCheckout ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
+                    Promote an Event - $5
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 border border-emerald-100">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Admin can manage events
+                  </span>
+                )}
+              </div>
+
+              {currentUser.role === 'owner' && (
+                <div className="overflow-hidden rounded-3xl border border-orange-200 bg-white shadow-sm">
+                  <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto]">
+                    <div className="p-5 sm:p-6">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-orange-700 border border-orange-100">
+                        <Megaphone className="h-3.5 w-3.5" /> Intro offer: $5 per event
+                      </span>
+                      <h4 className="mt-3 font-display text-xl font-black text-[var(--cc-deep-navy)]">
+                        Share your next Celina event with more neighbors
+                      </h4>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 font-medium text-slate-600">
+                        Add the event details below, then promote it when it is ready. Each event is reviewed before publishing and expires after the event date, so the calendar stays fresh and useful.
+                      </p>
+                      <div className="mt-4 grid grid-cols-1 gap-2 text-xs font-bold text-slate-600 sm:grid-cols-3">
+                        <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2">
+                          <Calendar className="h-4 w-4 text-orange-500" /> Within 30 days
+                        </span>
+                        <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2">
+                          <ShieldCheck className="h-4 w-4 text-orange-500" /> Reviewed first
+                        </span>
+                        <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2">
+                          <Sparkles className="h-4 w-4 text-orange-500" /> One event per checkout
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center bg-orange-50 p-5 sm:p-6">
+                      <button
+                        type="button"
+                        onClick={handleEventPromotionFromDashboard}
+                        disabled={isOpeningEventCheckout}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--cc-deep-navy)] px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-sm transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-70 lg:w-auto"
+                      >
+                        {isOpeningEventCheckout ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Megaphone className="h-4 w-4" />}
+                        Promote an Event
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {eventMessage && (
+                <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-xs font-bold text-orange-800">
+                  {eventMessage}
+                </div>
+              )}
+
+              <form onSubmit={handleEventSave} className="rounded-3xl border border-slate-200 bg-slate-50/70 p-5 space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="font-display text-base font-black text-[var(--cc-deep-navy)]">
+                      {editingEventId ? 'Edit Event' : 'Add Event Details'}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Owners can save event details, then purchase promotion for review. Admins can mark events active directly.
+                    </p>
+                  </div>
+                  {editingEventId && (
+                    <button
+                      type="button"
+                      onClick={resetEventForm}
+                      className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-[var(--cc-deep-navy)] cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Event Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={eventTitle}
+                      onChange={(e) => setEventTitle(e.target.value)}
+                      placeholder="Grand opening, workshop, meetup..."
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Location</label>
+                    <input
+                      type="text"
+                      required
+                      value={eventLocation}
+                      onChange={(e) => setEventLocation(e.target.value)}
+                      placeholder={myBusiness.address || 'Celina, TX'}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Event Date</label>
+                    <input
+                      type="date"
+                      required
+                      min={todayDateInputValue()}
+                      max={maxEventPromotionDateInputValue()}
+                      value={eventDate}
+                      onChange={(e) => setEventDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
+                    />
+                    <p className="mt-1 text-[10px] font-semibold text-slate-400">Promotions may be scheduled up to 30 days ahead.</p>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Time</label>
+                    <input
+                      type="text"
+                      required
+                      value={eventTime}
+                      onChange={(e) => setEventTime(e.target.value)}
+                      placeholder="6:00 PM - 8:00 PM"
+                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Event Details</label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={eventDescription}
+                    onChange={(e) => setEventDescription(e.target.value)}
+                    placeholder="Tell neighbors what is happening and why they should come."
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
+                  />
+                </div>
+
+                {currentUser.role === 'admin' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-2xl border border-emerald-100 bg-white p-4">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">Event Status</label>
+                      <select
+                        value={eventStatus}
+                        onChange={(e) => setEventStatus(e.target.value as BusinessEvent['status'])}
+                        className="w-full px-3.5 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[var(--cc-deep-navy)]"
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                        <option value="expired">Expired</option>
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs font-bold text-emerald-800 pt-5">
+                      <input
+                        type="checkbox"
+                        checked={eventPromotionPaid}
+                        onChange={(e) => setEventPromotionPaid(e.target.checked)}
+                        className="h-4 w-4 rounded border-emerald-200 accent-emerald-600"
+                      />
+                      Promotion paid or admin-approved
+                    </label>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--cc-deep-navy)] px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white shadow-sm transition hover:bg-[#143a63]"
+                  >
+                    <CheckCircle className="w-4 h-4" /> Save Event
+                  </button>
+                </div>
+              </form>
+
+              <div className="space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">Saved Events</h4>
+                {(myBusiness.events || []).length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-center">
+                    <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="mt-2 text-sm font-black text-slate-700">No events added yet</p>
+                    <p className="mt-1 text-xs text-slate-500">Create event details here, then purchase promotion when it is ready to be reviewed.</p>
+                  </div>
+                ) : (
+                  (myBusiness.events || []).map((event) => {
+                    const isExpired = eventHasExpired(event);
+                    const isTooFarAway = eventDateIsTooFarAway(event.eventDate);
+                    return (
+                      <div key={event.id} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h5 className="font-display text-base font-black text-[var(--cc-deep-navy)]">{event.title}</h5>
+                              <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wider ${
+                                isExpired
+                                  ? 'bg-slate-100 text-slate-500'
+                                  : event.status === 'active'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-100'
+                              }`}>
+                                {isExpired ? 'Expired' : event.status}
+                              </span>
+                              {event.promotionPaid && (
+                                <span className="rounded-full bg-orange-50 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-orange-700 border border-orange-100">
+                                  Paid
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">{event.description}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {currentUser.role === 'owner' && !event.promotionPaid && !isExpired && !isTooFarAway && (
+                              <button
+                                type="button"
+                                onClick={() => handleEventPromotionFromDashboard(event.id)}
+                                disabled={isOpeningEventCheckout}
+                                className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                              >
+                                Promote This Event
+                              </button>
+                            )}
+                            {currentUser.role === 'owner' && !event.promotionPaid && !isExpired && isTooFarAway && (
+                              <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                                Opens within 30 days
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => startEventEdit(event)}
+                              disabled={currentUser.role !== 'admin' && isExpired}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEventDelete(event.id)}
+                              className="rounded-xl border border-rose-100 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-semibold text-slate-500 border-t border-slate-100 pt-3">
+                          <span className="inline-flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-orange-500" /> {event.eventDate || 'Date not set'}</span>
+                          <span className="inline-flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-orange-500" /> {event.eventTime || 'Time not set'}</span>
+                          <span className="inline-flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-orange-500" /> {event.location || 'Celina, TX'}</span>
+                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Expires after the event date
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           {/* MEDIA / PHOTO GALLERY SUBTAB */}
           {activeSubTab === 'media' && (
             <div className="space-y-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-950">Logo & Photo Gallery Manager</h3>
+                <h3 className="font-display text-lg font-bold text-[var(--cc-deep-navy)]">Logo & Photo Gallery Manager</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Update your listing branding assets. Basic profiles support 1 image. Pro supports 5. Premium supports 10.
+                  Update your listing branding assets. Local Pioneer profiles support 5 images. Celina Champion supports 10. Preston Elite supports 20.
                 </p>
               </div>
 
@@ -1488,7 +2674,7 @@ export default function DashboardView({
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Listing Photo Gallery</h4>
                   <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                    {myBusiness.images?.length || 0} / {isEntryLevel ? 1 : isPro ? 5 : 10} Images
+                    {myBusiness.images?.length || 0} / {ownerGalleryImageLimit} Images
                   </span>
                 </div>
 
@@ -1508,8 +2694,8 @@ export default function DashboardView({
                           &times;
                         </button>
                         {idx === 0 && (
-                          <span className="absolute bottom-1 left-1 bg-slate-900/80 backdrop-blur-sm text-[8px] font-bold text-white px-1.5 py-0.5 rounded uppercase">
-                            Cover Image
+                          <span className="absolute bottom-1 left-1 bg-[rgba(15,45,77,0.82)] backdrop-blur-sm text-[8px] font-bold text-white px-1.5 py-0.5 rounded uppercase">
+                            Banner Image
                           </span>
                         )}
                       </div>
@@ -1522,7 +2708,7 @@ export default function DashboardView({
               <div className="space-y-3 border-t border-slate-100 pt-5">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Upload Your Own Gallery Images</h4>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Add photos from your device. The first gallery image will be used as your cover image.</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Add photos from your device. The first gallery image will be used as your banner image.</p>
                 </div>
 
                 <label className="flex flex-col items-center justify-center gap-2 border border-dashed border-slate-300 rounded-2xl px-4 py-6 bg-white text-center cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition-colors">
@@ -1545,7 +2731,7 @@ export default function DashboardView({
           {activeSubTab === 'reviews' && (
             <div className="space-y-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-950">Review Responder Desk</h3>
+                <h3 className="font-display text-lg font-bold text-[var(--cc-deep-navy)]">Review Responder Desk</h3>
                 <p className="text-xs text-slate-500 mt-0.5">View feedback left by Celina local directory users, and reply to bolster your rating score.</p>
               </div>
 
@@ -1625,7 +2811,7 @@ export default function DashboardView({
                             />
                             <button
                               onClick={() => handleReplySubmit(rev.id)}
-                              className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
+                              className="px-4 py-1.5 bg-[var(--cc-deep-navy)] hover:bg-[#143a63] text-white font-bold text-xs rounded-xl cursor-pointer"
                             >
                               Reply
                             </button>
@@ -1643,12 +2829,38 @@ export default function DashboardView({
           {activeSubTab === 'billing' && (
             <div className="space-y-6">
               <div>
-                <h3 className="font-display text-lg font-bold text-slate-950">Billing, Invoices & Membership</h3>
+                <h3 className="font-display text-lg font-bold text-[var(--cc-deep-navy)]">Billing, Invoices & Membership</h3>
                 <p className="text-xs text-slate-500 mt-0.5">Control your business tier plan, manage pricing, and view invoice transactions.</p>
               </div>
 
+              <div className="rounded-3xl border border-orange-100 bg-orange-50/70 p-5 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="max-w-2xl">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wider text-orange-700 border border-orange-100">
+                      <Sparkles className="h-3.5 w-3.5" /> Why upgrade?
+                    </span>
+                    <h4 className="mt-3 font-display text-xl font-black text-[var(--cc-deep-navy)]">
+                      Help more Celina neighbors recognize your business
+                    </h4>
+                    <p className="mt-2 text-sm leading-6 font-medium text-slate-600">
+                      Free keeps your business listed. Paid plans add more photos, more helpful details, event promotion options, review tools, and featured visibility when you are ready to stand out.
+                    </p>
+                  </div>
+                  {!isPremium && (
+                    <button
+                      type="button"
+                      onClick={() => onUpgradePrompt(myBusiness.tier === 'free' || myBusiness.tier === 'basic' ? 'pro' : 'premium')}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--cc-deep-navy)] px-5 py-3 text-xs font-black uppercase tracking-wider text-white shadow-sm transition hover:bg-orange-600"
+                    >
+                      View Upgrade Options
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Status block */}
-              <div className="p-6 rounded-2xl border border-slate-200 bg-slate-950 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
+              <div className="p-6 rounded-2xl border border-slate-200 bg-[var(--cc-deep-navy)] text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl pointer-events-none" />
                 <div>
                   <span className="text-[10px] uppercase font-bold text-orange-400 tracking-wider">Active Subscription Status</span>
@@ -1677,7 +2889,7 @@ export default function DashboardView({
                   {!isPremium && (
                     <button
                       onClick={() => onUpgradePrompt('premium')}
-                      className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 hover:from-amber-500 hover:to-amber-600 font-extrabold text-xs rounded-xl cursor-pointer shadow-md"
+                      className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 text-[var(--cc-deep-navy)] hover:from-amber-500 hover:to-amber-600 font-extrabold text-xs rounded-xl cursor-pointer shadow-md"
                     >
                       Go Premium Gold
                     </button>
@@ -1748,155 +2960,6 @@ export default function DashboardView({
             </div>
           )}
 
-          {/* METRICS AND TRAFFIC ANALYTICS */}
-          {activeSubTab === 'metrics' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="font-display text-lg font-bold text-slate-950">Listing Metrics Analytics</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Track your business traffic, card views, and review counts from the Celina local population.</p>
-              </div>
-
-              {!isPremium ? (
-                <div className="relative rounded-3xl border border-dashed border-amber-300 bg-amber-50/20 p-8 text-center space-y-4 shadow-sm" id="premium-gated-metrics-panel">
-                  <div className="mx-auto h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600">
-                    <Lock className="w-6 h-6" />
-                  </div>
-                  <div className="max-w-md mx-auto space-y-2">
-                    <h4 className="font-display text-base font-bold text-slate-900">Preston Elite (Premium) Feature Gated</h4>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      Detailed monthly views, click conversion tracking, and traffic analytics are strictly reserved for <strong className="text-amber-700">Preston Elite (Premium)</strong> partners.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => onUpgradePrompt('premium')}
-                    className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-md transition-all cursor-pointer"
-                  >
-                    Unlock Premium Metrics
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* Bento-grid of scorecard metrics */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Card Views</span>
-                      <span className="font-display text-2.5xl font-extrabold block">
-                        {myBusiness.viewsCount + 12}
-                      </span>
-                      <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5">
-                        +15% from last week
-                      </span>
-                    </div>
-
-                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Average Rating</span>
-                      <span className="font-display text-2.5xl font-extrabold block text-amber-500 flex items-center gap-1">
-                        {myBusiness.reviews.length
-                          ? (myBusiness.reviews.reduce((s, r) => s + r.rating, 0) / myBusiness.reviews.length).toFixed(1)
-                          : '5.0'}
-                        <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
-                      </span>
-                      <span className="text-[9px] text-slate-400 font-medium block">
-                        Based on {myBusiness.reviews.length} reviews
-                      </span>
-                    </div>
-
-                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Website Clicks</span>
-                      <span className="font-display text-2.5xl font-extrabold block">
-                        {isEntryLevel ? '0' : Math.floor(myBusiness.viewsCount * 0.22)}
-                      </span>
-                      {isEntryLevel ? (
-                        <span onClick={() => onUpgradePrompt('pro')} className="text-[9px] text-orange-600 font-bold hover:underline cursor-pointer block">
-                          Requires Pro tier
-                        </span>
-                      ) : (
-                        <span className="text-[9px] text-emerald-600 font-bold flex items-center gap-0.5">
-                          22.4% conversion rate
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="p-4.5 bg-slate-50 border rounded-2xl text-slate-900 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Leads Generated</span>
-                      <span className="font-display text-2.5xl font-extrabold block">
-                        {isEntryLevel ? '0' : Math.floor(myBusiness.viewsCount * 0.08)}
-                      </span>
-                      {isEntryLevel ? (
-                        <span onClick={() => onUpgradePrompt('pro')} className="text-[9px] text-orange-600 font-bold hover:underline cursor-pointer block">
-                          Requires Pro tier
-                        </span>
-                      ) : (
-                        <span className="text-[9px] text-slate-400 font-medium block">
-                          Phone dials & map loads
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Beautiful SVG Views Line Chart */}
-                  <div className="bg-slate-50 border border-slate-150 rounded-2xl p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Directory Traffic (Views over 7 Days)</h4>
-                      <span className="text-[9px] text-slate-400 font-medium">Auto-updated hourly</span>
-                    </div>
-
-                    {/* SVG Visual graph */}
-                    <div className="h-44 w-full relative pt-2">
-                      <svg className="w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
-                        {/* SVG Grid Lines */}
-                        <line x1="0" y1="20" x2="100" y2="20" stroke="#f1f5f9" strokeWidth="0.5" />
-                        <line x1="0" y1="50" x2="100" y2="50" stroke="#f1f5f9" strokeWidth="0.5" />
-                        <line x1="0" y1="80" x2="100" y2="80" stroke="#f1f5f9" strokeWidth="0.5" />
-
-                        {/* Chart Gradient Area */}
-                        <defs>
-                          <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
-                            <stop offset="100%" stopColor="#f97316" stopOpacity="0.0" />
-                          </linearGradient>
-                        </defs>
-                        <path
-                          d="M 0 90 L 0 75 Q 16 65 16 60 T 32 45 T 48 55 T 64 25 T 80 40 T 100 15 L 100 90 Z"
-                          fill="url(#chartGlow)"
-                        />
-
-                        {/* Chart Polyline stroke */}
-                        <path
-                          d="M 0 75 Q 16 65 16 60 T 32 45 T 48 55 T 64 25 T 80 40 T 100 15"
-                          fill="none"
-                          stroke="#f97316"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                        />
-
-                        {/* Interaction node indicators */}
-                        <circle cx="16" cy="60" r="2.5" fill="#f97316" stroke="#ffffff" strokeWidth="1" />
-                        <circle cx="48" cy="55" r="2.5" fill="#f97316" stroke="#ffffff" strokeWidth="1" />
-                        <circle cx="64" cy="25" r="2.5" fill="#f97316" stroke="#ffffff" strokeWidth="1" />
-                        <circle cx="100" cy="15" r="3" fill="#f59e0b" stroke="#ffffff" strokeWidth="1.5" />
-                      </svg>
-
-                      {/* Absolute Labels */}
-                      <div className="absolute top-1 right-2 bg-slate-900 text-white text-[8px] font-bold px-1.5 py-0.5 rounded shadow flex items-center gap-0.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" /> Today Peak
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between text-[9px] text-slate-400 font-semibold px-1 uppercase tracking-wider">
-                      <span>Mon</span>
-                      <span>Tue</span>
-                      <span>Wed</span>
-                      <span>Thu</span>
-                      <span>Fri</span>
-                      <span>Sat</span>
-                      <span>Sun (Today)</span>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </>
       )}
         </div>
@@ -1923,6 +2986,7 @@ interface AdminDashboardViewProps {
   reportedBugs: ReportedBug[];
   onUpdateBugStatus?: (bugId: string, status: ReportedBug['status']) => void | Promise<void>;
   onDeleteBugStatus?: (bugId: string) => void | Promise<void>;
+  onOpenPersonalListing?: (businessId: string) => void;
 }
 
 function AdminDashboardView({
@@ -1936,6 +3000,7 @@ function AdminDashboardView({
   reportedBugs = [],
   onUpdateBugStatus,
   onDeleteBugStatus,
+  onOpenPersonalListing,
 }: AdminDashboardViewProps) {
   const getAdminTabFromHash = (): AdminActiveTab => {
     if (typeof window === 'undefined') return 'listings';
@@ -1982,13 +3047,20 @@ function AdminDashboardView({
   const [bugCategoryFilter, setBugCategoryFilter] = useState<'all' | 'visual' | 'functional' | 'data' | 'other'>('all');
   const [bugSeverityFilter, setBugSeverityFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
   const [bugStatusFilter, setBugStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'resolved'>('all');
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventStatusFilter, setEventStatusFilter] = useState<'all' | BusinessEvent['status'] | 'paid' | 'unpaid'>('all');
   const [petitionSignatures, setPetitionSignatures] = useState<LegacyHillsPetitionSignature[]>([]);
   const [petitionLoading, setPetitionLoading] = useState(false);
   const [petitionError, setPetitionError] = useState('');
+  const [editingPetitionSignature, setEditingPetitionSignature] = useState<LegacyHillsPetitionSignature | null>(null);
+  const [petitionSaveMessage, setPetitionSaveMessage] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [tierFilter, setTierFilter] = useState<'all' | 'free' | 'premium' | 'pro' | 'basic' | 'unclaimed'>('all');
   const [selectedBusIds, setSelectedBusIds] = useState<string[]>([]);
+  const [listingViewMode, setListingViewMode] = useState<'cards' | 'database'>('database');
+  const [listingSortKey, setListingSortKey] = useState<AdminListingSortKey>('createdAt');
+  const [listingSortDirection, setListingSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // CSV Importer States & Handlers
   const [csvInput, setCsvInput] = useState('');
@@ -1997,13 +3069,13 @@ function AdminDashboardView({
 
   const handleCsvImport = async (textToParse: string) => {
     if (!textToParse.trim()) {
-      alert("Please paste some CSV data or select a valid file first.");
+	      alert("Please paste a listing list or choose a file first.");
       return;
     }
 
     const lines = textToParse.split(/\r?\n/);
     if (lines.length < 1) {
-      alert("No data found in the CSV input.");
+	      alert("We could not find any listings in that file or pasted text.");
       return;
     }
 
@@ -2096,7 +3168,7 @@ function AdminDashboardView({
         description: bDesc,
         phone: bPhone,
         email: bEmail,
-        tier: 'basic',
+        tier: 'free',
         isUnclaimed: true,
         ownerId: '',
         address: bAddress,
@@ -2134,10 +3206,12 @@ function AdminDashboardView({
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [newTier, setNewTier] = useState<Tier>('basic');
+  const [newTier, setNewTier] = useState<Tier>('free');
   const [newIsUnclaimed, setNewIsUnclaimed] = useState(true);
   const [newAddress, setNewAddress] = useState('');
   const [newWebsite, setNewWebsite] = useState('');
+  const [newLogoUrl, setNewLogoUrl] = useState('');
+  const [newCoverImageUrl, setNewCoverImageUrl] = useState('');
 
   // Edit Business Fields State
   const [editName, setEditName] = useState('');
@@ -2179,11 +3253,21 @@ function AdminDashboardView({
     reader.readAsDataURL(file);
   });
 
-  const maxImagesForTier = (tier: Tier) => tier === 'free' || tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
+  const maxImagesForTier = (tier: Tier) => tier === 'free' ? 1 : tier === 'basic' ? 5 : tier === 'pro' ? 10 : 20;
 
   const handleAdminLogoUpload = async (file?: File | null) => {
     if (!file) return;
     setEditLogoUrl(await readImageFileAsDataUrl(file));
+  };
+
+  const handleAdminCreateLogoUpload = async (file?: File | null) => {
+    if (!file) return;
+    setNewLogoUrl(await readImageFileAsDataUrl(file));
+  };
+
+  const handleAdminCreateCoverUpload = async (file?: File | null) => {
+    if (!file) return;
+    setNewCoverImageUrl(await readImageFileAsDataUrl(file));
   };
 
   const handleAdminGalleryUpload = async (files?: FileList | null) => {
@@ -2204,11 +3288,7 @@ function AdminDashboardView({
   const claimedListingsCount = adminListings.filter((b) => !b.isUnclaimed && b.ownerId).length;
   const unclaimedListingsCount = adminListings.filter((b) => b.isUnclaimed).length;
   
-  // Free spots calculation (starting at 92 to simulate high competitive demand)
-  const freeClaimedBasicCount = Math.min(
-    100,
-    92 + adminListings.filter((b) => b.tier === 'free' && b.ownerId && !b.isUnclaimed).length
-  );
+  const freeSpotUsedCount = countOutsideUserClaimedListings(adminListings);
 
   // Filter listings
   const filteredListings = adminListings.filter((b) => {
@@ -2223,6 +3303,45 @@ function AdminDashboardView({
 
     return matchesSearch && matchesTier;
   });
+  const sortedListings = [...filteredListings].sort((a, b) => {
+    const valueFor = (business: Business) => {
+      if (listingSortKey === 'status') return business.isUnclaimed ? 'awaiting claim' : 'claimed';
+      if (listingSortKey === 'createdAt') return new Date(business.createdAt || 0).getTime();
+      return String(business[listingSortKey] || '').toLowerCase();
+    };
+    const aValue = valueFor(a);
+    const bValue = valueFor(b);
+    const result = typeof aValue === 'number' && typeof bValue === 'number'
+      ? aValue - bValue
+      : String(aValue).localeCompare(String(bValue));
+    return listingSortDirection === 'asc' ? result : -result;
+  });
+  const setListingSort = (key: AdminListingSortKey) => {
+    if (listingSortKey === key) {
+      setListingSortDirection((current) => current === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setListingSortKey(key);
+    setListingSortDirection(key === 'createdAt' ? 'desc' : 'asc');
+  };
+  const saveListingField = async (business: Business, updates: Partial<Business>) => {
+    const nextBusiness = { ...business, ...updates };
+    if (!nextBusiness.isUnclaimed && !hasRequiredListingVisuals(nextBusiness)) {
+      alert(listingVisualsRequiredMessage);
+      return;
+    }
+    await onUpdateBusiness(business.id, updates);
+  };
+  const renderSortHeader = (key: AdminListingSortKey, label: string) => (
+    <button
+      type="button"
+      onClick={() => setListingSort(key)}
+      className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-[var(--cc-deep-navy)]"
+    >
+      {label}
+      <ArrowUpDown className={`h-3 w-3 ${listingSortKey === key ? 'text-orange-600' : 'text-slate-300'}`} />
+    </button>
+  );
 
   const filteredBugs = reportedBugs.filter((b) => {
     const matchesSearch =
@@ -2235,6 +3354,55 @@ function AdminDashboardView({
     return matchesSearch && matchesCategory && matchesSeverity && matchesStatus;
   });
 
+  const adminEvents = businesses.flatMap((business) =>
+    (business.events || []).map((event) => {
+      const isExpired = eventHasExpired(event);
+      return { business, event, isExpired };
+    })
+  );
+
+  const filteredAdminEvents = adminEvents.filter(({ business, event, isExpired }) => {
+    const search = eventSearch.trim().toLowerCase();
+    const matchesSearch =
+      !search ||
+      event.title.toLowerCase().includes(search) ||
+      event.description.toLowerCase().includes(search) ||
+      event.location.toLowerCase().includes(search) ||
+      business.name.toLowerCase().includes(search);
+    const effectiveStatus = isExpired ? 'expired' : event.status;
+    const matchesStatus =
+      eventStatusFilter === 'all' ||
+      (eventStatusFilter === 'paid' ? event.promotionPaid : eventStatusFilter === 'unpaid' ? !event.promotionPaid : effectiveStatus === eventStatusFilter);
+    return matchesSearch && matchesStatus;
+  });
+
+  const updateAdminEvent = async (
+    business: Business,
+    eventId: string,
+    updates: Partial<BusinessEvent>
+  ) => {
+    const now = new Date().toISOString();
+    const nextEvents = (business.events || []).map((event) => {
+      if (event.id !== eventId) return event;
+      const nextPromotionPaid = updates.promotionPaid ?? event.promotionPaid;
+      return {
+        ...event,
+        ...updates,
+        promotionPaid: nextPromotionPaid,
+        paidAt: nextPromotionPaid ? updates.paidAt || event.paidAt || now : undefined,
+        updatedAt: now,
+      };
+    });
+    await onUpdateBusiness(business.id, { events: nextEvents });
+  };
+
+  const removeAdminEvent = async (business: Business, eventId: string, eventTitle: string) => {
+    if (!window.confirm(`Remove "${eventTitle}" from ${business.name}?`)) return;
+    await onUpdateBusiness(business.id, {
+      events: (business.events || []).filter((event) => event.id !== eventId),
+    });
+  };
+
   // Bulk actions handlers
   const handleMassChangeTier = (nextTier: Tier) => {
     const count = selectedBusIds.length;
@@ -2244,6 +3412,13 @@ function AdminDashboardView({
   };
 
   const handleMassChangeClaimStatus = (isUnclaimed: boolean) => {
+    if (!isUnclaimed) {
+      const missingVisuals = adminListings.filter((business) => selectedBusIds.includes(business.id) && !hasRequiredListingVisuals(business));
+      if (missingVisuals.length > 0) {
+        alert(`${missingVisuals.length} selected listing${missingVisuals.length === 1 ? ' is' : 's are'} missing a profile image or banner image. Add both visuals before marking listings claimed.`);
+        return;
+      }
+    }
     const count = selectedBusIds.length;
     onUpdateBusiness(selectedBusIds, (b) => {
       const ownerId = isUnclaimed ? '' : `owner-${Math.random().toString(36).substring(2, 7)}`;
@@ -2267,18 +3442,14 @@ function AdminDashboardView({
     }
   };
 
-  const handleMassResetViews = () => {
-    const count = selectedBusIds.length;
-    if (window.confirm(`Are you sure you want to reset the traffic views count to 0 for these ${count} selected listings?`)) {
-      onUpdateBusiness(selectedBusIds, { viewsCount: 0 });
-      setSelectedBusIds([]);
-    }
-  };
-
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !newPhone.trim() || !newDesc.trim()) {
-      alert('Please fill out all required fields.');
+	      alert('Please add the business name, phone number, and description.');
+      return;
+    }
+    if (!newIsUnclaimed && (!newLogoUrl.trim() || !newCoverImageUrl.trim())) {
+      alert(listingVisualsRequiredMessage);
       return;
     }
 
@@ -2294,6 +3465,8 @@ function AdminDashboardView({
       isUnclaimed: newIsUnclaimed,
       address: newAddress,
       website: newWebsite,
+      logoUrl: newLogoUrl,
+      images: newCoverImageUrl ? [newCoverImageUrl] : [],
     });
 
     // Reset states
@@ -2302,10 +3475,12 @@ function AdminDashboardView({
     setNewPhone('');
     setNewEmail('');
     setNewDesc('');
-    setNewTier('basic');
+    setNewTier('free');
     setNewIsUnclaimed(true);
     setNewAddress('');
     setNewWebsite('');
+    setNewLogoUrl('');
+    setNewCoverImageUrl('');
     setShowCreateModal(false);
   };
 
@@ -2316,6 +3491,10 @@ function AdminDashboardView({
     try {
       if (!editIsUnclaimed && editOwnerPassword && editOwnerPassword.length < 10) {
         alert('Owner password must be at least 10 characters.');
+        return;
+      }
+      if (!editIsUnclaimed && !hasRequiredListingVisuals({ logoUrl: editLogoUrl, images: editImages })) {
+        alert(listingVisualsRequiredMessage);
         return;
       }
 
@@ -2344,6 +3523,10 @@ function AdminDashboardView({
 
   const handleFastToggleClaim = (bus: Business) => {
     const nextUnclaimed = !bus.isUnclaimed;
+    if (!nextUnclaimed && !hasRequiredListingVisuals(bus)) {
+      alert(listingVisualsRequiredMessage);
+      return;
+    }
     const ownerId = nextUnclaimed ? '' : bus.ownerId || `owner-${Math.random().toString(36).substring(2, 7)}`;
     const email = nextUnclaimed ? '' : bus.email || `owner-${Math.random().toString(36).substring(2, 7)}@celinaconnection.com`;
     
@@ -2382,6 +3565,27 @@ function AdminDashboardView({
     }
   }, []);
 
+  const handleAdminPetitionSignatureSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingPetitionSignature) return;
+    setPetitionError('');
+    setPetitionSaveMessage('');
+    try {
+      const result = await api.adminUpdateLegacyHillsPetitionSignature(editingPetitionSignature.id, editingPetitionSignature);
+      setPetitionSignatures((current) => current.map((signature) => (
+        signature.id === result.signature.id ? result.signature : signature
+      )));
+      setEditingPetitionSignature(result.signature);
+      setPetitionSaveMessage('Signer information updated.');
+    } catch (error) {
+      setPetitionError(error instanceof Error ? error.message : 'Unable to save petition signer details.');
+    }
+  };
+
+  const updateEditingPetitionSignature = (field: keyof LegacyHillsPetitionSignature, value: string) => {
+    setEditingPetitionSignature((current) => current ? { ...current, [field]: value } : current);
+  };
+
   React.useEffect(() => {
     if (adminActiveTab === 'petition') {
       loadPetitionSignatures();
@@ -2393,7 +3597,7 @@ function AdminDashboardView({
       id: '',
       email: '',
       businessName: '',
-      tier: 'basic',
+      tier: 'free',
       isLoggedIn: false,
     });
   };
@@ -2401,7 +3605,7 @@ function AdminDashboardView({
   return (
     <div className="py-6 space-y-8 animate-fade-in" id="admin-workspace-panel">
       {/* Admin Top Mini-Hero */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
+      <div className="bg-[var(--cc-deep-navy)] border border-[rgba(212,185,94,0.25)] rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl">
         <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl -z-10" />
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -2409,17 +3613,17 @@ function AdminDashboardView({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400">🔑 Master System Administrator Workspace</span>
+	            <span className="text-[10px] font-bold uppercase tracking-wider text-orange-400">Celina Connection Team Workspace</span>
           </div>
           <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-white">
-            Celina Connection Control Panel
+	            Celina Connection Dashboard
           </h2>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4.5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-orange-500/10 transition-all cursor-pointer"
+            className="px-4.5 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-orange-500/10 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Add New Profile
           </button>
@@ -2428,13 +3632,24 @@ function AdminDashboardView({
             onClick={handleLocalLogout}
             className="px-4.5 py-2.5 bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <LogOut className="w-3.5 h-3.5" /> Logout Admin
+	            <LogOut className="w-3.5 h-3.5" /> Sign Out
           </button>
         </div>
       </div>
 
       {/* Admin Segment Tabs Navigation */}
-      <div className="flex border-b border-slate-200" id="admin-workspace-tabs">
+      <div className="flex border-b border-slate-200 overflow-x-auto no-scrollbar" id="admin-workspace-tabs">
+        <button
+          onClick={() => setAdminTab('dashboard')}
+          className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            adminActiveTab === 'dashboard'
+              ? 'border-orange-500 text-orange-600 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-amber-500" />
+	          <span>Overview</span>
+        </button>
         <button
           onClick={() => setAdminTab('listings')}
           className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
@@ -2444,7 +3659,18 @@ function AdminDashboardView({
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>Directory Listings ({adminListings.length})</span>
+          <span>Directory Manager ({adminListings.length})</span>
+        </button>
+        <button
+          onClick={() => setAdminTab('events')}
+          className={`px-5 py-3.5 font-bold text-xs tracking-wider uppercase border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
+            adminActiveTab === 'events'
+              ? 'border-orange-500 text-orange-600 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Calendar className="w-4 h-4 text-orange-500" />
+          <span>Events ({adminEvents.length})</span>
         </button>
         <button
           onClick={() => setAdminTab('petition')}
@@ -2466,21 +3692,151 @@ function AdminDashboardView({
           }`}
         >
           <Bug className="w-4.5 h-4.5 text-rose-500" />
-          <span>Reported Bug Tickets ({reportedBugs.length})</span>
+	          <span>Community Feedback ({reportedBugs.length})</span>
           {reportedBugs.some(b => b.status === 'open') && (
             <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
           )}
         </button>
       </div>
 
-      {adminActiveTab === 'listings' ? (
+      {adminActiveTab === 'dashboard' && (
+        <div className="space-y-8">
+          {/* Admin Dashboard Statistics Overview */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Directory Listings</span>
+              <span className="font-display text-3xl font-black text-[var(--cc-deep-navy)] block">{totalListings}</span>
+	              <span className="text-[10px] text-slate-500 font-medium block">All local business listings</span>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Claimed listings</span>
+              <span className="font-display text-3xl font-black text-emerald-600 block">{claimedListingsCount}</span>
+              <span className="text-[10px] text-slate-500 font-medium block">Assigned to active business owners</span>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Unclaimed Listings</span>
+              <span className="font-display text-3xl font-black text-rose-500 block">{unclaimedListingsCount}</span>
+              <span className="text-[10px] text-slate-500 font-medium block">Profiles awaiting owner claiming actions</span>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1.5 flex flex-col justify-between">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Free Spot Cap Progress</span>
+                <span className="font-display text-2xl font-black text-[var(--cc-deep-navy)] block mt-0.5">{freeSpotUsedCount} <span className="text-slate-400 text-sm">/ 100 used</span></span>
+              </div>
+              <div className="space-y-1">
+                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-orange-500 to-amber-500 h-1.5 rounded-full" 
+                    style={{ width: `${freeSpotUsedCount}%` }}
+                  />
+                </div>
+                <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider block text-right">{Math.max(0, 100 - freeSpotUsedCount)} slots remaining</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Action Navigation Hub Cards */}
+          <div className="space-y-4">
+            <h3 className="font-display text-lg font-extrabold text-[var(--cc-deep-navy)] flex items-center gap-2">
+              <LayoutDashboard className="w-5 h-5 text-orange-500" />
+	              Quick Actions
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+              <div 
+                onClick={() => setAdminTab('listings')}
+                className="bg-white border border-slate-200 hover:border-orange-300 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group space-y-3"
+              >
+                <div className="h-10 w-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[var(--cc-deep-navy)] text-sm group-hover:text-orange-600 transition-colors">Directory Manager</h4>
+	                  <p className="text-xs text-slate-500 mt-1">Search, edit, add, or organize Celina business listings.</p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-600 group-hover:translate-x-1 transition-transform">
+                  Open Directory Manager &rarr;
+                </span>
+              </div>
+
+              <div 
+                onClick={() => { window.location.hash = 'dashboard-profile'; }}
+                className="bg-white border border-slate-200 hover:border-amber-300 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group space-y-3"
+              >
+                <div className="h-10 w-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Store className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[var(--cc-deep-navy)] text-sm group-hover:text-amber-600 transition-colors">My Personal Listing</h4>
+                  <p className="text-xs text-slate-500 mt-1">Edit your personal business listing, logo, photos, reviews, and billing profile.</p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-600 group-hover:translate-x-1 transition-transform">
+                  Edit Personal Listing &rarr;
+                </span>
+              </div>
+
+              <div 
+                onClick={() => setAdminTab('events')}
+                className="bg-white border border-slate-200 hover:border-orange-300 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group space-y-3"
+              >
+                <div className="h-10 w-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[var(--cc-deep-navy)] text-sm group-hover:text-orange-600 transition-colors">Event Review</h4>
+                  <p className="text-xs text-slate-500 mt-1">Review paid events, approvals, expirations, and listing connections.</p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-600 group-hover:translate-x-1 transition-transform">
+                  Manage Events ({adminEvents.length}) &rarr;
+                </span>
+              </div>
+
+              <div 
+                onClick={() => setAdminTab('petition')}
+                className="bg-white border border-slate-200 hover:border-orange-300 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group space-y-3"
+              >
+                <div className="h-10 w-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[var(--cc-deep-navy)] text-sm group-hover:text-orange-600 transition-colors">Petition Signatures</h4>
+	                  <p className="text-xs text-slate-500 mt-1">Review Legacy Hills petition signers and prepare shareable records.</p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-600 group-hover:translate-x-1 transition-transform">
+                  View Signatures ({petitionSignatures.length}) &rarr;
+                </span>
+              </div>
+
+              <div 
+                onClick={() => setAdminTab('bugs')}
+                className="bg-white border border-slate-200 hover:border-rose-300 rounded-3xl p-5 shadow-sm hover:shadow-md transition-all cursor-pointer group space-y-3"
+              >
+                <div className="h-10 w-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Bug className="w-5 h-5" />
+                </div>
+                <div>
+	                  <h4 className="font-bold text-[var(--cc-deep-navy)] text-sm group-hover:text-rose-600 transition-colors">Feedback Desk</h4>
+	                  <p className="text-xs text-slate-500 mt-1">Review notes from visitors and business owners.</p>
+                </div>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 group-hover:translate-x-1 transition-transform">
+	                  View Feedback ({reportedBugs.length}) &rarr;
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adminActiveTab === 'listings' && (
         <>
           {/* Admin Dashboard Statistics Overview */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Directory Listings</span>
-          <span className="font-display text-3xl font-black text-slate-900 block">{totalListings}</span>
-          <span className="text-[10px] text-slate-500 font-medium block">All local business database entries</span>
+          <span className="font-display text-3xl font-black text-[var(--cc-deep-navy)] block">{totalListings}</span>
+	          <span className="text-[10px] text-slate-500 font-medium block">All local business listings</span>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
@@ -2492,22 +3848,22 @@ function AdminDashboardView({
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Unclaimed Listings</span>
           <span className="font-display text-3xl font-black text-rose-500 block">{unclaimedListingsCount}</span>
-          <span className="text-[10px] text-slate-500 font-medium block">Profiles awaiting owner claiming actions</span>
+	          <span className="text-[10px] text-slate-500 font-medium block">Listings waiting for owner follow-up</span>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-1.5 flex flex-col justify-between">
           <div>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Free Spot Cap Progress</span>
-            <span className="font-display text-2xl font-black text-slate-900 block mt-0.5">{freeClaimedBasicCount} <span className="text-slate-400 text-sm">/ 100 claimed</span></span>
+            <span className="font-display text-2xl font-black text-[var(--cc-deep-navy)] block mt-0.5">{freeSpotUsedCount} <span className="text-slate-400 text-sm">/ 100 used</span></span>
           </div>
           <div className="space-y-1">
             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
               <div 
                 className="bg-gradient-to-r from-orange-500 to-amber-500 h-1.5 rounded-full" 
-                style={{ width: `${freeClaimedBasicCount}%` }}
+                style={{ width: `${freeSpotUsedCount}%` }}
               />
             </div>
-            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider block text-right">{100 - freeClaimedBasicCount} slots remaining</span>
+            <span className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider block text-right">{Math.max(0, 100 - freeSpotUsedCount)} slots remaining</span>
           </div>
         </div>
       </div>
@@ -2516,18 +3872,18 @@ function AdminDashboardView({
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className="font-display text-lg font-bold text-slate-900 flex items-center gap-2">
-              📂 Scraped Listings Mass Importer
+            <h3 className="font-display text-lg font-bold text-[var(--cc-deep-navy)] flex items-center gap-2">
+	              Add Listings in Bulk
             </h3>
             <p className="text-xs text-slate-500">
-              Paste your scraped business lists in CSV format, or upload a <code>.csv</code> file to mass-add profiles to an unclaimed status.
+	              Paste a prepared list or upload a spreadsheet-style file to add multiple unclaimed listings.
             </p>
           </div>
           <button
             onClick={() => setShowCsvImporter(!showCsvImporter)}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+            className="px-4 py-2 bg-[var(--cc-deep-navy)] hover:bg-[#143a63] text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
           >
-            {showCsvImporter ? "Hide CSV Panel" : "Open CSV Importer"}
+	            {showCsvImporter ? "Hide Bulk Add" : "Open Bulk Add"}
           </button>
         </div>
 
@@ -2542,11 +3898,11 @@ function AdminDashboardView({
           <div className="border border-slate-100 bg-slate-50/50 p-5 rounded-2xl space-y-4 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Option A: Upload .csv File</span>
+	                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Option A: Upload a List</span>
                 <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 hover:border-orange-400 bg-white hover:bg-orange-50/5 p-6 rounded-xl cursor-pointer transition-all group">
                   <Upload className="w-8 h-8 text-slate-400 group-hover:text-orange-500 mb-2 transition-colors" />
-                  <span className="text-xs font-bold text-slate-700">Select CSV file</span>
-                  <span className="text-[10px] text-slate-400 mt-1">Accepts comma-delimited tables</span>
+	                  <span className="text-xs font-bold text-slate-700">Select file</span>
+	                  <span className="text-[10px] text-slate-400 mt-1">Works with spreadsheet-style lists</span>
                   <input
                     type="file"
                     accept=".csv"
@@ -2557,7 +3913,7 @@ function AdminDashboardView({
               </div>
 
               <div className="space-y-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Option B: Paste Raw CSV Text</span>
+	                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Option B: Paste a List</span>
                 <textarea
                   placeholder="name,category,description,phone,email,address,website&#10;Celina Patisserie,Dining,Handmade French pastries,(972) 382-8822,info@celinapatisserie.com,104 N Ohio St,https://patisserie.com"
                   value={csvInput}
@@ -2566,17 +3922,17 @@ function AdminDashboardView({
                 />
                 <button
                   onClick={() => handleCsvImport(csvInput)}
-                  className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow-sm hover:from-orange-600 hover:to-amber-600 cursor-pointer transition-all animate-pulse"
+                  className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl shadow-sm hover:from-orange-600 hover:to-amber-600 cursor-pointer transition-all animate-pulse"
                 >
-                  🚀 Parse and Import Raw Text
+	                  Add Listings
                 </button>
               </div>
             </div>
 
             <div className="p-4 bg-slate-100/80 rounded-xl border border-slate-200 space-y-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">CSV Column Formatting Guide:</span>
+	              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">List Formatting Guide:</span>
               <p className="text-[10px] text-slate-500 leading-relaxed">
-                If your CSV includes a header line, we will auto-detect columns: <strong>name</strong>, <strong>category</strong>, <strong>description</strong>, <strong>phone</strong>, <strong>email</strong>, <strong>address</strong>, <strong>website</strong>. Otherwise, columns are parsed in that exact order. Categories are automatically normalized into existing directory categories, including Dining, Shopping, Health, Automotive, Real Estate, Insurance, Estate Planning, Financial Services, Legal Services, Mortgage & Lending, Home Services, Professional Services, and Community.
+	                Include columns for <strong>name</strong>, <strong>category</strong>, <strong>description</strong>, <strong>phone</strong>, <strong>email</strong>, <strong>address</strong>, and <strong>website</strong>. We will match categories to Celina Connection's existing directory sections.
               </p>
             </div>
           </div>
@@ -2598,34 +3954,56 @@ function AdminDashboardView({
             />
           </div>
 
-          <div className="flex items-center gap-2 self-stretch md:self-auto overflow-x-auto pb-1 md:pb-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 flex-shrink-0">
-              <Filter className="w-3.5 h-3.5" /> Filter:
-            </span>
-            {(['all', 'free', 'basic', 'pro', 'premium', 'unclaimed'] as const).map((mode) => (
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3 self-stretch md:self-auto">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 flex-shrink-0">
+                <Filter className="w-3.5 h-3.5" /> Filter:
+              </span>
+              {(['all', 'free', 'basic', 'pro', 'premium', 'unclaimed'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setTierFilter(mode)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold capitalize cursor-pointer transition-all ${
+                    tierFilter === mode
+                      ? 'bg-[var(--cc-deep-navy)] text-white shadow-xs'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {mode === 'unclaimed' ? '⚠️ Unclaimed' : mode === 'free' ? 'Free Launch' : mode}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center rounded-xl border border-slate-200 bg-white p-1 shadow-xs">
               <button
-                key={mode}
-                onClick={() => setTierFilter(mode)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold capitalize cursor-pointer transition-all ${
-                  tierFilter === mode
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                type="button"
+                onClick={() => setListingViewMode('database')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${
+                  listingViewMode === 'database' ? 'bg-orange-500 text-[var(--cc-deep-navy)]' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {mode === 'unclaimed' ? '⚠️ Unclaimed' : mode === 'free' ? 'Free Launch' : mode}
+                <Table2 className="h-3.5 w-3.5" /> Database
               </button>
-            ))}
+              <button
+                type="button"
+                onClick={() => setListingViewMode('cards')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${
+                  listingViewMode === 'cards' ? 'bg-orange-500 text-[var(--cc-deep-navy)]' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" /> Cards
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Bulk Actions Panel */}
         {selectedBusIds.length > 0 && (
-          <div className="p-4 bg-orange-500 text-slate-950 font-sans flex flex-col md:flex-row items-center justify-between gap-4 border-b border-orange-600 animate-fade-in relative" id="bulk-actions-panel">
+          <div className="p-4 bg-orange-500 text-[var(--cc-deep-navy)] font-sans flex flex-col md:flex-row items-center justify-between gap-4 border-b border-orange-600 animate-fade-in relative" id="bulk-actions-panel">
             <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-950 text-white text-[10px] font-black">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--cc-deep-navy)] text-white text-[10px] font-black">
                 {selectedBusIds.length}
               </span>
-              <span className="text-xs font-black uppercase tracking-wider text-slate-950">
+              <span className="text-xs font-black uppercase tracking-wider text-[var(--cc-deep-navy)]">
                 Listings Selected for Bulk Action
               </span>
             </div>
@@ -2633,7 +4011,7 @@ function AdminDashboardView({
             <div className="flex flex-wrap items-center gap-2">
               {/* Change Tier */}
               <div className="flex items-center gap-1 bg-white/20 p-1 rounded-xl border border-white/10">
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 text-slate-900">Tier:</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 text-[var(--cc-deep-navy)]">Tier:</span>
                 <button
                   onClick={() => handleMassChangeTier('free')}
                   className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-[10px] font-bold rounded-lg shadow-sm text-emerald-700 cursor-pointer"
@@ -2662,7 +4040,7 @@ function AdminDashboardView({
 
               {/* Change Claim Status */}
               <div className="flex items-center gap-1 bg-white/20 p-1 rounded-xl border border-white/10">
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 text-slate-900">Claim:</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 text-[var(--cc-deep-navy)]">Claim:</span>
                 <button
                   onClick={() => handleMassChangeClaimStatus(false)}
                   className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-[10px] font-bold rounded-lg shadow-sm text-emerald-700 cursor-pointer"
@@ -2677,16 +4055,6 @@ function AdminDashboardView({
                 </button>
               </div>
 
-              {/* Reset Traffic Views */}
-              <button
-                onClick={handleMassResetViews}
-                className="px-3 py-2 bg-slate-950 hover:bg-slate-900 text-white font-bold text-[10px] rounded-xl shadow-md cursor-pointer flex items-center gap-1 transition-colors"
-                title="Reset views count to 0"
-              >
-                <Eye className="w-3 h-3" />
-                <span>Reset Views</span>
-              </button>
-
               {/* Delete Selected */}
               <button
                 onClick={handleMassDelete}
@@ -2696,12 +4064,12 @@ function AdminDashboardView({
                 <span>Delete Selected</span>
               </button>
 
-              <span className="text-slate-950/40 text-xs">|</span>
+              <span className="text-[var(--cc-deep-navy)]/40 text-xs">|</span>
 
               {/* Clear Selection */}
               <button
                 onClick={() => setSelectedBusIds([])}
-                className="px-3 py-2 bg-slate-950/10 hover:bg-slate-950/20 text-slate-950 font-bold text-[10px] rounded-xl cursor-pointer"
+                className="px-3 py-2 bg-[rgba(15,45,77,0.12)] hover:bg-[rgba(15,45,77,0.22)] text-[var(--cc-deep-navy)] font-bold text-[10px] rounded-xl cursor-pointer"
               >
                 Cancel Selection
               </button>
@@ -2709,15 +4077,194 @@ function AdminDashboardView({
           </div>
         )}
 
+        {/* Database Listing Management View */}
+        {listingViewMode === 'database' && (
+          <div className="bg-white" id="admin-listing-database-view">
+            {sortedListings.length === 0 ? (
+              <div className="m-4 text-center py-12 px-4 text-slate-400 font-semibold italic border border-dashed border-slate-200 rounded-2xl bg-slate-50/70">
+                No matching listings found.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-[1180px] w-full border-collapse text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="w-10 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          aria-label="Select all visible listings"
+                          checked={sortedListings.length > 0 && sortedListings.every((business) => selectedBusIds.includes(business.id))}
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              setSelectedBusIds(Array.from(new Set([...selectedBusIds, ...sortedListings.map((business) => business.id)])));
+                            } else {
+                              setSelectedBusIds((current) => current.filter((id) => !sortedListings.some((business) => business.id === id)));
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 accent-orange-600"
+                        />
+                      </th>
+                      <th className="px-3 py-3">{renderSortHeader('name', 'Business')}</th>
+                      <th className="px-3 py-3">{renderSortHeader('category', 'Category')}</th>
+                      <th className="px-3 py-3">{renderSortHeader('tier', 'Tier')}</th>
+                      <th className="px-3 py-3">{renderSortHeader('status', 'Status')}</th>
+                      <th className="px-3 py-3">{renderSortHeader('email', 'Email')}</th>
+                      <th className="px-3 py-3">Phone</th>
+                      <th className="px-3 py-3">Address</th>
+                      <th className="px-3 py-3">Website</th>
+                      <th className="px-3 py-3">{renderSortHeader('createdAt', 'Added')}</th>
+                      <th className="px-3 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {sortedListings.map((bus) => {
+                      const isSelected = selectedBusIds.includes(bus.id);
+                      const inputClass = "w-full rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-xs font-semibold text-slate-800 hover:border-slate-200 hover:bg-white focus:border-orange-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-100";
+                      return (
+                        <tr key={bus.id} className={isSelected ? 'bg-orange-50/50' : 'hover:bg-slate-50/70'}>
+                          <td className="px-4 py-3 align-top">
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${bus.name}`}
+                              checked={isSelected}
+                              onChange={(event) => {
+                                if (event.target.checked) {
+                                  setSelectedBusIds((current) => [...current, bus.id]);
+                                } else {
+                                  setSelectedBusIds((current) => current.filter((id) => id !== bus.id));
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-slate-300 accent-orange-600"
+                            />
+                          </td>
+                          <td className="min-w-[210px] px-3 py-3 align-top">
+                            <div className="flex items-start gap-2">
+                              <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center">
+                                {bus.logoUrl ? (
+                                  <img src={bus.logoUrl} alt={`${bus.name} logo`} className="h-full w-full object-cover" />
+                                ) : (
+                                  <Building2 className="h-4 w-4 text-slate-300" />
+                                )}
+                              </div>
+                              <input
+                                value={bus.name}
+                                onChange={(event) => saveListingField(bus, { name: event.target.value })}
+                                className={inputClass}
+                              />
+                            </div>
+                          </td>
+                          <td className="min-w-[170px] px-3 py-3 align-top">
+                            <select
+                              value={bus.category}
+                              onChange={(event) => saveListingField(bus, { category: event.target.value })}
+                              className={inputClass}
+                            >
+                              {CATEGORIES.filter((category) => category !== 'All').map((category) => (
+                                <option key={category} value={category}>{category}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="min-w-[120px] px-3 py-3 align-top">
+                            <select
+                              value={bus.tier}
+                              onChange={(event) => saveListingField(bus, { tier: event.target.value as Tier, featured: event.target.value === 'premium' })}
+                              className={inputClass}
+                            >
+                              <option value="free">Free</option>
+                              <option value="basic">Basic</option>
+                              <option value="pro">Pro</option>
+                              <option value="premium">Premium</option>
+                            </select>
+                          </td>
+                          <td className="min-w-[145px] px-3 py-3 align-top">
+                            <select
+                              value={bus.isUnclaimed ? 'unclaimed' : 'claimed'}
+                              onChange={(event) => {
+                                const nextIsUnclaimed = event.target.value === 'unclaimed';
+                                if (!nextIsUnclaimed && !hasRequiredListingVisuals(bus)) {
+                                  alert(listingVisualsRequiredMessage);
+                                  return;
+                                }
+                                saveListingField(bus, {
+                                  isUnclaimed: nextIsUnclaimed,
+                                  ownerId: nextIsUnclaimed ? '' : bus.ownerId || `owner-${bus.id}`,
+                                });
+                              }}
+                              className={inputClass}
+                            >
+                              <option value="claimed">Claimed</option>
+                              <option value="unclaimed">Awaiting Claim</option>
+                            </select>
+                          </td>
+                          <td className="min-w-[210px] px-3 py-3 align-top">
+                            <input value={bus.email || ''} onChange={(event) => saveListingField(bus, { email: event.target.value })} className={inputClass} />
+                          </td>
+                          <td className="min-w-[145px] px-3 py-3 align-top">
+                            <input value={bus.phone || ''} onChange={(event) => saveListingField(bus, { phone: event.target.value })} className={inputClass} />
+                          </td>
+                          <td className="min-w-[230px] px-3 py-3 align-top">
+                            <input value={bus.address || ''} onChange={(event) => saveListingField(bus, { address: event.target.value })} className={inputClass} />
+                          </td>
+                          <td className="min-w-[220px] px-3 py-3 align-top">
+                            <input value={bus.website || ''} onChange={(event) => saveListingField(bus, { website: event.target.value })} className={inputClass} />
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-3 align-top text-xs font-semibold text-slate-500">
+                            {bus.createdAt ? new Date(bus.createdAt).toLocaleDateString() : 'Not set'}
+                          </td>
+                          <td className="px-3 py-3 align-top">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(bus)}
+                                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50 hover:text-orange-600"
+                                title="Open full edit form"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </button>
+                              {onOpenPersonalListing && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenPersonalListing(bus.id)}
+                                  className="rounded-lg border border-orange-200 bg-orange-50 p-2 text-orange-700 hover:bg-orange-100"
+                                  title="Open personal listing view"
+                                >
+                                  <Store className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteClick(bus.id, bus.name)}
+                                className="rounded-lg border border-rose-100 bg-white p-2 text-rose-600 hover:bg-rose-50"
+                                title="Delete listing"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="border-t border-slate-100 bg-slate-50 px-4 py-3 text-[10px] font-semibold text-slate-500 flex items-center gap-2">
+                  <Save className="h-3.5 w-3.5 text-orange-500" />
+                  Changes save as you edit each field.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Responsive Listing Management Grid */}
+        {listingViewMode === 'cards' && (
         <div className="p-4 sm:p-5 bg-white" id="admin-listing-directory-grid">
-          {filteredListings.length === 0 ? (
+          {sortedListings.length === 0 ? (
             <div className="text-center py-12 px-4 text-slate-400 font-semibold italic border border-dashed border-slate-200 rounded-2xl bg-slate-50/70">
-              No matching listings found in the directory database.
+	              No matching listings found.
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {filteredListings.map((bus) => {
+              {sortedListings.map((bus) => {
                 const isSelected = selectedBusIds.includes(bus.id);
                 const tierLabel = bus.tier === 'premium'
                   ? 'Premium Spotlight'
@@ -2751,14 +4298,22 @@ function AdminDashboardView({
                           }}
                         />
 
+                        <div className="h-14 w-14 rounded-2xl overflow-hidden bg-slate-50 border border-slate-200 flex items-center justify-center flex-shrink-0">
+                          {bus.logoUrl ? (
+                            <img src={bus.logoUrl} alt={`${bus.name} logo`} className="h-full w-full object-cover" />
+                          ) : (
+                            <Building2 className="h-6 w-6 text-slate-300" />
+                          )}
+                        </div>
+
                         <div className="min-w-0 flex-1 space-y-2">
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                             <div className="min-w-0">
-                              <h4 className="font-display text-base font-black text-slate-950 leading-tight break-words">{bus.name}</h4>
+                              <h4 className="font-display text-base font-black text-[var(--cc-deep-navy)] leading-tight break-words">{bus.name}</h4>
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
                                 <span className="text-orange-600">{bus.category}</span>
                                 <span className="text-slate-300">•</span>
-                                <span className="text-slate-400 normal-case tracking-normal">ID: {bus.id}</span>
+                                <span className="text-slate-400 normal-case tracking-normal">{bus.address || 'Celina, TX'}</span>
                               </div>
                             </div>
 
@@ -2786,31 +4341,25 @@ function AdminDashboardView({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
                         <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 min-w-0">
-                          <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">Owner</span>
+                          <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">Personal Listing</span>
                           {bus.isUnclaimed ? (
                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[9px] font-black bg-rose-50 border border-rose-200 text-rose-600">
-                              ⚠️ Awaiting claim
+                              Awaiting claim
                             </span>
                           ) : (
                             <>
-                              <p className="font-bold text-slate-900 truncate">{bus.email || 'No email on file'}</p>
-                              <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider truncate">Owner ID: {bus.ownerId || 'unassigned'}</p>
+                              <p className="font-bold text-[var(--cc-deep-navy)] truncate">{bus.name}</p>
+	                              <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider truncate">{bus.ownerId ? 'Owner access active' : 'No owner access yet'}</p>
                             </>
                           )}
                         </div>
 
                         <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 min-w-0">
                           <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">Contact</span>
-                          <p className="font-bold text-slate-900 flex items-center gap-1.5 truncate"><Phone className="w-3 h-3 text-slate-400 flex-shrink-0" /> {bus.phone || 'No phone'}</p>
+                          <p className="font-bold text-[var(--cc-deep-navy)] flex items-center gap-1.5 truncate"><Phone className="w-3 h-3 text-slate-400 flex-shrink-0" /> {bus.phone || 'No phone'}</p>
                           <p className="text-[9px] text-slate-400 font-semibold flex items-center gap-1.5 truncate"><Mail className="w-3 h-3 flex-shrink-0" /> {bus.email || 'No public email'}</p>
-                        </div>
-
-                        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 min-w-0">
-                          <span className="block text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">Traffic</span>
-                          <p className="font-display text-xl font-black text-slate-950 flex items-center gap-1.5"><Eye className="w-4 h-4 text-slate-400" /> {bus.viewsCount}</p>
-                          <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Directory views</p>
                         </div>
                       </div>
 
@@ -2828,6 +4377,15 @@ function AdminDashboardView({
                         </button>
 
                         <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
+                          {onOpenPersonalListing && (
+                            <button
+                              onClick={() => onOpenPersonalListing(bus.id)}
+                              className="px-3.5 py-2 rounded-xl border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 transition-all cursor-pointer text-[10px] font-black flex items-center justify-center gap-1.5 col-span-2 sm:col-span-1"
+                            >
+                              <Store className="w-3.5 h-3.5" /> Personal Listing View
+                            </button>
+                          )}
+
                           <button
                             onClick={() => openEditModal(bus)}
                             className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer text-[10px] font-black flex items-center justify-center gap-1.5"
@@ -2850,30 +4408,195 @@ function AdminDashboardView({
             </div>
           )}
         </div>
+        )}
 
         {/* Database Restore Action Panel Footer */}
         {onResetDatabase && (
           <div className="p-4 border-t border-slate-200 bg-slate-50/70 flex justify-between items-center text-xs">
-            <span className="text-slate-400 font-semibold">Database Management Controls</span>
+	          <span className="text-slate-400 font-semibold">Starter Listing Tools</span>
             <button
               onClick={() => {
-                if (window.confirm("Restore platform data? This will overwrite your active database with the original 9 Celina Connection mock profiles (including our 3 Unclaimed profiles) and reset all statistics.")) {
+	                if (window.confirm("Refresh the directory with the starter Celina Connection listings? This replaces the current local listing set.")) {
                   onResetDatabase();
                 }
               }}
               className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-bold rounded-xl flex items-center gap-1 cursor-pointer transition-all"
             >
-              <RefreshCw className="w-3.5 h-3.5" /> Reset Database to Original Defaults
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh Starter Listings
             </button>
           </div>
         )}
       </div>
         </>
-      ) : adminActiveTab === 'petition' ? (
+      )}
+
+      {adminActiveTab === 'events' && (
+        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in" id="admin-events-card">
+          <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-display text-xl font-black text-[var(--cc-deep-navy)] flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-orange-500" /> Event Promotion Review
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Review every event promotion, confirm payment or approval, and expire anything that should no longer appear.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+              <div className="relative w-full sm:w-72">
+                <SearchQueryIcon className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search events or listings..."
+                  value={eventSearch}
+                  onChange={(e) => setEventSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-800 shadow-sm"
+                />
+              </div>
+              <select
+                value={eventStatusFilter}
+                onChange={(e) => setEventStatusFilter(e.target.value as typeof eventStatusFilter)}
+                className="px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer"
+              >
+                <option value="all">All Events</option>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="expired">Expired</option>
+                <option value="paid">Paid / Approved</option>
+                <option value="unpaid">Unpaid</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-5 border-b border-slate-100 bg-white">
+            <div className="rounded-2xl bg-orange-50 border border-orange-100 p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-orange-600">Total events</span>
+              <div className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{adminEvents.length}</div>
+            </div>
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Active</span>
+              <div className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{adminEvents.filter(({ event, isExpired }) => event.status === 'active' && !isExpired).length}</div>
+            </div>
+            <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Needs review</span>
+              <div className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{adminEvents.filter(({ event, isExpired }) => !event.promotionPaid && !isExpired).length}</div>
+            </div>
+            <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Expired</span>
+              <div className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{adminEvents.filter(({ isExpired }) => isExpired).length}</div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-slate-600 border-collapse">
+              <thead>
+                <tr className="bg-slate-100/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <th className="p-4 pl-6">Event</th>
+                  <th className="p-4">Listing</th>
+                  <th className="p-4">Schedule</th>
+                  <th className="p-4">Payment</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4 pr-6 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                {filteredAdminEvents.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-slate-400 italic">
+                      No matching events found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAdminEvents.map(({ business, event, isExpired }) => {
+                    const effectiveStatus = isExpired ? 'expired' : event.status;
+                    return (
+                      <tr key={`${business.id}-${event.id}`} className="hover:bg-slate-50/70">
+                        <td className="p-4 pl-6 max-w-sm">
+                          <div className="space-y-1">
+                            <p className="font-black text-[var(--cc-deep-navy)] text-sm">{event.title}</p>
+                            <p className="text-xs text-slate-500 leading-5 line-clamp-2">{event.description}</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              Expires after the event date
+                            </p>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <button
+                            type="button"
+                            onClick={() => onOpenPersonalListing?.(business.id)}
+                            className="text-left group"
+                          >
+                            <span className="block font-black text-[var(--cc-deep-navy)] group-hover:text-orange-600">{business.name}</span>
+                            <span className="block text-[10px] font-semibold text-slate-400">{business.category}</span>
+                          </button>
+                        </td>
+                        <td className="p-4 min-w-48">
+                          <div className="space-y-1 text-[11px] font-semibold text-slate-500">
+                            <span className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-orange-500" /> {event.eventDate || 'Date not set'}</span>
+                            <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-orange-500" /> {event.eventTime || 'Time not set'}</span>
+                            <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-orange-500" /> {event.location || 'Celina, TX'}</span>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(event.promotionPaid)}
+                              onChange={(e) => updateAdminEvent(business, event.id, { promotionPaid: e.target.checked })}
+                              className="h-4 w-4 rounded border-slate-300 accent-orange-600"
+                            />
+                            {event.promotionPaid ? 'Paid / Approved' : 'Needs Review'}
+                          </label>
+                        </td>
+                        <td className="p-4">
+                          <select
+                            value={effectiveStatus}
+                            onChange={(e) => updateAdminEvent(business, event.id, { status: e.target.value as BusinessEvent['status'] })}
+                            className={`px-2.5 py-1.5 bg-white border text-[10px] font-bold rounded-lg cursor-pointer transition-colors shadow-sm ${
+                              effectiveStatus === 'active'
+                                ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                                : effectiveStatus === 'expired'
+                                ? 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                                : 'border-amber-200 text-amber-700 hover:bg-amber-50'
+                            }`}
+                          >
+                            <option value="draft">Draft</option>
+                            <option value="active">Active</option>
+                            <option value="expired">Expired</option>
+                          </select>
+                        </td>
+                        <td className="p-4 pr-6">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => updateAdminEvent(business, event.id, { status: 'expired' })}
+                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-600 hover:bg-slate-50"
+                            >
+                              Expire
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeAdminEvent(business, event.id, event.title)}
+                              className="rounded-xl border border-rose-100 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {adminActiveTab === 'petition' && (
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in" id="admin-petition-card">
           <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h3 className="font-display text-xl font-black text-slate-900 flex items-center gap-2">
+              <h3 className="font-display text-xl font-black text-[var(--cc-deep-navy)] flex items-center gap-2">
                 <FileText className="w-5 h-5 text-orange-500" /> Legacy Hills Petition Signatures
               </h3>
               <p className="text-xs text-slate-500 mt-1">
@@ -2882,7 +4605,7 @@ function AdminDashboardView({
             </div>
             <div className="flex flex-wrap gap-2">
               <a
-                href="/legacyhillspetition"
+                href="/legacyhillspetition/signatures"
                 target="_blank"
                 rel="noreferrer"
                 className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-slate-100"
@@ -2905,7 +4628,7 @@ function AdminDashboardView({
                 href="/api/admin/petitions/legacy-hills/export"
                 target="_blank"
                 rel="noreferrer"
-                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
+                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-black text-xs rounded-xl flex items-center gap-1.5 shadow-sm"
               >
                 <ExternalLink className="w-3.5 h-3.5" /> City Packet / PDF
               </a>
@@ -2915,22 +4638,112 @@ function AdminDashboardView({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-5 border-b border-slate-100 bg-white">
             <div className="rounded-2xl bg-orange-50 border border-orange-100 p-4">
               <span className="text-[10px] font-black uppercase tracking-wider text-orange-600">Total signatures</span>
-              <div className="font-display text-3xl font-black text-slate-900">{petitionSignatures.length}</div>
+              <div className="font-display text-3xl font-black text-[var(--cc-deep-navy)]">{petitionSignatures.length}</div>
             </div>
             <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Latest signer</span>
-              <div className="font-bold text-slate-900 text-sm mt-1">
+              <div className="font-bold text-[var(--cc-deep-navy)] text-sm mt-1">
                 {petitionSignatures[0] ? `${petitionSignatures[0].firstName} ${petitionSignatures[0].lastName}` : 'None yet'}
               </div>
             </div>
             <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Export status</span>
-              <div className="font-bold text-slate-900 text-sm mt-1">Ready for print/save-as-PDF</div>
+              <div className="font-bold text-[var(--cc-deep-navy)] text-sm mt-1">Ready for print/save-as-PDF</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-5 border-b border-slate-100 bg-slate-50/70">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <h4 className="font-display text-base font-black text-[var(--cc-deep-navy)]">Before Submitting</h4>
+              <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
+                <li>Confirm signer list includes residents, homeowners, or property stakeholders.</li>
+                <li>Attach sales materials, amenity promises, HOA/developer notices, and relevant photos.</li>
+                <li>Prepare a short cover note asking for written timelines and the next update date.</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+              <h4 className="font-display text-base font-black text-[var(--cc-deep-navy)]">Best Packet Order</h4>
+              <ol className="mt-3 space-y-2 text-xs leading-5 text-slate-700">
+                <li>1. Cover letter and requested response date</li>
+                <li>2. Petition statement and requested actions</li>
+                <li>3. Signature packet and CSV backup</li>
+                <li>4. Supporting evidence and photos</li>
+              </ol>
             </div>
           </div>
 
           {petitionError && (
             <div className="m-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">{petitionError}</div>
+          )}
+          {petitionSaveMessage && (
+            <div className="m-5 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">{petitionSaveMessage}</div>
+          )}
+
+          {editingPetitionSignature && (
+            <form onSubmit={handleAdminPetitionSignatureSave} className="m-5 rounded-3xl border border-orange-100 bg-orange-50/50 p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h4 className="font-display text-lg font-black text-[var(--cc-deep-navy)]">Edit Signer Details</h4>
+                  <p className="text-xs text-slate-500 mt-1">Admin can view and update the full signer record used for the petition packet.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPetitionSignature(null);
+                    setPetitionSaveMessage('');
+                  }}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:bg-slate-50"
+                >
+                  <X className="w-3.5 h-3.5" /> Close
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  ['firstName', 'First name'],
+                  ['lastName', 'Last name'],
+                  ['email', 'Email'],
+                  ['phone', 'Phone'],
+                  ['streetAddress', 'Street address'],
+                  ['neighborhood', 'Neighborhood'],
+                  ['builder', 'Builder'],
+                ].map(([field, label]) => (
+                  <label key={field} className="space-y-1">
+                    <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">{label}</span>
+                    <input
+                      type={field === 'email' ? 'email' : 'text'}
+                      required={['firstName', 'lastName', 'email', 'phone', 'streetAddress'].includes(field)}
+                      value={String(editingPetitionSignature[field as keyof LegacyHillsPetitionSignature] || '')}
+                      onChange={(event) => updateEditingPetitionSignature(field as keyof LegacyHillsPetitionSignature, event.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[var(--cc-deep-navy)] outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                  </label>
+                ))}
+              </div>
+
+              <label className="space-y-1 block">
+                <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Comments</span>
+                <textarea
+                  rows={3}
+                  value={editingPetitionSignature.comments || ''}
+                  onChange={(event) => updateEditingPetitionSignature('comments', event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[var(--cc-deep-navy)] outline-none focus:ring-2 focus:ring-orange-400"
+                />
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                  <span className="block text-[10px] font-black uppercase tracking-wider text-slate-400">Drawn signature</span>
+                  <img src={editingPetitionSignature.signatureDataUrl} alt={`Signature for ${editingPetitionSignature.firstName} ${editingPetitionSignature.lastName}`} className="mt-2 h-16 max-w-64 rounded-lg border border-slate-200 bg-white object-contain" />
+                </div>
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 py-3 text-xs font-black uppercase tracking-wider text-[var(--cc-deep-navy)] shadow-sm transition hover:bg-amber-400"
+                >
+                  <Save className="w-4 h-4" /> Save Signer
+                </button>
+              </div>
+            </form>
           )}
 
           <div className="overflow-x-auto">
@@ -2940,19 +4753,21 @@ function AdminDashboardView({
                   <th className="p-4 pl-6">Signer</th>
                   <th className="p-4">Contact</th>
                   <th className="p-4">Address</th>
+                  <th className="p-4">Context</th>
                   <th className="p-4">Signed</th>
                   <th className="p-4 pr-6">Signature</th>
+                  <th className="p-4 pr-6">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {petitionLoading ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Loading petition signatures…</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-slate-400 italic">Loading petition signatures…</td></tr>
                 ) : petitionSignatures.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">No Legacy Hills petition signatures have been captured yet.</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-slate-400 italic">No Legacy Hills petition signatures have been captured yet.</td></tr>
                 ) : petitionSignatures.map((signature) => (
                   <tr key={signature.id} className="hover:bg-slate-50/70">
                     <td className="p-4 pl-6">
-                      <div className="font-black text-slate-900">{signature.firstName} {signature.lastName}</div>
+                      <div className="font-black text-[var(--cc-deep-navy)]">{signature.firstName} {signature.lastName}</div>
                       <div className="text-[10px] text-slate-400">{signature.neighborhood}</div>
                     </td>
                     <td className="p-4">
@@ -2963,9 +4778,24 @@ function AdminDashboardView({
                       <div className="font-semibold">{signature.streetAddress}</div>
                       {signature.comments && <div className="mt-1 text-[10px] text-slate-400 line-clamp-2">“{signature.comments}”</div>}
                     </td>
+                    <td className="p-4 max-w-xs text-[10px] text-slate-500">
+                      <div><span className="font-black text-slate-700">Builder:</span> {signature.builder || 'Not provided'}</div>
+                    </td>
                     <td className="p-4 whitespace-nowrap">{new Date(signature.signedAt).toLocaleString()}</td>
                     <td className="p-4 pr-6">
                       <img src={signature.signatureDataUrl} alt={`Signature for ${signature.firstName} ${signature.lastName}`} className="h-12 max-w-40 rounded-lg border border-slate-200 bg-white object-contain" />
+                    </td>
+                    <td className="p-4 pr-6">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingPetitionSignature(signature);
+                          setPetitionSaveMessage('');
+                        }}
+                        className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-orange-700 hover:bg-orange-100"
+                      >
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -2973,8 +4803,10 @@ function AdminDashboardView({
             </table>
           </div>
         </div>
-      ) : (
-        /* Bug Tickets Section */
+      )}
+
+	      {adminActiveTab === 'bugs' && (
+	        /* Feedback Section */
         <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in" id="admin-bugs-card">
           {/* Controls Bar */}
           <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row items-center justify-between gap-4">
@@ -2982,7 +4814,7 @@ function AdminDashboardView({
               <SearchQueryIcon className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search bugs by title, reporter..."
+	                placeholder="Search feedback by note or email..."
                 value={bugSearch}
                 onChange={(e) => setBugSearch(e.target.value)}
                 className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 font-semibold text-slate-800 shadow-sm"
@@ -2997,10 +4829,10 @@ function AdminDashboardView({
                   onChange={(e) => setBugSeverityFilter(e.target.value as any)}
                   className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 cursor-pointer"
                 >
-                  <option value="all">All Severities</option>
-                  <option value="high">🔴 High</option>
-                  <option value="medium">🟡 Medium</option>
-                  <option value="low">⚪ Low</option>
+	                  <option value="all">All Priorities</option>
+	                  <option value="high">High</option>
+	                  <option value="medium">Medium</option>
+	                  <option value="low">Low</option>
                 </select>
               </div>
 
@@ -3012,10 +4844,10 @@ function AdminDashboardView({
                   className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 cursor-pointer"
                 >
                   <option value="all">All Categories</option>
-                  <option value="visual">🎨 Visual</option>
-                  <option value="functional">⚙️ Functional</option>
-                  <option value="data">📊 Data</option>
-                  <option value="other">❓ Other</option>
+	                  <option value="visual">Page display</option>
+	                  <option value="functional">Something is not working</option>
+	                  <option value="data">Listing information</option>
+	                  <option value="other">Other</option>
                 </select>
               </div>
 
@@ -3027,9 +4859,9 @@ function AdminDashboardView({
                   className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 cursor-pointer"
                 >
                   <option value="all">All Statuses</option>
-                  <option value="open">🟢 Open</option>
-                  <option value="in-progress">🔄 In Progress</option>
-                  <option value="resolved">✅ Resolved</option>
+	                  <option value="open">New</option>
+	                  <option value="in-progress">In Review</option>
+	                  <option value="resolved">Resolved</option>
                 </select>
               </div>
             </div>
@@ -3040,9 +4872,9 @@ function AdminDashboardView({
             <table className="w-full text-left text-xs text-slate-600 border-collapse">
               <thead>
                 <tr className="bg-slate-100/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="p-4 pl-6">Bug Ticket details</th>
+	                  <th className="p-4 pl-6">Feedback Details</th>
                   <th className="p-4">Category</th>
-                  <th className="p-4">Severity</th>
+	                  <th className="p-4">Priority</th>
                   <th className="p-4">Reporter</th>
                   <th className="p-4">Status / Action</th>
                   <th className="p-4 pr-6 text-right">Delete</th>
@@ -3052,7 +4884,7 @@ function AdminDashboardView({
                 {filteredBugs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-center text-slate-400 italic">
-                      No matching bug reports found in active registry database.
+	                      No matching feedback found.
                     </td>
                   </tr>
                 ) : (
@@ -3061,7 +4893,7 @@ function AdminDashboardView({
                       <tr key={bug.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-4 pl-6 max-w-sm">
                           <div className="space-y-1">
-                            <p className="font-bold text-slate-900 text-sm">{bug.title}</p>
+                            <p className="font-bold text-[var(--cc-deep-navy)] text-sm">{bug.title}</p>
                             <p className="text-slate-500 text-xs leading-relaxed font-normal whitespace-pre-wrap">{bug.description}</p>
                             <span className="text-[9px] text-slate-400 block font-semibold">Reported on: {new Date(bug.createdAt).toLocaleString()}</span>
                           </div>
@@ -3074,20 +4906,20 @@ function AdminDashboardView({
                         <td className="p-4">
                           {bug.severity === 'high' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black bg-rose-50 border border-rose-200 text-rose-600">
-                              🔴 High Severity
+	                              High Priority
                             </span>
                           ) : bug.severity === 'medium' ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-700">
-                              🟡 Medium
+	                              Medium
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-bold bg-slate-50 border border-slate-200 text-slate-600">
-                              ⚪ Low
+	                              Low
                             </span>
                           )}
                         </td>
                         <td className="p-4">
-                          <span className="font-bold text-slate-900 block">{bug.email}</span>
+                          <span className="font-bold text-[var(--cc-deep-navy)] block">{bug.email}</span>
                           <span className="text-[9px] text-slate-400 block uppercase tracking-wider font-semibold">Reporter</span>
                         </td>
                         <td className="p-4">
@@ -3103,21 +4935,21 @@ function AdminDashboardView({
                                   : 'border-rose-200 text-rose-600 hover:bg-rose-50'
                               }`}
                             >
-                              <option value="open">🟢 Open</option>
-                              <option value="in-progress">🔄 In Progress</option>
-                              <option value="resolved">✅ Resolved</option>
+	                              <option value="open">New</option>
+	                              <option value="in-progress">In Review</option>
+	                              <option value="resolved">Resolved</option>
                             </select>
                           </div>
                         </td>
                         <td className="p-4 pr-6 text-right">
                           <button
                             onClick={() => {
-                              if (confirm('Are you sure you want to permanently delete this bug ticket?')) {
+	                              if (confirm('Remove this feedback note?')) {
                                 onDeleteBugStatus && onDeleteBugStatus(bug.id);
                               }
                             }}
                             className="p-1.5 rounded-xl border border-rose-100 bg-white hover:bg-rose-50 text-rose-500 transition-all cursor-pointer"
-                            title="Delete bug ticket"
+	                            title="Delete feedback note"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -3135,7 +4967,7 @@ function AdminDashboardView({
       {/* CREATE NEW LISTING OVERLAY MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
-          <div onClick={() => setShowCreateModal(false)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
+          <div onClick={() => setShowCreateModal(false)} className="fixed inset-0 bg-[rgba(15,45,77,0.62)] backdrop-blur-sm" />
           <div className="relative bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-2xl max-w-lg w-full z-10 space-y-5">
             <button
               onClick={() => setShowCreateModal(false)}
@@ -3145,8 +4977,8 @@ function AdminDashboardView({
             </button>
 
             <div className="border-b border-slate-100 pb-3">
-              <h3 className="font-display text-xl font-extrabold text-slate-900">Add New Directory Profile</h3>
-              <p className="text-xs text-slate-500">Insert custom or unclaimed records directly into the Celina Connection registry.</p>
+              <h3 className="font-display text-xl font-extrabold text-[var(--cc-deep-navy)]">Add New Directory Profile</h3>
+	              <p className="text-xs text-slate-500">Add a custom or unclaimed Celina business listing.</p>
             </div>
 
             <form onSubmit={handleCreateSubmit} className="space-y-4 text-left">
@@ -3159,7 +4991,7 @@ function AdminDashboardView({
                     placeholder="Celina Square Bookstore"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
@@ -3168,7 +5000,7 @@ function AdminDashboardView({
                   <select
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                   >
                     {CATEGORIES.filter(c => c !== 'All').map((cat) => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -3184,7 +5016,7 @@ function AdminDashboardView({
                     placeholder="(972) 555-0100"
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                   />
                 </div>
               </div>
@@ -3195,7 +5027,7 @@ function AdminDashboardView({
                   <select
                     value={newIsUnclaimed ? 'unclaimed' : 'claimed'}
                     onChange={(e) => setNewIsUnclaimed(e.target.value === 'unclaimed')}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                   >
                     <option value="unclaimed">⚠️ Unclaimed Profile</option>
                     <option value="claimed">✅ Claimed / Pre-Assigned</option>
@@ -3207,7 +5039,7 @@ function AdminDashboardView({
                   <select
                     value={newTier}
                     onChange={(e) => setNewTier(e.target.value as Tier)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                   >
                     <option value="free">Free Launch</option>
                     <option value="basic">Basic ($6/mo)</option>
@@ -3226,7 +5058,7 @@ function AdminDashboardView({
                     placeholder="owner@celinasquarebookstore.com"
                     value={newEmail}
                     onChange={(e) => setNewEmail(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                   />
                 </div>
               )}
@@ -3238,7 +5070,7 @@ function AdminDashboardView({
                   placeholder="e.g. 104 N Ohio St, Celina, TX 75009"
                   value={newAddress}
                   onChange={(e) => setNewAddress(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                 />
               </div>
 
@@ -3249,7 +5081,7 @@ function AdminDashboardView({
                   placeholder="e.g. https://celinabookstore.com"
                   value={newWebsite}
                   onChange={(e) => setNewWebsite(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                 />
               </div>
 
@@ -3261,8 +5093,71 @@ function AdminDashboardView({
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
                   rows={2.5}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 font-semibold"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] font-semibold"
                 />
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-orange-100 bg-orange-50/50 p-4">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">Required Listing Images</h4>
+                  <p className="text-[10px] font-semibold leading-relaxed text-slate-500">
+                    Claimed and approved listings need both a profile image and a banner image before they can go live.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-white bg-white p-3 shadow-sm">
+                    <div className="h-24 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center">
+                      {newLogoUrl ? (
+                        <img src={newLogoUrl} alt="Profile image preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <Building2 className="h-7 w-7 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-orange-700 hover:bg-orange-100">
+                        <Upload className="h-3.5 w-3.5" />
+                        Profile Image
+                        <input type="file" accept="image/*" onChange={(e) => handleAdminCreateLogoUpload(e.target.files?.[0])} className="hidden" />
+                      </label>
+                      {newLogoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setNewLogoUrl('')}
+                          className="rounded-xl border border-rose-100 bg-rose-50 p-2 text-rose-600 hover:bg-rose-100"
+                          title="Remove profile image"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white bg-white p-3 shadow-sm">
+                    <div className="h-24 rounded-xl border border-slate-100 bg-slate-50 overflow-hidden flex items-center justify-center">
+                      {newCoverImageUrl ? (
+                        <img src={newCoverImageUrl} alt="Banner image preview" className="h-full w-full object-cover" />
+                      ) : (
+                        <ImageIcon className="h-7 w-7 text-slate-300" />
+                      )}
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-orange-700 hover:bg-orange-100">
+                        <Upload className="h-3.5 w-3.5" />
+                        Banner Image
+                        <input type="file" accept="image/*" onChange={(e) => handleAdminCreateCoverUpload(e.target.files?.[0])} className="hidden" />
+                      </label>
+                      {newCoverImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setNewCoverImageUrl('')}
+                          className="rounded-xl border border-rose-100 bg-rose-50 p-2 text-rose-600 hover:bg-rose-100"
+                          title="Remove banner image"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
@@ -3275,7 +5170,7 @@ function AdminDashboardView({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer"
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl shadow cursor-pointer"
                 >
                   Save Profile Record
                 </button>
@@ -3288,7 +5183,7 @@ function AdminDashboardView({
       {/* EDIT PROFILE OVERLAY MODAL */}
       {editingBusiness && (
         <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
-          <div onClick={() => setEditingBusiness(null)} className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" />
+          <div onClick={() => setEditingBusiness(null)} className="fixed inset-0 bg-[rgba(15,45,77,0.62)] backdrop-blur-sm" />
           <div className="relative bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-2xl max-w-lg w-full z-10 space-y-5">
             <button
               onClick={() => setEditingBusiness(null)}
@@ -3298,8 +5193,8 @@ function AdminDashboardView({
             </button>
 
             <div className="border-b border-slate-100 pb-3">
-              <h3 className="font-display text-xl font-extrabold text-slate-900">Edit Listing Profile</h3>
-              <p className="text-xs text-slate-500">Edit business details and membership permissions for active ID: {editingBusiness.id}</p>
+              <h3 className="font-display text-xl font-extrabold text-[var(--cc-deep-navy)]">Edit Listing Profile</h3>
+	              <p className="text-xs text-slate-500">Update business details, owner access, and membership settings.</p>
             </div>
 
             <form onSubmit={handleEditSubmit} className="space-y-4 text-left">
@@ -3312,7 +5207,7 @@ function AdminDashboardView({
                     placeholder="Business Name"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                   />
                 </div>
 
@@ -3321,7 +5216,7 @@ function AdminDashboardView({
                   <select
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                   >
                     {CATEGORIES.filter(c => c !== 'All').map((cat) => (
                       <option key={cat} value={cat}>{cat}</option>
@@ -3337,7 +5232,7 @@ function AdminDashboardView({
                     placeholder="Phone"
                     value={editPhone}
                     onChange={(e) => setEditPhone(e.target.value)}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                   />
                 </div>
               </div>
@@ -3348,7 +5243,7 @@ function AdminDashboardView({
                   <select
                     value={editIsUnclaimed ? 'unclaimed' : 'claimed'}
                     onChange={(e) => setEditIsUnclaimed(e.target.value === 'unclaimed')}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                   >
                     <option value="unclaimed">⚠️ Unclaimed Profile</option>
                     <option value="claimed">✅ Claimed Listing</option>
@@ -3364,7 +5259,7 @@ function AdminDashboardView({
                       setEditTier(nextTier);
                       setEditImages((current) => current.slice(0, maxImagesForTier(nextTier)));
                     }}
-                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 cursor-pointer"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer"
                   >
                     <option value="free">Free Launch</option>
                     <option value="basic">Basic ($6/mo)</option>
@@ -3394,7 +5289,7 @@ function AdminDashboardView({
                           setEditOwnerEmail(e.target.value);
                           setEditEmail(e.target.value);
                         }}
-                        className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                        className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[var(--cc-deep-navy)]"
                       />
                     </div>
                     <div>
@@ -3405,7 +5300,7 @@ function AdminDashboardView({
                         placeholder="Optional new password"
                         value={editOwnerPassword}
                         onChange={(e) => setEditOwnerPassword(e.target.value)}
-                        className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                        className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[var(--cc-deep-navy)]"
                       />
                     </div>
                   </div>
@@ -3417,7 +5312,7 @@ function AdminDashboardView({
                       placeholder="public@email.com"
                       value={editEmail}
                       onChange={(e) => setEditEmail(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900"
+                      className="w-full px-3.5 py-2 bg-white border border-emerald-100 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
@@ -3430,7 +5325,7 @@ function AdminDashboardView({
                   placeholder="Address"
                   value={editAddress}
                   onChange={(e) => setEditAddress(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                 />
               </div>
 
@@ -3441,7 +5336,7 @@ function AdminDashboardView({
                   placeholder="Website Link"
                   value={editWebsite}
                   onChange={(e) => setEditWebsite(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                 />
               </div>
 
@@ -3453,16 +5348,16 @@ function AdminDashboardView({
                   value={editDesc}
                   onChange={(e) => setEditDesc(e.target.value)}
                   rows={2.5}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 font-semibold"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] font-semibold"
                 />
               </div>
 
               <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700">Admin Listing Media</h4>
+	                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-700">Listing Media</h4>
                     <p className="text-[10px] font-semibold text-slate-400">
-                      Upload a logo and gallery photos for this business. {maxImagesForTier(editTier)} gallery image{maxImagesForTier(editTier) === 1 ? '' : 's'} allowed on {editTier}.
+                      Profile image and at least one banner image are required before approval. {maxImagesForTier(editTier)} banner/gallery image{maxImagesForTier(editTier) === 1 ? '' : 's'} allowed on {editTier}.
                     </p>
                   </div>
                   {editLogoUrl && (
@@ -3479,7 +5374,7 @@ function AdminDashboardView({
                 <div className="grid grid-cols-1 sm:grid-cols-[90px_1fr] gap-4 items-center">
                   <div className="h-20 w-20 rounded-2xl overflow-hidden bg-white border border-slate-200 flex items-center justify-center">
                     {editLogoUrl ? (
-                      <img src={editLogoUrl} alt="Admin logo preview" className="h-full w-full object-cover" />
+	                      <img src={editLogoUrl} alt="Logo preview" className="h-full w-full object-cover" />
                     ) : (
                       <Building2 className="h-8 w-8 text-slate-300" />
                     )}
@@ -3487,7 +5382,7 @@ function AdminDashboardView({
                   <div className="space-y-2">
                     <label className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:border-orange-300 hover:text-orange-600 cursor-pointer transition-colors">
                       <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Logo</span>
+                      <span>Upload Profile Image</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -3497,20 +5392,20 @@ function AdminDashboardView({
                     </label>
                     <input
                       type="url"
-                      placeholder="Or paste a hosted logo image URL"
+                      placeholder="Or paste a hosted profile image URL"
                       value={editLogoUrl.startsWith('data:') ? '' : editLogoUrl}
                       onChange={(e) => setEditLogoUrl(e.target.value)}
-                      className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gallery Images ({editImages.length}/{maxImagesForTier(editTier)})</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Banner / Gallery Images ({editImages.length}/{maxImagesForTier(editTier)})</span>
                     <label className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-bold text-slate-700 hover:border-orange-300 hover:text-orange-600 cursor-pointer">
                       <Upload className="w-3 h-3" />
-                      <span>Upload Gallery Images</span>
+                      <span>Upload Banner Images</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -3538,7 +5433,7 @@ function AdminDashboardView({
                     </div>
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-center text-[10px] font-semibold text-slate-400">
-                      No gallery images yet. Upload photos of the storefront, team, products, or services.
+                      No banner image yet. Upload at least one photo of the storefront, team, products, or services before approval.
                     </div>
                   )}
                 </div>
@@ -3554,7 +5449,7 @@ function AdminDashboardView({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer"
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl shadow cursor-pointer"
                 >
                   Save Profile Records
                 </button>

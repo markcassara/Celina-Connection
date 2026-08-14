@@ -3,10 +3,18 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/route.mjs": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
-    { "source": "/api", "destination": "/api/index" },
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/sitemap.xml", "destination": "/api/index" },
+    { "source": "/api", "destination": "/api/route" },
+    { "source": "/api/(.*)", "destination": "/api/route" },
+    { "source": "/sitemap.xml", "destination": "/api/route" },
+    { "source": "/server.cjs", "destination": "/api/not-found" },
+    { "source": "/server.cjs.map", "destination": "/api/not-found" },
+    { "source": "/images/mobile_service_van_(.*)", "destination": "/api/not-found" },
     {
       "source": "/",
       "has": [

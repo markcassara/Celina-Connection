@@ -40,7 +40,7 @@ export default function BugReportForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim() || !email.trim()) {
-      alert('Please fill out all required fields.');
+      alert('Please add your email, a short note, and a few details so we can help.');
       return;
     }
 
@@ -70,7 +70,7 @@ export default function BugReportForm({
       {/* Backdrop */}
       <div 
         onClick={onClose} 
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" 
+        className="fixed inset-0 bg-[rgba(15,45,77,0.62)] backdrop-blur-sm" 
       />
 
       {/* Modal Card */}
@@ -91,9 +91,9 @@ export default function BugReportForm({
               <CheckCircle className="w-6 h-6" />
             </div>
             <div className="space-y-1">
-              <h3 className="font-display font-black text-slate-900 text-lg">Bug Submitted Successfully!</h3>
+              <h3 className="font-display font-black text-[var(--cc-deep-navy)] text-lg">Thanks for the heads-up!</h3>
               <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                Thank you for helping us improve Celina Connection. The system administrator (Mark) has been notified.
+                We appreciate you helping make Celina Connection better for local businesses and neighbors.
               </p>
             </div>
           </div>
@@ -104,9 +104,9 @@ export default function BugReportForm({
                 <Bug className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-display font-black text-slate-900 text-lg">Report a Bug</h3>
+                <h3 className="font-display font-black text-[var(--cc-deep-navy)] text-lg">Share Feedback</h3>
                 <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                  Found something broken? Let us know ASAP so we can resolve it immediately.
+                  Notice something that needs attention? Send us a quick note and we will take a look.
                 </p>
               </div>
             </div>
@@ -122,21 +122,21 @@ export default function BugReportForm({
                   placeholder="e.g. you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 font-semibold"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-[var(--cc-deep-navy)] font-semibold"
                 />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Short Title <span className="text-rose-500">*</span>
+                  Short Note <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Mass change listings fails to save state"
+                  placeholder="e.g. I need help updating my listing"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 font-semibold"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-[var(--cc-deep-navy)] font-semibold"
                 />
               </div>
 
@@ -148,11 +148,11 @@ export default function BugReportForm({
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 font-semibold cursor-pointer"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-[var(--cc-deep-navy)] font-semibold cursor-pointer"
                   >
-                    <option value="visual">🎨 Visual issue</option>
-                    <option value="functional">⚙️ Functional broken</option>
-                    <option value="data">📊 Database incorrect</option>
+                    <option value="visual">Page display</option>
+                    <option value="functional">Something is not working</option>
+                    <option value="data">Listing information</option>
                     <option value="other">❓ Other</option>
                   </select>
                 </div>
@@ -164,26 +164,26 @@ export default function BugReportForm({
                   <select
                     value={severity}
                     onChange={(e) => setSeverity(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 font-semibold cursor-pointer"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-[var(--cc-deep-navy)] font-semibold cursor-pointer"
                   >
-                    <option value="low">⚪ Low (Visual/Minor)</option>
-                    <option value="medium">🟡 Medium (Flow issue)</option>
-                    <option value="high">🔴 High (Crash/Data loss)</option>
+                    <option value="low">Low - nice to fix</option>
+                    <option value="medium">Medium - needs attention</option>
+                    <option value="high">High - blocking my next step</option>
                   </select>
                 </div>
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Detailed Bug Description <span className="text-rose-500">*</span>
+                  Details <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   required
-                  placeholder="Please describe what you clicked, what you expected, and what happened instead..."
+                  placeholder="Tell us what you were trying to do and what happened."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={4}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 font-semibold"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 text-[var(--cc-deep-navy)] font-semibold"
                 />
               </div>
 
@@ -199,7 +199,7 @@ export default function BugReportForm({
                   type="submit"
                   className="px-5 py-2.5 bg-gradient-to-r from-rose-500 to-amber-500 text-white font-bold text-xs rounded-xl shadow-md hover:from-rose-600 hover:to-amber-600 cursor-pointer transition-all flex items-center gap-1.5"
                 >
-                  <AlertCircle className="w-3.5 h-3.5" /> Report ASAP
+                  <AlertCircle className="w-3.5 h-3.5" /> Send Feedback
                 </button>
               </div>
             </form>

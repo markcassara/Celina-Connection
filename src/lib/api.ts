@@ -1,5 +1,18 @@
 import type { Business, ClaimRequest, LegacyHillsPetitionSignature, ReportedBug, Review, UserProfile } from '../types';
 
+export interface BusinessDiscoveryDraft {
+  name: string;
+  category: string;
+  description: string;
+  phone: string;
+  email: string;
+  website: string;
+  address: string;
+  logoUrl: string;
+  coverImageUrl: string;
+  confidenceNotes: string[];
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
@@ -57,6 +70,12 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  discoverBusiness(payload: { businessName: string; website: string }) {
+    return request<{ draft: BusinessDiscoveryDraft }>('/api/owner/discover-business', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
   ownerResendVerification(email: string) {
     return request<{ message: string; verificationUrl?: string }>('/api/owner/resend-verification', {
       method: 'POST',
@@ -70,6 +89,18 @@ export const api = {
     return request<{ business: Business; currentUser: UserProfile }>('/api/owner/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    });
+  },
+  ownerForgotPassword(email: string) {
+    return request<{ message: string }>('/api/owner/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+  ownerResetPassword(token: string, password: string) {
+    return request<{ business: Business; currentUser: UserProfile; reset: boolean }>('/api/owner/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
     });
   },
   ownerSession() {
@@ -101,10 +132,35 @@ export const api = {
   adminSession() {
     return request<{ authenticated: boolean }>('/api/admin/session');
   },
+  sendMissingVisualsNotifications(payload: { deadlineHours?: number; includeUnclaimed?: boolean } = {}) {
+    return request<{
+      deadline: string;
+      deadlineHours: number;
+      includeUnclaimed: boolean;
+      attempted: number;
+      sent: Array<{ id: string; name: string; email: string }>;
+      skipped: Array<{ id: string; name: string; email: string; reason: string }>;
+      failed: Array<{ id: string; name: string; email: string; error: string }>;
+    }>('/api/admin/notifications/missing-visuals', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
   addReview(id: string, payload: Omit<Review, 'id' | 'createdAt'>) {
     return request<{ business: Business; review: Review }>(`/api/businesses/${id}/reviews`, {
       method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+  likeBusiness(id: string, liked = true) {
+    return request<{ business: Business; votesCount: number; liked: boolean }>(`/api/businesses/${id}/likes`, {
+      method: 'POST',
+      body: JSON.stringify({ liked }),
+    });
+  },
+  trackGrowthAction(id: string, action: 'share-click' | 'referral-visit') {
+    return request<{ business: Business; growthCredits: Business['growthCredits'] }>(`/api/businesses/${id}/growth/${action}`, {
+      method: 'POST',
     });
   },
   createBug(payload: Omit<ReportedBug, 'id' | 'createdAt' | 'status'>) {
@@ -124,6 +180,18 @@ export const api = {
       method: 'DELETE',
     });
   },
+  listPublicLegacyHillsPetitionSignatures() {
+    return request<{
+      total: number;
+      signatures: Array<{
+        id: string;
+        displayName: string;
+        neighborhood: string;
+        builder?: string;
+        signedAt: string;
+      }>;
+    }>('/api/petitions/legacy-hills/signatures');
+  },
   listLegacyHillsPetitionSignatures() {
     return request<{ signatures: LegacyHillsPetitionSignature[] }>('/api/admin/petitions/legacy-hills/signatures');
   },
@@ -139,13 +207,21 @@ export const api = {
     phone: string;
     streetAddress: string;
     neighborhood?: string;
+    builder?: string;
     comments?: string;
     signatureDataUrl: string;
+    eligibilityConfirmed: boolean;
     consent: boolean;
     company?: string;
   }) {
     return request<{ ok: true; contactId?: string; signature?: LegacyHillsPetitionSignature }>('/api/petitions/legacy-hills/signatures', {
       method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  adminUpdateLegacyHillsPetitionSignature(id: string, payload: Partial<LegacyHillsPetitionSignature>) {
+    return request<{ signature: LegacyHillsPetitionSignature }>(`/api/admin/petitions/legacy-hills/signatures/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(payload),
     });
   },

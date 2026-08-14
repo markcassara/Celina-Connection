@@ -95,7 +95,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
       });
 
       if (!res.ok) {
-        throw new Error('Failed to get a response from server');
+        throw new Error('Celina AI could not answer right now.');
       }
 
       const data = await res.json();
@@ -114,7 +114,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
       const errorMsg: Message = {
         id: `msg-err-${Math.random().toString(36).substring(2, 7)}`,
         role: 'assistant',
-        text: "My apologies! I ran into an error connecting to our Celina Connection AI core. Please check your internet connection or try again shortly.",
+        text: "My apologies! Celina AI could not answer right now. Please try again shortly.",
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMsg]);
@@ -166,7 +166,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
 
         {/* Floating Tooltip hint */}
         {!isOpen && (
-          <div className="absolute right-16 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-[11px] font-bold whitespace-nowrap shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none hidden md:block">
+          <div className="absolute right-16 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[var(--cc-deep-navy)] text-white text-[11px] font-bold whitespace-nowrap shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none hidden md:block">
             Ask Celina AI 🤠✨
           </div>
         )}
@@ -184,7 +184,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
             className="absolute bottom-18 right-0 w-[90vw] sm:w-[380px] h-[550px] rounded-3xl bg-white border border-slate-150 shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-orange-950 p-4 text-white flex items-center justify-between">
+            <div className="bg-gradient-to-r from-[var(--cc-deep-navy)] via-[#1b4a78] to-[#143a63] p-4 text-white flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-white shadow-inner">
                   <Sparkles className="w-4 h-4 animate-pulse" />
@@ -219,7 +219,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
                     }`}
                   >
                     <div className={`h-7 w-7 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
-                      isAi ? 'bg-orange-100 text-orange-600' : 'bg-slate-900 text-white'
+                      isAi ? 'bg-orange-100 text-orange-600' : 'bg-[var(--cc-deep-navy)] text-white'
                     }`}>
                       {isAi ? <Sparkles className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                     </div>
@@ -247,7 +247,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
                                   href={src.uri}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 font-semibold transition-colors text-[9px]"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-[var(--cc-deep-navy)] font-semibold transition-colors text-[9px]"
                                   title={src.title}
                                 >
                                   <span>{src.title.length > 20 ? src.title.substring(0, 18) + '...' : src.title}</span>

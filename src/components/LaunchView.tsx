@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Clock, Trophy, Flame, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Business } from '../types';
+import { isOutsideUserClaimedListing } from '../lib/listingVisuals';
 
 interface LaunchViewProps {
   setActiveTab: (tab: string) => void;
@@ -28,7 +29,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
   const [passcodeError, setPasscodeError] = useState(false);
 
   // Derive real live data from database!
-  const claimedBusinesses = (businesses || []).filter(b => !b.isUnclaimed && !b.isRegistryOnly);
+  const claimedBusinesses = (businesses || []).filter(isOutsideUserClaimedListing);
   
   // Sort claims in ascending order by their creation date so Slot #1 is the oldest claim
   const sortedClaims = [...claimedBusinesses].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -98,7 +99,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
             initial={{ opacity: 0, y: -50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.9 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 border border-amber-500 text-amber-400 px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold whitespace-nowrap"
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-[var(--cc-deep-navy)] border border-amber-500 text-amber-400 px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-bold whitespace-nowrap"
           >
             <Flame className="w-4 h-4 text-orange-500 animate-bounce" />
             <span>{showNotification}</span>
@@ -127,7 +128,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
             Pre-Launch
           </div>
 
-          <h1 className="font-display text-4xl sm:text-6xl font-black text-slate-950 tracking-tight leading-none">
+          <h1 className="font-display text-4xl sm:text-6xl font-black text-[var(--cc-deep-navy)] tracking-tight leading-none">
             Celina's <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-amber-500 to-amber-600">Local Business</span> Hub
           </h1>
           
@@ -167,7 +168,7 @@ export default function LaunchView({ setActiveTab, onUpgradePrompt, isGated = fa
         <div className="w-full max-w-lg mx-auto bg-slate-50/80 border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-4 shadow-sm z-10 backdrop-blur-xs">
           <div className="flex items-center justify-between">
             <div className="text-left space-y-0.5">
-              <h3 className="font-display text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-1.5 uppercase tracking-wider">
+              <h3 className="font-display text-xs sm:text-sm font-extrabold text-[var(--cc-deep-navy)] flex items-center gap-1.5 uppercase tracking-wider">
                 <Trophy className="w-4 h-4 text-amber-500 animate-bounce" />
                 Free Listings Left
               </h3>

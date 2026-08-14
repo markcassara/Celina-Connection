@@ -70,7 +70,7 @@ export default function MapModal({ business, onClose }: MapModalProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm"
+        className="fixed inset-0 bg-[rgba(15,45,77,0.62)] backdrop-blur-sm"
       />
 
       <motion.div
@@ -86,7 +86,7 @@ export default function MapModal({ business, onClose }: MapModalProps) {
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 uppercase tracking-wider">
                   <MapPin className="w-2.5 h-2.5 text-orange-700" /> Celina Map Guide
                 </span>
-                <h2 className="font-display font-extrabold text-slate-900 text-lg leading-tight mt-1">
+                <h2 className="font-display font-extrabold text-[var(--cc-deep-navy)] text-lg leading-tight mt-1">
                   {business.name}
                 </h2>
               </div>
@@ -111,7 +111,7 @@ export default function MapModal({ business, onClose }: MapModalProps) {
                 <div className="space-y-2">
                   <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-600">About Location</h3>
                   <p className="text-xs text-slate-700 leading-relaxed">
-                    Located near <strong className="text-slate-900">{coords.landmark}</strong>. The in-listing map now uses a
+                    Located near <strong className="text-[var(--cc-deep-navy)]">{coords.landmark}</strong>. The in-listing map now uses a
                     reliable Google Maps embed so visitors can open the location immediately.
                   </p>
                 </div>
@@ -130,9 +130,9 @@ export default function MapModal({ business, onClose }: MapModalProps) {
                 <div className="space-y-2 pt-2">
                   <button
                     onClick={() => setShowDirections(true)}
-                    className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 hover:opacity-95 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-orange-100 cursor-pointer transition-all"
+                    className="w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] hover:opacity-95 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-orange-100 cursor-pointer transition-all"
                   >
-                    <Navigation className="w-3.5 h-3.5 text-slate-950" />
+                    <Navigation className="w-3.5 h-3.5 text-[var(--cc-deep-navy)]" />
                     <span>Get Directions</span>
                   </button>
                   <a
@@ -162,7 +162,7 @@ export default function MapModal({ business, onClose }: MapModalProps) {
                   <button
                     onClick={() => setTravelMode('drive')}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all ${
-                      travelMode === 'drive' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                      travelMode === 'drive' ? 'bg-white text-[var(--cc-deep-navy)] shadow-sm' : 'text-slate-600 hover:text-[var(--cc-deep-navy)]'
                     }`}
                   >
                     <Car className="w-3.5 h-3.5" />
@@ -171,7 +171,7 @@ export default function MapModal({ business, onClose }: MapModalProps) {
                   <button
                     onClick={() => setTravelMode('walk')}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all ${
-                      travelMode === 'walk' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                      travelMode === 'walk' ? 'bg-white text-[var(--cc-deep-navy)] shadow-sm' : 'text-slate-600 hover:text-[var(--cc-deep-navy)]'
                     }`}
                   >
                     <Footprints className="w-3.5 h-3.5" />
@@ -229,14 +229,14 @@ export default function MapModal({ business, onClose }: MapModalProps) {
                 href={showDirections ? externalDirectionsUrl : externalMapUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-lg hover:bg-slate-800 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--cc-deep-navy)] text-white text-xs font-bold shadow-lg hover:bg-[#143a63] transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>{showDirections ? 'Open Route' : 'Open Map'}</span>
               </a>
               <button
                 onClick={onClose}
-                className="hidden md:inline-flex items-center justify-center w-10 h-10 rounded-xl bg-white/95 text-slate-700 hover:text-slate-900 shadow-lg border border-slate-200 transition-colors"
+                className="hidden md:inline-flex items-center justify-center w-10 h-10 rounded-xl bg-white/95 text-slate-700 hover:text-[var(--cc-deep-navy)] shadow-lg border border-slate-200 transition-colors"
                 aria-label="Close map"
               >
                 <X className="w-4.5 h-4.5" />

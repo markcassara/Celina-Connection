@@ -10,3 +10,6 @@ coverage/
 !.env.example
 .vercel
 .env*.local
+.server/
+api/route.mjs
+api/route.mjs.map
