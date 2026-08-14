@@ -28,7 +28,7 @@ test('listing category choices include generic professional service categories',
 test('logged-in owners see an owner-focused desktop menu instead of the public menu', () => {
   assert.deepEqual(
     getDesktopHeaderTabs({ isLoggedIn: false, role: undefined }).map((tab) => tab.label),
-    ['Home', 'Directory', 'Local Events', 'Pricing'],
+    ['Home', 'Explore Directory', 'Local Events', 'Membership Tiers'],
   );
 
   assert.deepEqual(
@@ -71,18 +71,18 @@ test('logged-in admins get admin-focused navigation without owner-only dead-end 
   const desktopTabs = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' });
   assert.deepEqual(
     desktopTabs.map((tab) => tab.label),
-    ['Listings', 'Petition', 'Bugs', 'Directory'],
+    ['Admin Dashboard', 'Manage Listings', 'Bug Reports', 'Petition Signatures', 'View Directory'],
   );
   assert.equal(desktopTabs.some((tab) => tab.label === 'Site Metrics'), false);
   assert.deepEqual(
     desktopTabs.map((tab) => tab.dashboardSection ?? null),
-    ['admin-listings', 'admin-petition', 'admin-bugs', null],
+    [null, 'profile', 'admin-bugs', 'admin-petition', null],
   );
 
   const mobileTabs = getMobileHeaderTabs({ isLoggedIn: true, role: 'admin' });
   assert.deepEqual(
     mobileTabs.map((tab) => tab.label),
-    ['Listings', 'Petition', 'Bugs', 'Directory'],
+    ['Dashboard', 'Manage', 'Bugs', 'Petition', 'Directory'],
   );
   assert.equal(mobileTabs.some((tab) => tab.label === 'Metrics'), false);
 });
@@ -92,27 +92,27 @@ test('dashboard navigation highlights only the selected dashboard section', () =
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '')),
-    [true, false, false, false],
+    [true, false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-profile')),
-    [false, false, false, false],
+    [false, true, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-reviews')),
-    [false, false, false, false],
+    [false, false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'dashboard', '#dashboard-admin-listings')),
-    [true, false, false, false],
+    [false, false, false, false, false],
   );
 
   assert.deepEqual(
     adminTabs.map((tab) => isHeaderTabActive(tab, 'directory', '#dashboard-admin-listings')),
-    [false, false, false, true],
+    [false, false, false, false, true],
   );
 });
 
@@ -151,20 +151,21 @@ test('header tabs expose real hrefs including dashboard section links', () => {
   assert.deepEqual(
     adminTabs.map((tab) => getHeaderTabHref(tab)),
     [
-      '/dashboard#dashboard-admin-listings',
-      '/dashboard#dashboard-admin-petition',
+      '/dashboard',
+      '/dashboard#dashboard-profile',
       '/dashboard#dashboard-admin-bugs',
+      '/dashboard#dashboard-admin-petition',
       '/directory',
     ],
   );
 });
 
-test('admin listings menu opens the admin workspace listings manager instead of the owner profile editor', () => {
+test('admin dashboard menu opens the admin workspace listings manager instead of the owner profile editor', () => {
   const adminDashboard = getDesktopHeaderTabs({ isLoggedIn: true, role: 'admin' })[0];
 
-  assert.equal(adminDashboard.id, 'admin-listings');
-  assert.equal(adminDashboard.dashboardSection, 'admin-listings');
-  assert.equal(getHeaderTabHref(adminDashboard), '/dashboard#dashboard-admin-listings');
+  assert.equal(adminDashboard.id, 'admin-dashboard');
+  assert.equal(adminDashboard.dashboardSection, undefined);
+  assert.equal(getHeaderTabHref(adminDashboard), '/dashboard');
   assert.equal(getDashboardSectionFromHash('', 'admin'), 'admin-listings');
   assert.equal(getAdminTabFromDashboardSection(getDashboardSectionFromHash('', 'admin')), 'listings');
 });
