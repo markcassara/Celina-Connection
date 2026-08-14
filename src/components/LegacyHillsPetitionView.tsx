@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CheckCircle, Home, MapPin, ShieldCheck, Users, Loader2 } from 'lucide-react';
 import { api } from '../lib/api';
+import PetitionActionEmail from './PetitionActionEmail';
 
 const INITIAL_FORM = {
   firstName: '',
@@ -272,6 +273,10 @@ export default function LegacyHillsPetitionView() {
             </button>
           </form>
         </div>
+      </div>
+
+      <div className="mt-8 lg:mt-10">
+        <PetitionActionEmail />
       </div>
     </section>
   );
