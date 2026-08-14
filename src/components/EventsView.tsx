@@ -87,9 +87,9 @@ export default function EventsView() {
             <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
               <CalendarIcon className="w-3.5 h-3.5 text-amber-400" /> Community Events
             </span>
-            <h2 className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+            <h1 className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
               What's Happening in <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">Celina</span>
-            </h2>
+            </h1>
             <p className="text-slate-300 text-sm leading-relaxed">
               Never miss a moment! Explore high-energy festivals, community markets, city public forums, and business networking events compiled fresh each month.
             </p>

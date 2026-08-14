@@ -12,6 +12,7 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "test": "node --import tsx --test --test-concurrency=1 tests/*.test.ts",
+    "seo:check": "node scripts/verify-seo.mjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

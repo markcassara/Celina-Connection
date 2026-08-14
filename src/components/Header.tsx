@@ -27,19 +27,18 @@ export function getDesktopHeaderTabs(user: { isLoggedIn: boolean; role?: UserPro
   if (!user.isLoggedIn) {
     return [
       { id: 'home', label: 'Home', targetTab: 'home' },
-      { id: 'directory', label: 'Explore Directory', targetTab: 'directory' },
+      { id: 'directory', label: 'Directory', targetTab: 'directory' },
       { id: 'events', label: 'Local Events', targetTab: 'events' },
-      { id: 'pricing', label: 'Membership Tiers', targetTab: 'pricing' },
+      { id: 'pricing', label: 'Pricing', targetTab: 'pricing' },
     ];
   }
 
   if (user.role === 'admin') {
     return [
-      { id: 'admin-dashboard', label: 'Admin Dashboard', targetTab: 'dashboard' },
-      { id: 'admin-listing-profile', label: 'Manage Listings', targetTab: 'dashboard', dashboardSection: 'profile' },
-      { id: 'admin-bugs', label: 'Bug Reports', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
-      { id: 'admin-petition', label: 'Petition Signatures', targetTab: 'dashboard', dashboardSection: 'admin-petition' },
-      { id: 'public-directory', label: 'View Directory', targetTab: 'directory' },
+      { id: 'admin-listings', label: 'Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
+      { id: 'admin-petition', label: 'Petition', targetTab: 'dashboard', dashboardSection: 'admin-petition' },
+      { id: 'admin-bugs', label: 'Bugs', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
+      { id: 'public-directory', label: 'Directory', targetTab: 'directory' },
     ];
   }
 
@@ -62,10 +61,9 @@ export function getMobileHeaderTabs(user: { isLoggedIn: boolean; role?: UserProf
 
   if (user.role === 'admin') {
     return [
-      { id: 'admin-dashboard', label: 'Dashboard', targetTab: 'dashboard' },
-      { id: 'admin-listing-profile', label: 'Manage', targetTab: 'dashboard', dashboardSection: 'profile' },
-      { id: 'admin-bugs', label: 'Bugs', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
+      { id: 'admin-listings', label: 'Listings', targetTab: 'dashboard', dashboardSection: 'admin-listings' },
       { id: 'admin-petition', label: 'Petition', targetTab: 'dashboard', dashboardSection: 'admin-petition' },
+      { id: 'admin-bugs', label: 'Bugs', targetTab: 'dashboard', dashboardSection: 'admin-bugs' },
       { id: 'public-directory', label: 'Directory', targetTab: 'directory' },
     ];
   }
@@ -87,7 +85,8 @@ export function isHeaderTabActive(tab: HeaderTab, activeTab: string, locationHas
     : undefined;
 
   if (tab.dashboardSection) {
-    return activeDashboardSection ? activeDashboardSection === tab.dashboardSection : tab.id === 'owner-listing';
+    if (activeDashboardSection) return activeDashboardSection === tab.dashboardSection;
+    return tab.dashboardSection === 'profile' || tab.dashboardSection === 'admin-listings';
   }
 
   return !activeDashboardSection;
@@ -187,7 +186,7 @@ export default function Header({
   const mobileTabs = getMobileHeaderTabs(currentUser);
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-100 bg-white/95 backdrop-blur-md shadow-sm">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-100 bg-white/90 backdrop-blur-xl shadow-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo and Brand */}
         <div 
@@ -195,24 +194,24 @@ export default function Header({
             setActiveTab('home');
             setIsMobileMenuOpen(false);
           }} 
-          className="flex cursor-pointer items-center gap-2.5 group"
+          className="flex min-w-0 cursor-pointer items-center gap-2.5 group"
           id="brand-logo"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-100 group-hover:scale-105 transition-transform">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-md shadow-orange-100 group-hover:scale-105 transition-transform">
             <Building2 className="h-5 w-5" />
           </div>
-          <div>
-            <h1 className="font-display text-lg font-extrabold tracking-tight text-slate-900 flex items-center gap-1">
+          <div className="min-w-0">
+            <p className="font-display text-lg font-extrabold tracking-tight text-slate-950 flex items-center gap-1 whitespace-nowrap">
               Celina <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">Connection</span>
-            </h1>
-            <p className="text-[10px] font-medium tracking-wide text-slate-600 uppercase -mt-0.5 flex items-center gap-0.5">
+            </p>
+            <p className="hidden sm:flex text-[10px] font-medium tracking-wide text-slate-600 uppercase -mt-0.5 items-center gap-0.5 whitespace-nowrap">
               <MapPin className="w-2.5 h-2.5 text-orange-700" /> Texas Business Directory
             </p>
           </div>
         </div>
 
         {/* Desktop Navigation Tabs */}
-        <nav className="hidden xl:flex items-center gap-1 rounded-2xl bg-slate-50 p-1 ring-1 ring-slate-200/70" aria-label="Tabs">
+        <nav className="hidden xl:flex items-center gap-0.5 rounded-full bg-slate-100/75 p-1 ring-1 ring-slate-200/80" aria-label="Primary navigation">
           {desktopTabs.map((tab) => {
             const isActive = isHeaderTabActive(tab, activeTab, currentHash);
             return (
@@ -220,21 +219,22 @@ export default function Header({
                 key={tab.id}
                 id={`tab-btn-${tab.id}`}
                 href={getHeaderTabHref(tab)}
+                aria-current={isActive ? 'page' : undefined}
                 onClick={(event) => {
                   event.preventDefault();
                   handleTabClick(tab);
                 }}
-                className={`relative rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
+                className={`relative rounded-full px-3.5 py-2 text-[12px] font-semibold tracking-tight transition-colors ${
                   isActive 
                     ? 'bg-white text-orange-700 shadow-sm ring-1 ring-orange-100' 
-                    : 'text-slate-500 hover:bg-white/80 hover:text-slate-900'
+                    : 'text-slate-600 hover:bg-white/80 hover:text-slate-950'
                 }`}
               >
                 {tab.label}
                 {isActive && (
                   <motion.div
                     layoutId="active-tab-indicator"
-                    className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500"
+                    className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500"
                     transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                   />
                 )}
@@ -310,7 +310,7 @@ export default function Header({
             <button
               id="btn-signin-nav"
               onClick={onOpenLogin}
-              className="hidden xl:inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-slate-900 to-slate-800 text-white hover:from-orange-600 hover:to-amber-500 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
+              className="hidden xl:inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold bg-slate-950 text-white hover:bg-orange-600 transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
               <span>Owners Login</span>
@@ -341,12 +341,13 @@ export default function Header({
                 <a
                   key={tab.id}
                   href={getHeaderTabHref(tab)}
+                  aria-current={isActive ? 'page' : undefined}
                   onClick={(event) => {
                     event.preventDefault();
                     handleTabClick(tab);
                   }}
                   className={`flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-bold transition-colors ${
-                    isActive ? 'bg-orange-100 text-orange-700 shadow-sm' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+                    isActive ? 'bg-orange-100 text-orange-700 shadow-sm ring-1 ring-orange-100' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                   }`}
                 >
                   <span>{tab.label}</span>
@@ -362,7 +363,7 @@ export default function Header({
                   setIsMobileMenuOpen(false);
                   onOpenLogin();
                 }}
-                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all duration-300 hover:from-orange-600 hover:to-amber-500 hover:shadow-md"
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all duration-300 hover:bg-orange-600 hover:shadow-md"
               >
                 <LogIn className="h-4 w-4" />
                 <span>Owners Login</span>

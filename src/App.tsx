@@ -15,6 +15,7 @@ import AiChatWidget from './components/AiChatWidget';
 import SeoHead from './components/SeoHead';
 import { api } from './lib/api';
 import { activeTabFromPath, isAdminDashboardHash, pathForActiveTab, resolveDashboardPortalMode } from './lib/navigation';
+import { categoryLandingForName, categoryLandingForSlug } from './lib/categoryRoutes';
 import { MapPin, Heart, ShieldAlert, Sparkles, Star, CheckCircle, Bug } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -62,15 +63,29 @@ export default function App() {
   const businessSlug = location.pathname.startsWith('/business/') 
     ? location.pathname.replace('/business/', '')
     : null;
+  const directoryCategorySlug = location.pathname.startsWith('/directory/')
+    ? location.pathname.replace('/directory/', '').split('/')[0]
+    : '';
+  const directoryCategory = categoryLandingForSlug(directoryCategorySlug);
+  const selectedDirectoryCategory = directoryCategory?.name || 'All';
+  const navigateDirectoryCategory = (category: string) => {
+    const categoryLanding = categoryLandingForName(category);
+    setActiveTab('directory');
+    navigate(categoryLanding ? `/directory/${categoryLanding.slug}` : '/directory');
+  };
   
   // Sync URL when activeTab changes
   useEffect(() => {
     if (businessSlug) return;
+    if (activeTab === 'directory' && location.pathname.startsWith('/directory/')) {
+      if (!directoryCategory) navigate('/directory', { replace: true });
+      return;
+    }
     const path = pathForActiveTab(activeTab);
     if (location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [activeTab, navigate, location.pathname, businessSlug]);
+  }, [activeTab, navigate, location.pathname, businessSlug, directoryCategory]);
 
   // Handle business selection via URL
   useEffect(() => {
@@ -667,7 +682,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col font-sans selection:bg-orange-500 selection:text-white" id="celina-connection-root">
-      <SeoHead activeTab={activeTab} selectedBusiness={selectedBusiness} businessCount={businesses.length} />
+      <SeoHead
+        activeTab={activeTab}
+        selectedBusiness={selectedBusiness}
+        businessCount={businesses.length}
+        selectedCategory={activeTab === 'directory' ? selectedDirectoryCategory : undefined}
+      />
       {/* Top Banner Accent */}
       <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400" />
 
@@ -745,6 +765,7 @@ export default function App() {
             serverAiAvailable={serverAiAvailable}
             setActiveTab={setActiveTab}
             homeMode={true}
+            onCategoryNavigate={navigateDirectoryCategory}
           />
         )}
 
@@ -760,7 +781,7 @@ export default function App() {
             }}
             onCloseDetail={() => {
               setSelectedBusinessId(null);
-              navigate('/directory');
+              navigate(directoryCategory ? `/directory/${directoryCategory.slug}` : '/directory');
             }}
             onUpgradePrompt={(tier) => {
               setSelectedBusinessId(null);
@@ -770,6 +791,8 @@ export default function App() {
             isAiEnabled={isAiEnabled}
             serverAiAvailable={serverAiAvailable}
             setActiveTab={setActiveTab}
+            initialCategory={selectedDirectoryCategory}
+            onCategoryNavigate={navigateDirectoryCategory}
           />
         )}
 

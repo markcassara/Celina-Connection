@@ -142,12 +142,12 @@ export default function PricingView({
         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800 uppercase tracking-wider">
           <DollarSign className="w-3.5 h-3.5" /> Simple, Welcoming Membership Plans
         </span>
-        <h2 className="font-display text-3xl sm:text-4.5xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="font-display text-3xl sm:text-4.5xl font-extrabold text-slate-900 tracking-tight">
           Help Celina Grow while{' '}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-amber-500">
             Unlocking Growth
           </span>
-        </h2>
+        </h1>
         <p className="text-slate-500 text-sm sm:text-base leading-relaxed">
           Select a budget-friendly directory plan designed to list your business, attract customers, and display your brand perfectly. Upgrade or downgrade anytime.
         </p>
@@ -356,6 +356,38 @@ export default function PricingView({
           </table>
         </div>
       </div>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 sm:p-8 shadow-sm" id="pricing-faq" aria-labelledby="pricing-faq-heading">
+        <div className="text-center max-w-2xl mx-auto space-y-2">
+          <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md tracking-wider">
+            Plan Questions
+          </span>
+          <h2 id="pricing-faq-heading" className="font-display text-2xl font-black tracking-tight text-slate-950">
+            Choosing a Celina Connection listing plan
+          </h2>
+        </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          {[
+            {
+              question: 'Is the free launch listing really free?',
+              answer: 'Yes. The free launch listing is a no-card-required starter option for early Celina businesses while the first 100 free slots remain available.',
+            },
+            {
+              question: 'Which paid plan adds a website link and hours?',
+              answer: 'Local Pioneer Basic adds a website link and hours of operation while keeping the listing at the standard directory placement level.',
+            },
+            {
+              question: 'Which plan is best for more visibility?',
+              answer: 'Celina Champion Pro and Preston Elite Premium are built for businesses that want stronger placement, galleries, review tools, and featured visibility.',
+            },
+          ].map((item) => (
+            <div key={item.question} className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100 text-left">
+              <h3 className="text-sm font-black text-slate-950">{item.question}</h3>
+              <p className="mt-2 text-xs font-medium leading-relaxed text-slate-600">{item.answer}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* Paid Tier Add-ons Section */}
       <div className="space-y-6 pt-4">

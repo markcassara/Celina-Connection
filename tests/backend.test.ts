@@ -8,7 +8,7 @@ import { AddressInfo, createServer } from 'node:net';
 
 import { createApp } from '../server/app.ts';
 import { buildOwnerProfilePatch } from '../src/lib/ownerProfilePatch.ts';
-import { resolveDashboardPortalMode } from '../src/lib/navigation.ts';
+import { activeTabFromPath, resolveDashboardPortalMode } from '../src/lib/navigation.ts';
 
 const ADMIN_TOKEN = 'test-admin-token';
 
@@ -47,6 +47,11 @@ test('direct admin dashboard hash keeps unauthenticated users in admin login int
     }),
     'admin',
   );
+});
+
+test('directory category URLs render the directory tab', () => {
+  assert.equal(activeTabFromPath('/directory/dining'), 'directory');
+  assert.equal(activeTabFromPath('/directory/home-services'), 'directory');
 });
 
 async function withServer(dbPath: string, run: (baseUrl: string) => Promise<void>) {
@@ -567,6 +572,87 @@ test('GET /api/bootstrap seeds businesses and bug collection', async () => {
     assert.ok(lucys);
     assert.equal(lucys.featured, false);
     assert.equal(lucys.tier, 'basic');
+  });
+});
+
+test('business share preview endpoint uses the listing image for social cards', async () => {
+  const dbPath = makeDbPath('business-share-preview');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/share/business/annie-jack-boutique`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+
+    assert.match(html, /<title>Annie Jack Boutique \| Celina Connection<\/title>/);
+    assert.match(html, /<meta property="og:image" content="https:\/\/images\.unsplash\.com\/photo-1441986300917-64674bd600d8/);
+    assert.match(html, /<meta name="twitter:image" content="https:\/\/images\.unsplash\.com\/photo-1441986300917-64674bd600d8/);
+
+    const imageRes = await fetch(`${baseUrl}/api/social-image/business/annie-jack-boutique`, { redirect: 'manual' });
+    assert.equal(imageRes.status, 302);
+    assert.match(imageRes.headers.get('location') || '', /^https:\/\/images\.unsplash\.com\/photo-1441986300917-64674bd600d8/);
+  });
+});
+
+test('page share preview endpoint renders directory metadata and item list schema', async () => {
+  const dbPath = makeDbPath('page-share-preview');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/share/page/directory`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+
+    assert.match(html, /<title>Celina Business Directory \| Restaurants, Shops &amp; Services<\/title>/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/directory" \/>/);
+    assert.match(html, /<meta property="og:image" content="https:\/\/www\.celinaconnection\.com\/celina-water-tower-bg\.jpg" \/>/);
+    assert.match(html, /"@type":"ItemList"/);
+    assert.match(html, /"url":"https:\/\/www\.celinaconnection\.com\/business\/annie-jack-boutique"/);
+  });
+});
+
+test('page share preview endpoint renders pricing FAQ schema', async () => {
+  const dbPath = makeDbPath('pricing-share-preview');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/share/page/pricing`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+
+    assert.match(html, /<title>Claim Your Celina Business Listing \| Celina Connection Plans<\/title>/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/pricing" \/>/);
+    assert.match(html, /"@type":"FAQPage"/);
+    assert.match(html, /Which paid plan adds a website link and hours/);
+  });
+});
+
+test('category share preview endpoint renders filtered category metadata', async () => {
+  const dbPath = makeDbPath('category-share-preview');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/share/category/dining`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+
+    assert.match(html, /<title>Celina Restaurants &amp; Dining \| Celina Connection<\/title>/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/directory\/dining" \/>/);
+    assert.match(html, /"@type":"CollectionPage"/);
+    assert.match(html, /"@id":"https:\/\/www\.celinaconnection\.com\/directory\/dining#business-list"/);
+    assert.match(html, /"name":"Lucy's on the Square"/);
+    assert.doesNotMatch(html, /"name":"Annie Jack Boutique"/);
+  });
+});
+
+test('sitemap includes public pages and excludes authenticated dashboard', async () => {
+  const dbPath = makeDbPath('public-sitemap-pages');
+
+  await withServer(dbPath, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/sitemap.xml`);
+    assert.equal(res.status, 200);
+    const xml = await res.text();
+
+    assert.match(xml, /<loc>https:\/\/www\.celinaconnection\.com\/directory<\/loc>/);
+    assert.match(xml, /<loc>https:\/\/www\.celinaconnection\.com\/directory\/dining<\/loc>/);
+    assert.match(xml, /<loc>https:\/\/www\.celinaconnection\.com\/events<\/loc>/);
+    assert.doesNotMatch(xml, /<loc>https:\/\/www\.celinaconnection\.com\/dashboard<\/loc>/);
   });
 });
 

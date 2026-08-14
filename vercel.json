@@ -6,6 +6,95 @@
   "rewrites": [
     { "source": "/api", "destination": "/api/index" },
     { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/sitemap.xml", "destination": "/api/index" },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/page/home"
+    },
+    {
+      "source": "/directory",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/page/directory"
+    },
+    {
+      "source": "/directory/:category",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/category/:category"
+    },
+    {
+      "source": "/events",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/page/events"
+    },
+    {
+      "source": "/pricing",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/page/pricing"
+    },
+    {
+      "source": "/launch",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/page/launch"
+    },
+    {
+      "source": "/legacyhillspetition",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/page/legacyhillspetition"
+    },
+    {
+      "source": "/business/:slug",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot).*"
+        }
+      ],
+      "destination": "/api/share/business/:slug"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
