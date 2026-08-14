@@ -665,7 +665,7 @@ test('admin can view and export locally captured Legacy Hills petition signature
         });
         assert.equal(doc.status, 200);
         const html = await doc.text();
-        assert.match(html, /Pinnacle at Legacy Hills Petition Signature Packet/);
+        assert.match(html, /Legacy Hills Petition Signature Packet/);
         assert.match(html, /Completion of Promised Amenities/);
         assert.match(html, /Print \/ Save as PDF/);
         assert.match(html, /data:image\/png;base64,aGVsbG8=/);

@@ -291,16 +291,16 @@ function buildPageSeoConfig(activeTab: string, selectedBusiness: Business | null
       };
     case 'legacyhillspetition-sign':
       return {
-        title: 'Community Petition for Pinnacle at Legacy Hills Amenities | Celina Connection',
-        description: 'For homeowners and residents of Pinnacle at Legacy Hills who want clear timelines, stronger communication, and completion of promised community amenities.',
+        title: 'Legacy Hills Community Petition | Celina Connection',
+        description: 'For homeowners and residents across Legacy Hills communities who want clear timelines, stronger communication, and completion of promised community amenities.',
         canonical: `${SITE_URL}/legacyhillspetition/sign`,
         ogImage: DEFAULT_OG_IMAGE,
         noIndex: true,
       };
     case 'legacyhillspetition-signatures':
       return {
-        title: 'Pinnacle at Legacy Hills Petition Support | Celina Connection',
-        description: 'View the current signature count and protected signer list for the Pinnacle at Legacy Hills community petition.',
+        title: 'Legacy Hills Petition Support | Celina Connection',
+        description: 'View the current signature count and protected signer list for the Legacy Hills community petition.',
         canonical: `${SITE_URL}/legacyhillspetition/signatures`,
         ogImage: DEFAULT_OG_IMAGE,
         noIndex: true,

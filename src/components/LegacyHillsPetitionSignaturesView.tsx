@@ -54,10 +54,10 @@ export default function LegacyHillsPetitionSignaturesView({
               </div>
               <div>
                 <h1 className="font-display text-4xl sm:text-5xl font-black tracking-tight leading-tight">
-                  Pinnacle at Legacy Hills Petition Support
+                  Legacy Hills Petition Support
                 </h1>
                 <p className="mt-4 text-base sm:text-lg leading-8 text-slate-200 font-medium">
-                  View the current signature count and protected signer list for the community petition. Private details such as email, phone, street address, and drawn signatures are only visible to the admin team for packet preparation.
+                  View the current signature count and protected signer list for the Legacy Hills community petition. Private details such as email, phone, street address, and drawn signatures are only visible to the admin team for packet preparation.
                 </p>
               </div>
             </div>

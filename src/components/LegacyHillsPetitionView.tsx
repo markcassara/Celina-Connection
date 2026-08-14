@@ -10,7 +10,7 @@ const INITIAL_FORM = {
   email: '',
   phone: '',
   streetAddress: '',
-  neighborhood: 'Legacy Hills',
+  neighborhood: '',
   builder: '',
   comments: '',
   signatureDataUrl: '',
@@ -20,6 +20,18 @@ const INITIAL_FORM = {
 };
 
 type PetitionForm = typeof INITIAL_FORM;
+
+const LEGACY_HILLS_COMMUNITIES = [
+  'Arbors at Legacy Hills',
+  'Brookshire at Legacy Hills',
+  'Del Webb at Legacy Hills',
+  'Enclave at Legacy Hills',
+  'Legacy Hills by UnionMain Homes',
+  'Lilybrooke at Legacy Hills',
+  'Magnolia at Legacy Hills',
+  'Pinnacle at Legacy Hills',
+  'Other Legacy Hills community / section',
+];
 
 const PROMISED_AMENITIES = [
   'A neighborhood playground',
@@ -187,7 +199,7 @@ export default function LegacyHillsPetitionView() {
                   Community Petition for the Completion of Promised Amenities and Improved Community Standards
                 </h1>
                 <p className="max-w-2xl text-base sm:text-lg leading-8 text-slate-200 font-medium">
-                  For homeowners and residents of Pinnacle at Legacy Hills who want clear timelines, stronger communication, and completion of the community standards and amenities represented during the home-buying process.
+                  For homeowners and residents across Legacy Hills communities who want clear timelines, stronger communication, and completion of the community standards and amenities represented during the home-buying process.
                 </p>
               </div>
 
@@ -219,8 +231,8 @@ export default function LegacyHillsPetitionView() {
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <MapPin className="h-6 w-6 text-orange-600 mb-3" />
-              <h2 className="font-display font-black text-[var(--cc-deep-navy)]">Pinnacle focused</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Address and neighborhood fields help keep the signature list connected to the community.</p>
+              <h2 className="font-display font-black text-[var(--cc-deep-navy)]">Legacy Hills focused</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Address and community fields help keep the signature list connected to the right section.</p>
             </div>
           </div>
 
@@ -228,10 +240,10 @@ export default function LegacyHillsPetitionView() {
             <div className="space-y-3">
               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-orange-600">Petition statement</p>
               <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-[var(--cc-deep-navy)]">
-                To Pulte Homes, the Pinnacle at Legacy Hills Development Team, HOA Leadership, City Officials, and all responsible parties
+                To Legacy Hills builders, the Legacy Hills Development Team, HOA Leadership, City Officials, and all responsible parties
               </h2>
               <p className="text-sm sm:text-base leading-7 text-slate-600">
-                We, the undersigned homeowners and residents of Pinnacle at Legacy Hills, respectfully submit this petition to express our growing concern regarding the continued delays in completing the community as it was represented to us during the home-buying process.
+                We, the undersigned homeowners and residents of Legacy Hills communities, respectfully submit this petition to express our growing concern regarding the continued delays in completing the master-planned community as it was represented to us during the home-buying process.
               </p>
               <p className="text-sm sm:text-base leading-7 text-slate-600">
                 Many of us chose to invest in this neighborhood based on representations made during the sales process, including the promise of community amenities such as:
@@ -280,7 +292,7 @@ export default function LegacyHillsPetitionView() {
             <div className="space-y-4">
               <h3 className="font-display text-xl font-black text-[var(--cc-deep-navy)]">Why This Matters</h3>
               <p className="text-sm sm:text-base leading-7 text-slate-600">
-                Our homes represent one of the largest investments many of us will ever make. We are proud to live in Pinnacle at Legacy Hills and want to see it become the community that was envisioned and promoted.
+                Our homes represent one of the largest investments many of us will ever make. We are proud to live in Legacy Hills and want to see it become the community that was envisioned and promoted.
               </p>
               <div className="grid sm:grid-cols-2 gap-3">
                 {WHY_THIS_MATTERS.map((item) => (
@@ -290,7 +302,7 @@ export default function LegacyHillsPetitionView() {
                 ))}
               </div>
               <p className="text-sm sm:text-base leading-7 text-slate-600">
-                This petition is not intended to criticize for the sake of criticism. Rather, it is a respectful request for accountability, transparency, and partnership. We believe these issues can be addressed through open communication and a shared commitment to building a neighborhood that lives up to the expectations established when many of us chose to call Pinnacle at Legacy Hills home.
+                This petition is not intended to criticize for the sake of criticism. Rather, it is a respectful request for accountability, transparency, and partnership. We believe these issues can be addressed through open communication and a shared commitment to building a neighborhood that lives up to the expectations established when many of us chose to call Legacy Hills home.
               </p>
               <p className="text-sm sm:text-base leading-7 text-slate-600">
                 We respectfully request a written response outlining the status of these concerns, planned timelines, and any actions that will be taken to address them.
@@ -307,7 +319,7 @@ export default function LegacyHillsPetitionView() {
         <div className="rounded-[2rem] border border-slate-200 bg-white p-6 sm:p-8 shadow-xl shadow-[rgba(15,45,77,0.12)] sticky top-24">
           <div className="mb-6">
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-orange-600">Add your signature</p>
-            <h2 className="mt-2 font-display text-3xl font-black tracking-tight text-[var(--cc-deep-navy)]">Pinnacle at Legacy Hills Petition</h2>
+            <h2 className="mt-2 font-display text-3xl font-black tracking-tight text-[var(--cc-deep-navy)]">Legacy Hills Petition</h2>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               Please use your real contact details so the signature list can be organized and residents can receive petition updates.
             </p>
@@ -351,8 +363,18 @@ export default function LegacyHillsPetitionView() {
             </label>
 
             <label className="space-y-1.5 text-sm font-bold text-slate-700 block">
-              Neighborhood / section
-              <input value={form.neighborhood} onChange={(event) => updateField('neighborhood', event.target.value)} className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100" />
+              Legacy Hills community
+              <select
+                required
+                value={form.neighborhood}
+                onChange={(event) => updateField('neighborhood', event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
+              >
+                <option value="" disabled>Choose your community</option>
+                {LEGACY_HILLS_COMMUNITIES.map((community) => (
+                  <option key={community} value={community}>{community}</option>
+                ))}
+              </select>
             </label>
 
             <div className="grid sm:grid-cols-2 gap-4">
@@ -388,7 +410,7 @@ export default function LegacyHillsPetitionView() {
 
             <label className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
               <input required type="checkbox" checked={form.eligibilityConfirmed} onChange={(event) => updateField('eligibilityConfirmed', event.target.checked)} className="mt-1 h-4 w-4 accent-orange-600" />
-              <span>I confirm I am a homeowner, resident, or property stakeholder in Pinnacle at Legacy Hills.</span>
+              <span>I confirm I am a homeowner, resident, or property stakeholder in a Legacy Hills community.</span>
             </label>
 
             <label className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
