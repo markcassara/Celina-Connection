@@ -1189,6 +1189,19 @@ class PostgresRepository implements CelinaDataStore {
   }
 
   private async ensureFeaturedPlaceholderBusinesses() {
+    // Keep the persistent production directory in sync with newly added initial listings
+    // without resetting or overwriting existing businesses.
+    for (const initBiz of INITIAL_BUSINESSES) {
+      const existing = await this.sql`
+        SELECT id FROM businesses
+        WHERE id = ${initBiz.id} OR lower(name) = lower(${initBiz.name})
+        LIMIT 1
+      ` as any[];
+      if (!existing.length) {
+        await this.upsertBusiness(makeBusiness(initBiz as CreateBusinessInput), false);
+      }
+    }
+
     const lucys = makeFeaturedPlaceholderBusiness("Lucy's on the Square");
     await this.sql`
       UPDATE businesses
