@@ -976,6 +976,7 @@ test('existing databases promote demo placeholders and connect Celina financial 
 
 test('directory copy uses friendly claim and removal request wording', () => {
   const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+  const cssSource = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf8');
 
   assert.match(directorySource, /Claim this listing/);
   assert.match(directorySource, /Request to remove this listing/);
@@ -1001,6 +1002,82 @@ test('directory listings include share buttons with copy-link fallback', () => {
   assert.match(directorySource, /navigator\.clipboard\.writeText\(url\)/);
   assert.match(directorySource, /share-listing-btn/);
   assert.match(directorySource, /Take a look at \$\{business\.name\} on Celina Connection/);
+});
+
+test('homepage is community-centric with directory and owner paths secondary', () => {
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+  const cssSource = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf8');
+
+  assert.match(directorySource, /id=\{homeMode \? 'community-front-page-hero'/);
+  assert.match(directorySource, /Celina Connection local front page/);
+  assert.match(directorySource, /The people, places, and happenings that keep/);
+  assert.match(directorySource, /home-local-imagery-hero/);
+  assert.match(directorySource, /Celina Texas water tower overlooking town/);
+  assert.match(directorySource, /Friday night lights/);
+  assert.match(directorySource, /Bobcat community pulse/);
+  assert.match(directorySource, /home-community-news-ticker/);
+  assert.match(directorySource, /Community Wire/);
+  assert.match(directorySource, /home-category-shortcuts/);
+  assert.match(directorySource, /Open the local sections/);
+  assert.match(directorySource, /home-community-magazine-rails/);
+  assert.match(directorySource, /Latest happenings/);
+  assert.match(directorySource, /Networking close to home/);
+  assert.match(directorySource, /future Celina Connection magazine/);
+  assert.match(directorySource, /home-featured-local-picks/);
+  assert.match(directorySource, /Local spotlights, useful profiles, and places to know/);
+  assert.match(directorySource, /home-owner-claim-card/);
+  assert.match(directorySource, /Be part of the local story/);
+  assert.match(directorySource, /Events, offers, and future magazine features/);
+  assert.match(cssSource, /@keyframes home-news-ticker/);
+  assert.match(cssSource, /prefers-reduced-motion: reduce/);
+  assert.match(directorySource, /!homeMode && \(/);
+  assert.match(directorySource, /competitive-launch-banner/);
+});
+
+test('facebook crawler sees business banner metadata on public listing URLs', async () => {
+  const dbPath = makeDbPath('business-social-card');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+  const bannerDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const createRes = await fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          name: 'Celina Social Bakery',
+          category: 'Dining',
+          description: 'Fresh pastries and coffee on the square.',
+          phone: '(972) 555-4411',
+          email: 'hello@celinasocialbakery.com',
+          tier: 'basic',
+          isUnclaimed: false,
+          logoUrl: TEST_LOGO_URL,
+          images: [bannerDataUrl],
+        }),
+      });
+      assert.equal(createRes.status, 201);
+      const created = await createRes.json();
+
+      const crawlerRes = await fetch(`${baseUrl}/business/${created.slug}?ref=${created.id}`, {
+        headers: { 'user-agent': 'facebookexternalhit/1.1' },
+      });
+      assert.equal(crawlerRes.status, 200);
+      const html = await crawlerRes.text();
+      assert.match(html, /<meta property="og:title" content="Celina Social Bakery \| Celina Connection" \/>/);
+      assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/business\/celina-social-bakery" \/>/);
+      assert.match(html, /<meta property="og:image" content="https:\/\/www\.celinaconnection\.com\/social-image\/business\/celina-social-bakery" \/>/);
+      assert.match(html, /<meta property="og:image:width" content="1200" \/>/);
+      assert.match(html, /<meta property="og:image:height" content="630" \/>/);
+      assert.doesNotMatch(html, /\/api\/social-image\/business/);
+
+      const imageRes = await fetch(`${baseUrl}/social-image/business/${created.slug}`);
+      assert.equal(imageRes.status, 200);
+      assert.equal(imageRes.headers.get('content-type'), 'image/png');
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
 });
 
 test('admin-created listings default to free and Growth Credits includes referral sharing instructions', () => {

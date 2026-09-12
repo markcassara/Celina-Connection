@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Business, Review, Tier } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
-import FeaturedCarousel from './FeaturedCarousel';
 import MapModal from './MapModal';
 import { countOutsideUserClaimedListings, hasRequiredListingVisuals, isNewListing } from '../lib/listingVisuals';
 import { api } from '../lib/api';
@@ -31,7 +30,19 @@ import {
   Award,
   SlidersHorizontal,
   Share2,
-  ThumbsUp
+  ThumbsUp,
+  Utensils,
+  Wrench,
+  ShoppingBag,
+  CalendarDays,
+  Stethoscope,
+  BriefcaseBusiness,
+  Home,
+  Newspaper,
+  UsersRound,
+  HeartHandshake,
+  Megaphone,
+  BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -67,7 +78,16 @@ export default function DirectoryView({
   homeMode = false,
 }: DirectoryViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategory, setSelectedCategory] = useState(() => {
+    if (typeof window === 'undefined') return 'All';
+    const pendingCategory = sessionStorage.getItem('celina_pending_directory_category') || '';
+    if (CATEGORIES.includes(pendingCategory as any)) {
+      sessionStorage.removeItem('celina_pending_directory_category');
+      return pendingCategory;
+    }
+    const categoryParam = new URLSearchParams(window.location.search).get('category') || '';
+    return CATEGORIES.includes(categoryParam as any) ? categoryParam : 'All';
+  });
   const [selectedTierFilter, setSelectedTierFilter] = useState<'all' | 'new' | 'claimed' | 'unclaimed' | 'premium' | 'pro'>('all');
   const [selectedMapBusiness, setSelectedMapBusiness] = useState<Business | null>(null);
 
@@ -234,7 +254,7 @@ export default function DirectoryView({
         const href = match[4];
 
         if (boldText) {
-          nodes.push(<strong key={`strong-${match.index}`} className="font-black text-white">{renderInline(boldText)}</strong>);
+          nodes.push(<strong key={`strong-${match.index}`} className="font-black text-inherit">{renderInline(boldText)}</strong>);
         } else if (linkText) {
           const safeHref = href?.trim();
           const isRealLink = /^https?:\/\/\S+\.\S+$/i.test(safeHref || '');
@@ -245,12 +265,12 @@ export default function DirectoryView({
                 href={safeHref}
                 target="_blank"
                 rel="noreferrer"
-                className="font-black text-white underline decoration-orange-300/70 underline-offset-2 hover:text-orange-100"
+                className="font-black text-inherit underline decoration-orange-300/70 underline-offset-2 hover:text-orange-600"
               >
                 {linkText}
               </a>
             ) : (
-              <strong key={`link-label-${match.index}`} className="font-black text-white">{linkText}</strong>
+              <strong key={`link-label-${match.index}`} className="font-black text-inherit">{linkText}</strong>
             )
           );
         }
@@ -282,7 +302,7 @@ export default function DirectoryView({
           const isIntroBullet = index === 0 && Boolean(bullet) && /^(howdy|hi|hey|hello|sure|absolutely)\b/i.test(copy);
 
           if (heading || (!bullet && !numbered && copy.endsWith(':') && copy.length < 90)) {
-            return <p key={index} className="pt-1 text-[12px] font-black tracking-wide text-white">{renderInline(copy.replace(/:$/, ''))}</p>;
+            return <p key={index} className="pt-1 text-[12px] font-black tracking-wide text-inherit">{renderInline(copy.replace(/:$/, ''))}</p>;
           }
 
           if (numbered && !isIntroBullet) {
@@ -449,6 +469,129 @@ export default function DirectoryView({
     { id: 'unclaimed', label: 'Unclaimed', count: publicBusinesses.filter((b) => b.isUnclaimed).length },
   ];
 
+  const homeCategoryCards = [
+    {
+      title: 'Restaurants',
+      category: 'Dining',
+      icon: <Utensils className="h-5 w-5" />,
+      prompt: 'Where neighbors meet for coffee, dinner, and weekend plans',
+      count: publicBusinesses.filter(b => b.category === 'Dining').length,
+    },
+    {
+      title: 'Home Services',
+      category: 'Home Services',
+      icon: <Wrench className="h-5 w-5" />,
+      prompt: 'The crews residents call when home needs attention',
+      count: publicBusinesses.filter(b => ['Home Services', 'Home & Garden', 'Trades & Contractors'].includes(b.category)).length,
+    },
+    {
+      title: 'Shopping',
+      category: 'Shopping & Retail',
+      icon: <ShoppingBag className="h-5 w-5" />,
+      prompt: 'Boutiques, gifts, and storefronts worth knowing',
+      count: publicBusinesses.filter(b => ['Shopping & Retail', 'Retail'].includes(b.category)).length,
+    },
+    {
+      title: 'Events',
+      category: 'Events & Venues',
+      icon: <CalendarDays className="h-5 w-5" />,
+      prompt: 'Venues, meetups, markets, and things to put on the calendar',
+      count: publicBusinesses.filter(b => b.category === 'Events & Venues').length,
+    },
+    {
+      title: 'Health',
+      category: 'Health & Wellness',
+      icon: <Stethoscope className="h-5 w-5" />,
+      prompt: 'Care, wellness, fitness, and family health close to home',
+      count: publicBusinesses.filter(b => ['Health & Wellness', 'Medical & Dental', 'Fitness & Recreation'].includes(b.category)).length,
+    },
+    {
+      title: 'Professional',
+      category: 'Professional Services',
+      icon: <BriefcaseBusiness className="h-5 w-5" />,
+      prompt: 'People who help Celina work, grow, and get things done',
+      count: publicBusinesses.filter(b => ['Professional Services', 'Financial Services', 'Legal Services', 'Real Estate', 'Business Services'].includes(b.category)).length,
+    },
+  ];
+
+  const homeFeaturedListings = [...publicBusinesses]
+    .filter((business) => !business.isUnclaimed)
+    .sort(compareDirectoryBusinesses)
+    .slice(0, 6);
+
+  const homeFreshListings = [...publicBusinesses]
+    .filter((business) => isNewListing(business) || (!business.isUnclaimed && Boolean(business.ownerId)))
+    .sort(compareDirectoryBusinesses)
+    .slice(0, 4);
+
+  const homeMagazineFeatures = homeFeaturedListings.slice(0, 3).map((business, index) => ({
+    business,
+    label: index === 0 ? 'Local spotlight' : index === 1 ? 'Worth a visit' : 'Neighbor note',
+  }));
+
+  const homeCommunityNotes = [
+    {
+      icon: <Newspaper className="h-5 w-5" />,
+      title: 'Latest happenings',
+      copy: 'A front-page rail for markets, grand openings, school fundraisers, city moments, and the local updates people usually hunt for in scattered posts.',
+    },
+    {
+      icon: <UsersRound className="h-5 w-5" />,
+      title: 'Networking close to home',
+      copy: 'A warmer path for business owners, residents, and local leaders to find each other before they need a transaction.',
+    },
+    {
+      icon: <BookOpen className="h-5 w-5" />,
+      title: 'Magazine-ready stories',
+      copy: 'The structure can grow into seasonal guides, neighborhood features, local interviews, and a future Celina Connection magazine.',
+    },
+  ];
+
+  const homeHeroStories = [
+    {
+      title: 'Friday night lights',
+      label: 'Bobcat community pulse',
+      copy: 'Football, school pride, and the kind of weeknight rhythm that makes Celina feel shared.',
+      image: '/celina-water-tower-bg.jpg',
+      icon: <Award className="h-4 w-4" />,
+    },
+    {
+      title: 'On the Square',
+      label: 'Local places',
+      copy: homeFeaturedListings[0]?.name ? `${homeFeaturedListings[0].name} and nearby storefronts residents keep in their regular rotation.` : 'Downtown storefronts, familiar faces, and places residents keep in their regular rotation.',
+      image: homeFeaturedListings[0] ? primaryListingImage(homeFeaturedListings[0]) : '/celina-water-tower-bg.jpg',
+      icon: <MapPin className="h-4 w-4" />,
+    },
+    {
+      title: 'Community calendar',
+      label: 'Happenings',
+      copy: 'Markets, movie nights, grand openings, fundraisers, and family-friendly moments worth putting on the calendar.',
+      image: homeFeaturedListings[1] ? primaryListingImage(homeFeaturedListings[1]) : '/celina-water-tower-bg.jpg',
+      icon: <CalendarDays className="h-4 w-4" />,
+    },
+  ];
+
+  const homeTickerItems = [
+    'Bobcat football nights',
+    'Friday Night Market',
+    'Grand openings',
+    'Local business spotlights',
+    'School fundraisers',
+    'Weekend family plans',
+    'Downtown Square notes',
+    'New neighbor recommendations',
+  ];
+
+  const handleHomeCategoryClick = (category: string) => {
+    setSelectedCategory(category);
+    setSelectedTierFilter('all');
+    setIsAiFilterActive(false);
+    setAiSearchInsights(null);
+    setAiMatchingIds(null);
+    if (typeof window !== 'undefined') sessionStorage.setItem('celina_pending_directory_category', category);
+    setActiveTab?.('directory');
+  };
+
   // Filter businesses
   const filteredBusinesses = publicBusinesses.filter((b) => {
     if (isAiFilterActive && aiMatchingIds) {
@@ -558,8 +701,9 @@ export default function DirectoryView({
   };
 
   return (
-    <div className="space-y-8 py-6">
+    <div className={`${homeMode ? 'space-y-7 py-4 sm:py-6' : 'space-y-8 py-6'}`}>
       {/* Competitive Free Claim Banner */}
+      {!homeMode && (
       <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-orange-200/60 rounded-3xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-semibold text-slate-800 shadow-sm" id="competitive-launch-banner">
         <div className="flex items-start gap-3">
           <span className="flex h-3 w-3 relative mt-0.5">
@@ -585,53 +729,48 @@ export default function DirectoryView({
               onClick={() => setActiveTab?.('dashboard')}
               className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer shadow-sm shadow-orange-100"
             >
-              Claim Your Free Spot
-            </button>
+            Claim Your Free Spot
+          </button>
           )}
         </div>
       </div>
-
-      {/* Featured Businesses Spotlight (Home Page Only) */}
-      {homeMode && publicBusinesses.some((b) => b.tier === 'premium') && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-bold text-[var(--cc-deep-navy)] flex items-center gap-1.5">
-              <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-              Featured Partners Spotlight
-            </h2>
-          </div>
-          <FeaturedCarousel businesses={publicBusinesses} onSelectBusiness={onSelectBusiness} />
-        </div>
       )}
 
       {/* Search and Hero Area */}
-      <div className={`${isInlineAiExpanded ? 'min-h-[410px]' : ''} relative rounded-3xl overflow-hidden bg-gradient-to-br from-[var(--cc-deep-navy)] via-[#1b4a78] to-[#143a63] text-white p-5 sm:p-7 md:p-9 shadow-md flex`}>
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
-        <div className="relative z-10 w-full flex flex-col space-y-4">
+      <div className={`${isInlineAiExpanded ? 'min-h-[410px]' : ''} relative overflow-hidden ${homeMode ? 'rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-9' : 'rounded-3xl p-5 sm:p-7 md:p-9'} ${homeMode ? 'bg-gradient-to-br from-[#fef7ec] via-white to-[#e8f4f2] text-[var(--cc-deep-navy)] border border-orange-100' : 'bg-gradient-to-br from-[var(--cc-deep-navy)] via-[#1b4a78] to-[#143a63] text-white'} shadow-md flex`} id={homeMode ? 'community-front-page-hero' : undefined}>
+        <div className={`absolute inset-0 pointer-events-none ${homeMode ? 'bg-[linear-gradient(135deg,rgba(249,115,22,0.08),transparent_40%,rgba(20,83,45,0.08))]' : 'bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent'}`} />
+        <div className={`relative z-10 w-full ${homeMode ? 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:items-stretch' : 'flex flex-col space-y-4'}`}>
+          <div className="flex min-w-0 flex-col space-y-4">
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-300 border border-orange-500/30 uppercase tracking-wider">
-              <MapPin className="w-3.5 h-3.5 text-orange-400" /> Celina, Texas
+            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${homeMode ? 'bg-white/80 text-orange-700 border border-orange-200 shadow-sm' : 'bg-orange-500/20 text-orange-300 border border-orange-500/30'}`}>
+              <MapPin className={`w-3.5 h-3.5 ${homeMode ? 'text-orange-600' : 'text-orange-400'}`} /> {homeMode ? 'Celina Connection local front page' : 'Celina, Texas'}
             </span>
           </motion.div>
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="font-display text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight"
+            className={`font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight ${homeMode ? 'text-[var(--cc-deep-navy)]' : 'text-white'}`}
           >
-            Connect with the Best of <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">Celina</span>
+            {homeMode ? (
+              <>The people, places, and happenings that keep <span className="text-orange-600">Celina connected</span>.</>
+            ) : (
+              <>Connect with the Best of <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">Celina</span></>
+            )}
           </motion.h2>
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-xl"
+            className={`${homeMode ? 'text-slate-700' : 'text-slate-300'} text-sm sm:text-base leading-relaxed max-w-2xl`}
           >
-            Explore our rich community directory, discover local treasures on the Square, or register your own business and grow your Celina reach today.
+            {homeMode
+              ? 'A softer local front page for finding trusted businesses, seeing what is new around town, discovering upcoming moments, and making the everyday connections that help a community feel like home.'
+              : 'Explore our rich community directory, discover local treasures on the Square, or register your own business and grow your Celina reach today.'}
           </motion.p>
 
           {/* Hero Quick Stats Bar */}
@@ -639,16 +778,16 @@ export default function DirectoryView({
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.25 }}
-            className="flex flex-wrap items-center gap-2 pt-1 text-xs font-semibold text-slate-300"
+            className={`flex flex-wrap items-center gap-2 pt-1 text-xs font-semibold ${homeMode ? 'text-slate-600' : 'text-slate-300'}`}
           >
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-amber-300 text-[11px] font-bold">
-              <Check className="w-3.5 h-3.5 text-emerald-400" /> 15+ Verified Businesses
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold ${homeMode ? 'bg-white/80 border border-orange-100 text-orange-700 shadow-sm' : 'bg-white/10 border border-white/10 text-amber-300'}`}>
+              <Check className="w-3.5 h-3.5 text-emerald-400" /> {publicBusinesses.length} Local Listings
             </div>
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-slate-200 text-[11px] font-bold">
-              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" /> 100% Celina Local
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold ${homeMode ? 'bg-white/80 border border-emerald-100 text-emerald-800 shadow-sm' : 'bg-white/10 border border-white/10 text-slate-200'}`}>
+              <HeartHandshake className="w-3.5 h-3.5 text-emerald-500" /> Community Guide
             </div>
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/10 text-orange-200 text-[11px] font-bold">
-              <Sparkles className="w-3.5 h-3.5 text-orange-300" /> AI Powered Search
+            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold ${homeMode ? 'bg-white/80 border border-sky-100 text-slate-700 shadow-sm' : 'bg-white/10 border border-white/10 text-orange-200'}`}>
+              <Newspaper className={`w-3.5 h-3.5 ${homeMode ? 'text-sky-700' : 'text-orange-300'}`} /> Happenings, People & Places
             </div>
           </motion.div>
 
@@ -661,16 +800,16 @@ export default function DirectoryView({
           >
             <div
               id="directory-inline-ai-chat"
-              className={`${isInlineAiExpanded ? 'min-h-full' : ''} w-full flex flex-col overflow-hidden rounded-[1.65rem] bg-white/10 text-white ring-1 ring-white/10 backdrop-blur-md`}
+              className={`${isInlineAiExpanded ? 'min-h-full' : ''} w-full flex flex-col overflow-hidden rounded-[1.65rem] ${homeMode ? 'bg-white/85 text-slate-900 ring-1 ring-orange-100 shadow-sm' : 'bg-white/10 text-white ring-1 ring-white/10'} backdrop-blur-md`}
             >
               {isAiEnabled && isInlineAiExpanded && (
                 <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-3 space-y-2 bg-transparent">
-                  <div className="mb-1 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-widest text-orange-200/90">
+                  <div className={`mb-1 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-widest ${homeMode ? 'text-orange-700' : 'text-orange-200/90'}`}>
                     <span>Celina AI</span>
                     <button
                       type="button"
                       onClick={() => setIsInlineAiExpanded(false)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${homeMode ? 'bg-slate-100 text-slate-600 hover:bg-orange-100 hover:text-orange-700' : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'}`}
                       aria-label="Close Celina AI chat"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -682,7 +821,7 @@ export default function DirectoryView({
 
                     if (isWelcome) {
                       return (
-                        <div key={msg.id} className="flex items-center gap-2 px-1.5 py-0.5 text-[11px] font-medium leading-relaxed text-slate-300">
+                        <div key={msg.id} className={`flex items-center gap-2 px-1.5 py-0.5 text-[11px] font-medium leading-relaxed ${homeMode ? 'text-slate-600' : 'text-slate-300'}`}>
                           <Sparkles className="h-3.5 w-3.5 text-orange-300 flex-shrink-0" />
                           <span>{msg.text}</span>
                         </div>
@@ -692,12 +831,12 @@ export default function DirectoryView({
                     return (
                       <div key={msg.id} className={`flex ${isAi ? 'justify-start' : 'justify-end'}`}>
                         <div className={`flex items-start gap-2 max-w-[92%] ${isAi ? '' : 'flex-row-reverse'}`}>
-                          <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 ${isAi ? 'bg-white/10 text-orange-200' : 'bg-orange-500 text-white'}`}>
+                          <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 ${isAi ? (homeMode ? 'bg-orange-100 text-orange-700' : 'bg-white/10 text-orange-200') : 'bg-orange-500 text-white'}`}>
                             {isAi ? <Sparkles className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
                           </div>
                           <div className={`rounded-2xl px-3.5 py-2 text-xs font-medium leading-relaxed ${
                             isAi
-                              ? 'bg-white/10 text-slate-100 rounded-tl-md'
+                              ? homeMode ? 'bg-slate-100 text-slate-700 rounded-tl-md' : 'bg-white/10 text-slate-100 rounded-tl-md'
                               : 'bg-orange-500 text-white rounded-tr-md shadow-sm shadow-orange-950/20'
                           }`}>
                             {isAi ? renderFormattedAiText(msg.text) : <p>{msg.text}</p>}
@@ -720,13 +859,13 @@ export default function DirectoryView({
                 </div>
               )}
 
-              <div className="flex flex-col sm:flex-row items-stretch gap-2 p-2 bg-white/10 border-t border-white/10">
+              <div className={`flex flex-col sm:flex-row items-stretch gap-2 p-2 border-t ${homeMode ? 'bg-white/70 border-orange-100' : 'bg-white/10 border-white/10'}`}>
                 <div className="relative flex-grow">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-orange-200" />
+                  <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 ${homeMode ? 'text-orange-500' : 'text-orange-200'}`} />
                   <input
                     type="text"
                     id="search-input"
-                    placeholder={isAiEnabled ? "Ask Celina AI or search the directory..." : "Search dining, boutique shops, home services..."}
+                    placeholder={isAiEnabled ? "Ask about Celina happenings, people, places..." : "Search dining, boutique shops, home services..."}
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
@@ -780,17 +919,17 @@ export default function DirectoryView({
               </div>
 
               {/* Trending Quick Search Chips */}
-              <div className="flex flex-wrap items-center gap-1.5 px-3.5 pb-2.5 pt-1 text-[11px] border-t border-white/5">
-                <span className="text-slate-300 font-bold tracking-wide uppercase text-[9px] mr-1 flex items-center gap-1">
+              <div className={`flex flex-wrap items-center gap-1.5 px-3.5 pb-2.5 pt-1 text-[11px] border-t ${homeMode ? 'border-orange-100' : 'border-white/5'}`}>
+                <span className={`${homeMode ? 'text-slate-600' : 'text-slate-300'} font-bold tracking-wide uppercase text-[9px] mr-1 flex items-center gap-1`}>
                   <Sparkles className="w-2.5 h-2.5 text-amber-300" /> Trending:
                 </span>
                 {[
-                  "Lucy's Steak",
-                  "Celina Bistro",
-                  "Chiropractor",
+                  "This weekend",
+                  "Grand openings",
+                  "Coffee",
                   "Boutiques",
-                  "Lawn Care",
-                  "Coffee"
+                  "Networking",
+                  "Family plans"
                 ].map((chip) => (
                   <button
                     key={chip}
@@ -799,7 +938,7 @@ export default function DirectoryView({
                       setSearchTerm(chip);
                       setIsAiFilterActive(false);
                     }}
-                    className="px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white font-medium transition-all border border-white/10 cursor-pointer text-[10px]"
+                    className={`px-2.5 py-1 rounded-full font-medium transition-all border cursor-pointer text-[10px] ${homeMode ? 'bg-white hover:bg-orange-50 text-slate-700 hover:text-orange-700 border-orange-100' : 'bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white border-white/10'}`}
                   >
                     {chip}
                   </button>
@@ -807,8 +946,92 @@ export default function DirectoryView({
               </div>
             </div>
           </motion.div>
+          </div>
+
+          {homeMode && (
+            <motion.div
+              initial={{ opacity: 0, x: 18 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.55, delay: 0.2 }}
+              className="grid min-h-[360px] gap-3 sm:grid-cols-[1.2fr_0.8fr] lg:min-h-full"
+              id="home-local-imagery-hero"
+            >
+              <button
+                type="button"
+                onClick={() => setSearchTerm('Downtown Square')}
+                className="group relative min-h-[260px] overflow-hidden rounded-2xl border border-white/70 bg-slate-900 text-left shadow-sm"
+              >
+                <img
+                  src="/celina-water-tower-bg.jpg"
+                  alt="Celina Texas water tower overlooking town"
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/18 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 text-white">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider backdrop-blur-sm">
+                    <Newspaper className="h-3.5 w-3.5 text-orange-200" /> Local front page
+                  </span>
+                  <h3 className="mt-3 font-display text-2xl font-black leading-tight">Start with the place people already recognize.</h3>
+                  <p className="mt-2 max-w-sm text-xs font-medium leading-relaxed text-white/85">
+                    The water tower, downtown, football nights, and local storefronts should make the page feel like Celina before anyone reads a sentence.
+                  </p>
+                </div>
+              </button>
+
+              <div className="grid gap-3">
+                {homeHeroStories.map((story) => (
+                  <button
+                    key={story.title}
+                    type="button"
+                    onClick={() => setSearchTerm(story.title)}
+                    className="group relative min-h-[112px] overflow-hidden rounded-2xl border border-white/70 bg-white text-left shadow-sm"
+                  >
+                    <img
+                      src={story.image || '/celina-water-tower-bg.jpg'}
+                      alt={`${story.title} visual`}
+                      referrerPolicy="no-referrer"
+                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-r from-slate-950/78 via-slate-950/36 to-transparent" />
+                    <div className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3.5 text-white">
+                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-orange-100 backdrop-blur-sm">
+                        {story.icon}
+                        {story.label}
+                      </span>
+                      <h4 className="mt-2 font-display text-sm font-black leading-tight">{story.title}</h4>
+                      <p className="mt-1 line-clamp-2 text-[10px] font-semibold leading-snug text-white/80">{story.copy}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
         </div>
       </div>
+
+      {homeMode && (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" id="home-community-news-ticker">
+          <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--cc-deep-navy)] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+              <Megaphone className="h-3.5 w-3.5 text-orange-300" /> Community Wire
+            </span>
+            <span className="text-[11px] font-bold text-slate-500">A future home for real local updates, events, and business announcements.</span>
+          </div>
+          <div className="relative flex overflow-hidden py-2.5">
+            <div className="home-news-ticker-track flex min-w-full shrink-0 items-center gap-3 px-3">
+              {[...homeTickerItems, ...homeTickerItems].map((item, index) => (
+                <span
+                  key={`${item}-${index}`}
+                  className="inline-flex items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-[11px] font-black text-[var(--cc-deep-navy)]"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {searchTerm.trim() && (
         <div className="rounded-2xl bg-gradient-to-r from-[var(--cc-deep-navy)] via-[#1b4a78] to-[var(--cc-deep-navy)] border border-slate-700 p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-200" id="search-claim-assistant-banner">
@@ -915,82 +1138,43 @@ export default function DirectoryView({
           </p>
         </div>
       ) : (
-        <div className="space-y-4" id="home-community-sectors">
-          <div className="flex items-center justify-between">
+        <div className="space-y-4" id="home-category-shortcuts">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Celina Community Hub</span>
-              <h3 className="font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Browse by Category & Local Sectors</h3>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Around town</span>
+              <h3 className="font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Open the local sections</h3>
             </div>
             <button
               type="button"
               onClick={() => setActiveTab?.('directory')}
-              className="inline-flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer self-start sm:self-auto"
             >
-              View Full Directory <ChevronRight className="w-3.5 h-3.5" />
+              View all categories <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              {
-                title: 'Historic Square & Dining',
-                category: 'Dining',
-                icon: '🍽️',
-                tag: 'Popular',
-                desc: 'Comfort dining, artisan cafes, craft taprooms, and local shops on Celina Square.',
-                count: publicBusinesses.filter(b => b.category === 'Dining').length,
-              },
-              {
-                title: 'Professional & Financial',
-                category: 'Professional Services',
-                icon: '💼',
-                tag: 'Essential',
-                desc: 'Legal advisors, wealth planning, real estate brokers, and insurance specialists.',
-                count: publicBusinesses.filter(b => b.category === 'Professional Services' || b.category === 'Financial Services' || b.category === 'Real Estate').length,
-              },
-              {
-                title: 'Health & Family Care',
-                category: 'Health & Wellness',
-                icon: '🩺',
-                tag: 'Wellness',
-                desc: 'Family practice, dental care, fitness centers, and neighborhood wellness.',
-                count: publicBusinesses.filter(b => b.category === 'Health & Wellness').length,
-              },
-              {
-                title: 'Home & Property Trades',
-                category: 'Home Services',
-                icon: '🏡',
-                tag: 'Trusted',
-                desc: 'Lawn maintenance, HVAC contractors, roofing, remodeling, and electrical.',
-                count: publicBusinesses.filter(b => b.category === 'Home Services' || b.category === 'Home & Garden').length,
-              },
-            ].map((sector) => (
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-2.5 sm:gap-3">
+            {homeCategoryCards.map((card) => (
               <button
-                key={sector.title}
+                key={card.title}
                 type="button"
-                onClick={() => {
-                  setSelectedCategory(sector.category);
-                  if (setActiveTab) setActiveTab('directory');
-                }}
-                className="group relative rounded-2xl bg-white border border-slate-200/80 p-5 text-left transition-all hover:border-orange-300 hover:shadow-md cursor-pointer flex flex-col justify-between space-y-3"
+                onClick={() => handleHomeCategoryClick(card.category)}
+                className="group min-h-[144px] rounded-xl bg-white border border-slate-200/80 p-3.5 text-left transition-all hover:border-orange-300 hover:shadow-sm cursor-pointer flex flex-col justify-between"
               >
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl">{sector.icon}</span>
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200/60">
-                      {sector.tag}
-                    </span>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-orange-700 group-hover:bg-orange-100">
+                    {card.icon}
                   </div>
-                  <h4 className="font-display font-black text-[var(--cc-deep-navy)] text-sm group-hover:text-orange-600 transition-colors">
-                    {sector.title}
-                  </h4>
-                  <p className="text-slate-500 text-xs leading-relaxed">
-                    {sector.desc}
-                  </p>
+                  <div>
+                    <h4 className="font-display font-black text-[var(--cc-deep-navy)] text-sm leading-tight group-hover:text-orange-600 transition-colors">
+                      {card.title}
+                    </h4>
+                    <p className="mt-1 text-[11px] leading-snug text-slate-500">{card.prompt}</p>
+                  </div>
                 </div>
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 font-bold">
-                  <span>{sector.count} Local Listings</span>
-                  <ChevronRight className="w-4 h-4 text-orange-500 group-hover:translate-x-1 transition-transform" />
+                <div className="mt-3 flex items-center justify-between text-[10px] font-black uppercase tracking-wide text-slate-500">
+                  <span>{card.count} listings</span>
+                  <ChevronRight className="w-3.5 h-3.5 text-orange-500 group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </button>
             ))}
@@ -999,101 +1183,178 @@ export default function DirectoryView({
       )}
 
       {homeMode ? (
-        <div id="home-platform-story" className="space-y-8">
-          <div className="rounded-3xl bg-white border border-slate-200/80 shadow-sm overflow-hidden">
-            <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-0">
-              <div className="p-6 sm:p-8 lg:p-10 space-y-5">
-                <span className="inline-flex items-center gap-2 rounded-full bg-[var(--cc-deep-navy)] px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-orange-200">
-                  <Sparkles className="h-3.5 w-3.5" /> Local discovery, cleaned up
-                </span>
-                <div className="space-y-3">
-                  <h3 className="font-display text-2xl sm:text-4xl font-black tracking-tight text-[var(--cc-deep-navy)] leading-tight">
-                    A more useful front door for Celina than another endless list.
-                  </h3>
-                  <p className="text-sm sm:text-base leading-relaxed text-slate-600 max-w-2xl">
-                    Celina Connection helps residents find trusted local spots quickly, while giving business owners a polished profile they can actually use to get discovered.
-                  </p>
-                </div>
-                <div className="grid sm:grid-cols-3 gap-3 pt-2">
-                  {[
-                    ['Discover', 'Restaurants, shops, services, and local favorites.'],
-                    ['Compare', 'Reviews, hours, photos, locations, and contact details.'],
-                    ['Support', 'Keep local dollars moving through Celina businesses.'],
-                  ].map(([title, copy]) => (
-                    <div key={title} className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
-                      <p className="text-xs font-black uppercase tracking-wider text-orange-700">{title}</p>
-                      <p className="mt-2 text-xs leading-relaxed text-slate-600">{copy}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab?.('directory')}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--cc-deep-navy)] px-5 py-3 text-sm font-black text-white shadow-md transition-colors hover:bg-orange-600"
-                  >
-                    Browse the full directory <ChevronRight className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab?.('dashboard')}
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-800 transition-colors hover:border-orange-200 hover:bg-orange-50"
-                  >
-                    Claim your listing
-                  </button>
-                </div>
-              </div>
-              <div className="bg-gradient-to-br from-[var(--cc-deep-navy)] via-[#143a63] to-[#143a63] p-6 sm:p-8 lg:p-10 text-white flex flex-col justify-between gap-8">
-                <div className="space-y-4">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-orange-200">For business owners</p>
-                  <h4 className="font-display text-2xl font-black tracking-tight">Your listing should work harder than a Facebook post.</h4>
-                  <p className="text-sm leading-relaxed text-slate-300">
-                    Claim the profile, keep the details current, add trust signals, and upgrade visibility when you want more placement.
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  {[
-                    'Lifetime free launch listing while early slots remain',
-                    'Premium placement paths for serious local visibility',
-                    'AI-powered search that recommends businesses by intent',
-                  ].map((item) => (
-                    <div key={item} className="flex items-start gap-3 rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                      <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-300" />
-                      <span className="text-xs font-semibold leading-relaxed text-slate-100">{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-4" id="home-info-sections">
-            {[
-              {
-                icon: <MapPin className="h-5 w-5" />,
-                title: 'Find what is nearby',
-                copy: 'Use category browsing, AI search, and maps to move from “what should we do?” to a local answer fast.',
-              },
-              {
-                icon: <ShieldCheck className="h-5 w-5" />,
-                title: 'Built for trust',
-                copy: 'Verified owner access, claim requests, reviews, and clean profiles make the directory feel curated instead of random.',
-              },
-              {
-                icon: <Star className="h-5 w-5" />,
-                title: 'Made for visibility',
-                copy: 'Featured partners and upgraded profiles create a monetization path without cluttering the front page with every listing.',
-              },
-            ].map((section) => (
-              <div key={section.title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-100 text-orange-700">
+        <div id="home-community-front-page-content" className="space-y-8">
+          <section className="grid md:grid-cols-3 gap-4" id="home-community-magazine-rails">
+            {homeCommunityNotes.map((section) => (
+              <div key={section.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-700">
                   {section.icon}
                 </div>
-                <h3 className="font-display text-lg font-black text-[var(--cc-deep-navy)]">{section.title}</h3>
-                <p className="mt-3 text-sm leading-relaxed text-slate-600">{section.copy}</p>
+                <h3 className="font-display text-base font-black text-[var(--cc-deep-navy)]">{section.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{section.copy}</p>
               </div>
             ))}
-          </div>
+          </section>
+
+          {homeMagazineFeatures.length > 0 && (
+            <section className="space-y-4" id="home-featured-local-picks">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">From the front page</span>
+                  <h3 className="font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Local spotlights, useful profiles, and places to know</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab?.('directory')}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer self-start sm:self-auto"
+                >
+                  Browse more <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                {homeMagazineFeatures.map(({ business, label }) => {
+                  const image = primaryListingImage(business);
+                  const avgRating = business.reviews.length
+                    ? (business.reviews.reduce((sum, review) => sum + review.rating, 0) / business.reviews.length).toFixed(1)
+                    : null;
+
+                  return (
+                    <button
+                      key={business.id}
+                      type="button"
+                      onClick={() => onSelectBusiness(business)}
+                      className="group overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm transition-all hover:border-orange-300 hover:shadow-md"
+                    >
+                      <div className="h-32 bg-slate-100">
+                        {image ? (
+                          <img src={image} alt={`${business.name} banner image`} referrerPolicy="no-referrer" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        ) : (
+                          <div className="flex h-full items-center justify-center bg-orange-50 text-orange-700">
+                            <Home className="h-8 w-8" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2.5 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-orange-600">{label}</p>
+                            <h4 className="mt-0.5 truncate font-display text-base font-black text-[var(--cc-deep-navy)] group-hover:text-orange-600">{business.name}</h4>
+                          </div>
+                          {business.tier === 'premium' ? (
+                            <span className="rounded-md bg-amber-100 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-amber-900">Featured</span>
+                          ) : getNewListingBadge(business)}
+                        </div>
+                        <p className="line-clamp-2 text-xs leading-relaxed text-slate-600">{business.description}</p>
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-[11px] font-bold text-slate-500">
+                          <span className="inline-flex items-center gap-1">
+                            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                            {avgRating || 'New'} {avgRating ? `(${business.reviews.length})` : 'profile'}
+                          </span>
+                          <span className="text-orange-600">View profile</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          <section className="grid gap-4 lg:grid-cols-[1fr_0.72fr]" id="home-resident-owner-paths">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-2">
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Neighbor notes</span>
+                  <h3 className="font-display text-xl font-black tracking-tight text-[var(--cc-deep-navy)]">Recently claimed, updated, or ready to meet Celina</h3>
+                  <p className="max-w-xl text-sm leading-relaxed text-slate-600">
+                    A healthy local front page should feel fresh. New profiles, updated hours, photos, events, and owner notes give people a reason to come back.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab?.('directory')}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                >
+                  Full directory <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
+                {homeFreshListings.map((business) => (
+                  <button
+                    key={business.id}
+                    type="button"
+                    onClick={() => onSelectBusiness(business)}
+                    className="group flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3 text-left transition-colors hover:border-orange-200 hover:bg-white"
+                  >
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white border border-slate-200">
+                      {business.logoUrl ? (
+                        <img src={business.logoUrl} alt={`${business.name} profile image`} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                      ) : (
+                        <MapPin className="h-5 w-5 text-orange-500" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-[var(--cc-deep-navy)] group-hover:text-orange-600">{business.name}</p>
+                      <p className="truncate text-[11px] font-semibold text-slate-500">{business.category}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-orange-500" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-emerald-50 p-5 sm:p-6 shadow-sm" id="home-owner-claim-card">
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-700">Be part of the local story</span>
+              <h3 className="mt-2 font-display text-xl font-black tracking-tight text-[var(--cc-deep-navy)]">Claim your place in Celina Connection.</h3>
+              <p className="mt-3 text-sm leading-relaxed text-slate-700">
+                A listing is the foundation. From there, local businesses can share updates, promote happenings, build trust, and eventually appear in guides, offers, and magazine-style features.
+              </p>
+              <div className="mt-4 space-y-2">
+                {['Free profile foundation', 'Community updates and networking path', 'Events, offers, and future magazine features'].map((item) => (
+                  <div key={item} className="flex items-center gap-2 text-xs font-bold text-slate-700">
+                    <Check className="h-4 w-4 flex-shrink-0 text-orange-600" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab?.('dashboard')}
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--cc-deep-navy)] px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-orange-600"
+              >
+                Claim or add your profile <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </section>
+
+          <section className="grid md:grid-cols-3 gap-4" id="home-info-sections">
+            {[
+              {
+                icon: <HeartHandshake className="h-5 w-5" />,
+                title: 'Connection before conversion',
+                copy: 'Residents should feel oriented first. Revenue follows when the site becomes trusted, useful, and habit-forming.',
+              },
+              {
+                icon: <CalendarDays className="h-5 w-5" />,
+                title: 'Built for weekly visits',
+                copy: 'Latest happenings, seasonal guides, local offers, and newly updated profiles can turn one-time searches into a community rhythm.',
+              },
+              {
+                icon: <Megaphone className="h-5 w-5" />,
+                title: 'Money without losing the soul',
+                copy: 'Premium placement, promoted events, sponsorships, guides, and magazine features can be introduced as useful local visibility.',
+              },
+            ].map((section) => (
+              <div key={section.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 text-orange-700">
+                  {section.icon}
+                </div>
+                <h3 className="font-display text-base font-black text-[var(--cc-deep-navy)]">{section.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">{section.copy}</p>
+              </div>
+            ))}
+          </section>
         </div>
       ) : (
         <>
