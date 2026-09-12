@@ -530,15 +530,19 @@ export default function App() {
         }
       }
 
-      let currentBusinesses = INITIAL_BUSINESSES;
-      let currentBugs = INITIAL_BUGS;
+      let currentBusinesses: Business[] = [];
+      let currentBugs: ReportedBug[] = [];
 
       try {
         const bootstrap = await api.bootstrap();
         currentBusinesses = bootstrap.businesses;
         currentBugs = bootstrap.reportedBugs;
+        if (isMounted) {
+          setBusinesses(currentBusinesses);
+          setReportedBugs(currentBugs);
+        }
       } catch {
-        // fall back to bundled mock data when backend is unavailable
+        if (isMounted) setPaymentNotification({ type: 'error', message: 'The directory could not load. Please refresh to try again.' });
       }
 
       try {

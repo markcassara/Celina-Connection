@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import sharp from "sharp";
+import { listingImageVersion } from "./listingMedia";
 import express from "express";
 import dotenv from "dotenv";
 import Stripe from "stripe";
@@ -1593,6 +1595,16 @@ export function createApp(options: { dbPath?: string } = {}) {
     }
   });
 
+  app.post('/api/logout', (_req, res) => {
+    const suffix = `HttpOnly; Path=/; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
+    res.setHeader('Set-Cookie', [
+      `${ownerCookieName}=; ${suffix}`,
+      `${adminCookieName}=; ${suffix}`,
+    ]);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ authenticated: false });
+  });
+
   app.post("/api/admin/logout", (_req, res) => {
     try {
       res.setHeader("set-cookie", `${adminCookieName}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === "production" ? "; Secure" : ""}`);
@@ -1672,23 +1684,37 @@ export function createApp(options: { dbPath?: string } = {}) {
 </html>`;
   };
 
+  app.get('/api/listing-images/:id/:slot/:version.webp', async (req, res) => {
+    const { id, slot, version } = req.params;
+    if (!/^(logo|[0-9]{1,2})$/.test(slot) || !/^[a-f0-9]{32}$/.test(version)) {
+      return res.status(404).end();
+    }
+    try {
+      const image = await repository.getPublicListingImage(id, slot);
+      if (!image || listingImageVersion(image) !== version) return res.status(404).end();
+      const bytes = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
+      const output = await sharp(bytes, { limitInputPixels: 40000000 })
+        .rotate().resize({ width: slot === 'logo' ? 320 : 1200, withoutEnlargement: true })
+        .webp({ quality: 80 }).toBuffer();
+      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return res.type('image/webp').send(output);
+    } catch (error) {
+      console.error('Listing image unavailable:', error instanceof Error ? error.message : 'Unknown error');
+      return res.status(503).end();
+    }
+  });
+
   app.get("/api/bootstrap", async (_req, res) => {
     try {
-      const businesses = await repository.listBusinesses();
-      const reportedBugs = await repository.listBugs();
-      const businessList = Array.isArray(businesses) && businesses.length > 0
-        ? businesses
-        : INITIAL_BUSINESSES;
-      return res.json({
-        businesses: businessList,
-        reportedBugs: Array.isArray(reportedBugs) ? reportedBugs : [],
-      });
+      const [businesses, reportedBugs] = await Promise.all([
+        repository.listPublicBusinesses(), repository.listBugs(),
+      ]);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ businesses, reportedBugs });
     } catch (error) {
       console.error("Bootstrap query error:", error);
-      return res.json({
-        businesses: INITIAL_BUSINESSES,
-        reportedBugs: [],
-      });
+      return res.status(503).json({ error: "The directory is temporarily unavailable. Please try again shortly." });
     }
   });
 

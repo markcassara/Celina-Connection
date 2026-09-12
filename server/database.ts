@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { publicListingMedia, restoreListingMedia } from './listingMedia';
 import path from 'node:path';
 import os from 'node:os';
 import { createRequire } from 'node:module';
@@ -97,6 +98,8 @@ export interface CreateClaimRequestInput {
 
 export interface CelinaDataStore {
   listBusinesses(): Business[] | Promise<Business[]>;
+  listPublicBusinesses(): Business[] | Promise<Business[]>;
+  getPublicListingImage(id: string, slot: string): string | null | Promise<string | null>;
   getBusiness(id: string): Business | null | Promise<Business | null>;
   createBusiness(input: CreateBusinessInput): Business | Promise<Business>;
   createOwnedBusiness(input: CreateBusinessInput, passwordHash: string, verification: { tokenHash: string; expiresAt: string }): Business | Promise<Business>;
@@ -590,6 +593,16 @@ export class CelinaRepository implements CelinaDataStore {
     return this.db.prepare('SELECT * FROM businesses WHERE email_verified = 1 ORDER BY featured DESC, views_count DESC, name ASC').all().map(rowToBusiness);
   }
 
+  listPublicBusinesses() {
+    return this.listBusinesses().map(publicListingMedia);
+  }
+
+  getPublicListingImage(id: string, slot: string) {
+    const business = this.getBusiness(id);
+    if (!business || !business.emailVerified) return null;
+    return (slot === 'logo' ? business.logoUrl : business.images?.[Number(slot)]) || null;
+  }
+
   getBusiness(id: string) {
     if (!this.db) return this.businessesMap.get(id) || null;
     const row = this.db.prepare('SELECT * FROM businesses WHERE id = ?').get(id);
@@ -755,7 +768,7 @@ export class CelinaRepository implements CelinaDataStore {
   updateBusiness(id: string, updates: Partial<Business>) {
     const current = this.getBusiness(id);
     if (!current) return null;
-    const updated: Business = { ...current, ...updates, id };
+    const updated: Business = { ...current, ...restoreListingMedia(current, updates), id };
     this.upsertBusiness(updated);
     return updated;
   }
@@ -1253,6 +1266,37 @@ class PostgresRepository implements CelinaDataStore {
     return rows.map(rowToBusiness);
   }
 
+  async listPublicBusinesses() {
+    await this.ensureInitialized();
+    // Replace inline image bytes inside Postgres, before they cross the network.
+    // Owner/admin reads keep originals for editing; only the public feed is slim.
+    const rows = await this.sql`
+      SELECT (to_jsonb(b) - ARRAY['logo_url', 'images_json', 'owner_password_hash',
+        'email_verification_token_hash', 'password_reset_token_hash']) ||
+        jsonb_build_object(
+          'logo_url', CASE WHEN logo_url ~* '^data:image/(png|jpe?g|webp|gif);base64,'
+            THEN 'inline:' || md5(logo_url) ELSE coalesce(logo_url, '') END,
+          'images_json', coalesce((
+            SELECT jsonb_agg(CASE WHEN image ~* '^data:image/(png|jpe?g|webp|gif);base64,'
+              THEN 'inline:' || md5(image) ELSE image END ORDER BY position)
+            FROM jsonb_array_elements_text(coalesce(images_json::jsonb, '[]'::jsonb))
+              WITH ORDINALITY AS media(image, position)
+          ), '[]'::jsonb)
+        ) AS business
+      FROM businesses b WHERE email_verified = TRUE
+      ORDER BY featured DESC, views_count DESC, name ASC
+    ` as any[];
+    return rows.map(row => publicListingMedia(rowToBusiness(row.business)));
+  }
+
+  async getPublicListingImage(id: string, slot: string) {
+    await this.ensureInitialized();
+    const rows = slot === 'logo'
+      ? await this.sql`SELECT logo_url AS image FROM businesses WHERE id = ${id} AND email_verified = TRUE`
+      : await this.sql`SELECT images_json::jsonb ->> ${Number(slot)}::int AS image FROM businesses WHERE id = ${id} AND email_verified = TRUE`;
+    return (rows[0]?.image as string) || null;
+  }
+
   async getBusiness(id: string) {
     await this.ensureInitialized();
     const rows = await this.sql`SELECT * FROM businesses WHERE id = ${id}` as any[];
@@ -1383,7 +1427,7 @@ class PostgresRepository implements CelinaDataStore {
   async updateBusiness(id: string, updates: Partial<Business>) {
     const current = await this.getBusiness(id);
     if (!current) return null;
-    const updated: Business = { ...current, ...updates, id };
+    const updated: Business = { ...current, ...restoreListingMedia(current, updates), id };
     await this.upsertBusiness(updated);
     return updated;
   }

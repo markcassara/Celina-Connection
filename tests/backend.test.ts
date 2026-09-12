@@ -6,6 +6,9 @@ import path from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { AddressInfo, createServer } from 'node:net';
 import Stripe from 'stripe';
+import sharp from 'sharp';
+import { CelinaRepository } from '../server/database.ts';
+import { listingImageUrl } from '../server/listingMedia.ts';
 
 import { createApp } from '../server/app.ts';
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
@@ -1481,8 +1484,8 @@ test('owner login supports password sign-in and owner-only safe profile updates'
     const bootstrap = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
     const persisted = bootstrap.businesses.find((business: any) => business.id === registered.business.id);
     assert.equal(persisted.address, '123 Main St, Celina, TX 75009');
-    assert.equal(persisted.logoUrl, 'data:image/png;base64,logo');
-    assert.deepEqual(persisted.images, ['data:image/png;base64,one']);
+    assert.equal(persisted.logoUrl, listingImageUrl(persisted.id, 'logo', 'data:image/png;base64,logo'));
+    assert.deepEqual(persisted.images, [listingImageUrl(persisted.id, '0', 'data:image/png;base64,one')]);
     });
   } finally {
     delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
@@ -1857,7 +1860,7 @@ test('public claim requests can be submitted and reviewed by admin session', asy
     await withServer(dbPath, async (baseUrl) => {
       const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
       const bootstrap = await bootstrapRes.json();
-      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed && business.logoUrl && business.images?.length);
       assert.ok(target);
 
       const createClaimRes = await fetch(`${baseUrl}/api/claims`, {
@@ -1916,7 +1919,7 @@ test('POST /api/businesses/:id/claim requires admin auth and works with a server
     await withServer(dbPath, async (baseUrl) => {
       const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
       const bootstrap = await bootstrapRes.json();
-      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed && business.logoUrl && business.images?.length);
       assert.ok(target);
 
       const unauthenticatedClaimRes = await fetch(`${baseUrl}/api/businesses/${target.id}/claim`, {
@@ -1953,7 +1956,7 @@ test('admin can assign listing owner access and reset owner passwords', async ()
     await withServer(dbPath, async (baseUrl) => {
       const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
       const bootstrap = await bootstrapRes.json();
-      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed && business.logoUrl && business.images?.length);
       assert.ok(target);
 
       const weakPasswordRes = await fetch(`${baseUrl}/api/businesses/${target.id}`, {
@@ -2121,8 +2124,8 @@ test('admin listing updates persist large uploaded logo and image data', async (
       const afterRes = await fetch(`${baseUrl}/api/bootstrap`);
       const after = await afterRes.json();
       const persisted = after.businesses.find((business: any) => business.id === target.id);
-      assert.equal(persisted.logoUrl, logoUrl);
-      assert.deepEqual(persisted.images, [imageUrl]);
+      assert.equal(persisted.logoUrl, listingImageUrl(persisted.id, 'logo', logoUrl));
+      assert.deepEqual(persisted.images, [listingImageUrl(persisted.id, '0', imageUrl)]);
     });
   } finally {
     delete process.env.ADMIN_API_TOKEN;
@@ -2366,4 +2369,117 @@ test('bug endpoints create publicly, then update, delete, and reset with admin a
   } finally {
     delete process.env.ADMIN_API_TOKEN;
   }
+});
+
+
+test('public media loads separately, preserves originals during edits, and protects unverified photos', async () => {
+  const dbPath = makeDbPath('public-media');
+  const repository = new CelinaRepository(dbPath);
+  const pixels = await sharp({ create: { width: 1800, height: 1000, channels: 3, background: '#bf612b' } }).png().toBuffer();
+  const original = `data:image/png;base64,${pixels.toString('base64')}`;
+  const business = repository.createBusiness({ name: 'Media Test', category: 'Shopping & Retail', description: 'Media fixture', phone: '555-0100', email: 'media@example.invalid', tier: 'free', logoUrl: original, images: [original], emailVerified: true });
+  const hidden = repository.createBusiness({ name: 'Unverified Media', category: 'Shopping & Retail', description: 'Private fixture', phone: '555-0101', email: 'hidden@example.invalid', tier: 'free', logoUrl: original, images: [original], emailVerified: false });
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+  try {
+    await withServer(dbPath, async baseUrl => {
+      const response = await fetch(`${baseUrl}/api/bootstrap`);
+      const feed = await response.json();
+      const listing = feed.businesses.find((b: any) => b.id === business.id);
+      assert.ok(listing);
+      assert.ok(!feed.businesses.some((b: any) => b.id === hidden.id));
+      assert.ok(!JSON.stringify(listing).includes('data:image/'));
+      const photo = await fetch(`${baseUrl}${listing.images[0]}`);
+      assert.equal(photo.status, 200);
+      assert.match(photo.headers.get('content-type') || '', /image\/webp/);
+      assert.match(photo.headers.get('cache-control') || '', /s-maxage=86400/);
+      const rendered = Buffer.from(await photo.arrayBuffer());
+      assert.equal((await sharp(rendered).metadata()).width, 1200);
+      const logo = await fetch(`${baseUrl}${listing.logoUrl}`);
+      assert.equal((await sharp(Buffer.from(await logo.arrayBuffer())).metadata()).width, 320);
+      const changed = await fetch(`${baseUrl}/api/businesses/${business.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ description: 'Edited using public media references', logoUrl: listing.logoUrl, images: listing.images }),
+      });
+      assert.equal(changed.status, 200);
+      const saved = await changed.json();
+      assert.equal(saved.logoUrl, original);
+      assert.deepEqual(saved.images, [original]);
+      assert.equal((await fetch(`${baseUrl}${listing.images[0]}`)).status, 200);
+      const hiddenUrl = listingImageUrl(hidden.id, 'logo', original);
+      assert.equal((await fetch(`${baseUrl}${hiddenUrl}`)).status, 404);
+      assert.equal((await fetch(`${baseUrl}${listing.images[0].replace(/[a-f0-9]{32}/, '00000000000000000000000000000000')}`)).status, 404);
+      const newOriginal = `data:image/png;base64,${(await sharp(pixels).negate().png().toBuffer()).toString('base64')}`;
+      const replacement = await fetch(`${baseUrl}/api/businesses/${business.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ images: [newOriginal] }),
+      });
+      assert.equal(replacement.status, 200);
+      const refreshed = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
+      const newListing = refreshed.businesses.find((b: any) => b.id === business.id);
+      assert.notEqual(newListing.images[0], listing.images[0]);
+      assert.equal((await fetch(`${baseUrl}${listing.images[0]}`)).status, 404);
+      assert.equal((await fetch(`${baseUrl}${newListing.images[0]}`)).status, 200);
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
+});
+
+test('an expired verification can be resent and the owner can sign in after using the new link', async () => {
+  const dbPath = makeDbPath('expired-verification-recovery');
+  const repository = new CelinaRepository(dbPath);
+  const crypto = await import('node:crypto');
+  const salt = crypto.randomBytes(16).toString('hex');
+  const password = 'VerificationRecovery2026!';
+  const hash = `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`;
+  const expiredToken = 'expired-verification-fixture';
+  repository.createOwnedBusiness({ name: 'Verification Recovery', category: 'Professional Services', description: 'Recovery fixture', email: 'recovery@example.com', phone: '555-0100', tier: 'free', logoUrl: TEST_LOGO_URL, images: [TEST_COVER_URL] }, hash, {
+    tokenHash: crypto.createHash('sha256').update(expiredToken).digest('hex'), expiresAt: '2020-01-01T00:00:00.000Z',
+  });
+  await withFakeGhl(async (ghlBaseUrl, requests) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+    try {
+      await withServer(dbPath, async baseUrl => {
+        const login = () => fetch(`${baseUrl}/api/owner/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'recovery@example.com', password }) });
+        assert.equal((await login()).status, 403);
+        assert.equal((await fetch(`${baseUrl}/api/owner/verify-email?token=${expiredToken}`)).status, 400);
+        const resend = await fetch(`${baseUrl}/api/owner/resend-verification`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'recovery@example.com' }) });
+        assert.equal(resend.status, 200);
+        const email = requests.find(request => request.url === '/conversations/messages');
+        assert.ok(email);
+        assert.equal(email.body.emailTo, 'recovery@example.com');
+        const token = email.body.html.match(/verify-email\?token=([a-f0-9]+)/)?.[1];
+        assert.ok(token);
+        assert.equal((await fetch(`${baseUrl}/api/owner/verify-email?token=${token}`)).status, 200);
+        const signedIn = await login();
+        assert.equal(signedIn.status, 200);
+        const cookie = signedIn.headers.get('set-cookie') || '';
+        assert.match(cookie, /HttpOnly/i);
+        assert.equal((await fetch(`${baseUrl}/api/owner/session`, { headers: { cookie } })).status, 200);
+      });
+    } finally {
+      delete process.env.GHL_API_KEY;
+      delete process.env.GHL_LOCATION_ID;
+      delete process.env.GHL_API_BASE_URL;
+    }
+  });
+});
+
+test('sign out expires both owner and admin session cookies', async () => {
+  await withServer(makeDbPath('logout-cookies'), async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/logout`, { method: 'POST' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { authenticated: false });
+    const cookies = response.headers.getSetCookie();
+    for (const name of ['celina_owner_session', 'celina_admin_session']) {
+      const cookie = cookies.find(value => value.startsWith(`${name}=`));
+      assert.ok(cookie);
+      assert.match(cookie, /Max-Age=0/);
+      assert.match(cookie, /Path=\//);
+      assert.match(cookie, /HttpOnly/);
+    }
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  });
 });

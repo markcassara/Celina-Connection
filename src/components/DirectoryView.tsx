@@ -961,7 +961,7 @@ export default function DirectoryView({
                 onClick={() => setSearchTerm('Downtown Square')}
                 className="group relative min-h-[260px] overflow-hidden rounded-2xl border border-white/70 bg-slate-900 text-left shadow-sm"
               >
-                <img
+                <img loading="lazy" decoding="async"
                   src="/celina-water-tower-bg.jpg"
                   alt="Celina Texas water tower overlooking town"
                   className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
@@ -986,7 +986,7 @@ export default function DirectoryView({
                     onClick={() => setSearchTerm(story.title)}
                     className="group relative min-h-[112px] overflow-hidden rounded-2xl border border-white/70 bg-white text-left shadow-sm"
                   >
-                    <img
+                    <img loading="lazy" decoding="async"
                       src={story.image || '/celina-water-tower-bg.jpg'}
                       alt={`${story.title} visual`}
                       referrerPolicy="no-referrer"
@@ -1228,7 +1228,7 @@ export default function DirectoryView({
                     >
                       <div className="h-32 bg-slate-100">
                         {image ? (
-                          <img src={image} alt={`${business.name} banner image`} referrerPolicy="no-referrer" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                          <img loading="lazy" decoding="async" src={image} alt={`${business.name} banner image`} referrerPolicy="no-referrer" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                         ) : (
                           <div className="flex h-full items-center justify-center bg-orange-50 text-orange-700">
                             <Home className="h-8 w-8" />
@@ -1289,7 +1289,7 @@ export default function DirectoryView({
                   >
                     <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white border border-slate-200">
                       {business.logoUrl ? (
-                        <img src={business.logoUrl} alt={`${business.name} profile image`} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                        <img loading="lazy" decoding="async" src={business.logoUrl} alt={`${business.name} profile image`} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
                       ) : (
                         <MapPin className="h-5 w-5 text-orange-500" />
                       )}
@@ -1429,7 +1429,7 @@ export default function DirectoryView({
                                   <div className="flex items-start gap-3">
                                     {b.logoUrl && (
                                       <div className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
-                                        <img
+                                        <img loading="lazy" decoding="async"
                                           src={b.logoUrl}
                                           alt={`${b.name} profile image`}
                                           referrerPolicy="no-referrer"
@@ -1462,7 +1462,7 @@ export default function DirectoryView({
 
                                   {bannerImage && (
                                     <div className="h-28 w-full rounded-xl overflow-hidden relative">
-                                      <img
+                                      <img loading="lazy" decoding="async"
                                         src={bannerImage}
                                         alt={`${b.name} banner image`}
                                         referrerPolicy="no-referrer"
@@ -1576,7 +1576,7 @@ export default function DirectoryView({
                                   <div className="flex items-start gap-2.5">
                                     {b.logoUrl && (
                                       <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                                        <img
+                                        <img loading="lazy" decoding="async"
                                           src={b.logoUrl}
                                           alt={`${b.name} profile image`}
                                           referrerPolicy="no-referrer"
@@ -1617,7 +1617,7 @@ export default function DirectoryView({
 
                                   {cardImage && (
                                     <div className="h-24 w-full overflow-hidden rounded-lg bg-slate-100 border border-slate-100">
-                                      <img
+                                      <img loading="lazy" decoding="async"
                                         src={cardImage}
                                         alt={`${b.name} banner image`}
                                         referrerPolicy="no-referrer"
@@ -1814,7 +1814,7 @@ export default function DirectoryView({
                   </button>
 
                   {primaryListingImage(selectedBusiness) ? (
-                    <img
+                    <img loading="lazy" decoding="async"
                       src={primaryListingImage(selectedBusiness)}
                       alt={selectedBusiness.name}
                       referrerPolicy="no-referrer"
@@ -1875,7 +1875,7 @@ export default function DirectoryView({
                     <div className="flex items-start gap-3">
                       {selectedBusiness.logoUrl && (
                         <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                          <img
+                          <img loading="lazy" decoding="async"
                             src={selectedBusiness.logoUrl}
                             alt={`${selectedBusiness.name} profile image`}
                             referrerPolicy="no-referrer"
@@ -1952,7 +1952,7 @@ export default function DirectoryView({
                             <div className="grid grid-cols-3 gap-2">
                               {selectedBusiness.images.slice(1).map((img, i) => (
                                 <div key={i} className="h-20 rounded-xl overflow-hidden bg-slate-100">
-                                  <img
+                                  <img loading="lazy" decoding="async"
                                     src={img}
                                     alt={`${selectedBusiness.name} gallery ${i}`}
                                     referrerPolicy="no-referrer"
