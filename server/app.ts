@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import sharp from "sharp";
+import { listingImageVersion } from "./listingMedia";
 import express from "express";
 import dotenv from "dotenv";
 import Stripe from "stripe";
@@ -463,6 +465,13 @@ export function createApp(options: { dbPath?: string } = {}) {
     text: `We received a password reset request for ${businessName}.\n\nChoose a new owner password: ${resetUrl}\n\nThis link expires in 1 hour. If you did not request it, you can ignore this email.`,
   });
   const emailDeliveryTimeoutMs = () => Math.max(500, Number(process.env.EMAIL_DELIVERY_TIMEOUT_MS || 8000));
+  const petitionDatabaseTimeoutMs = () => Math.max(500, Number(process.env.PETITION_DATABASE_TIMEOUT_MS || 3500));
+  const withPetitionDatabaseTimeout = async <T>(operation: T | Promise<T>) => Promise.race([
+    Promise.resolve(operation),
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`Petition database operation timed out after ${petitionDatabaseTimeoutMs()}ms.`)), petitionDatabaseTimeoutMs());
+    }),
+  ]);
   const fetchWithEmailTimeout = (url: string, init: RequestInit) => fetch(url, {
     ...init,
     signal: AbortSignal.timeout(emailDeliveryTimeoutMs()),
@@ -1076,6 +1085,7 @@ export function createApp(options: { dbPath?: string } = {}) {
   };
 
   const siteUrl = SITE_URL;
+  const socialCrawlerUserAgentPattern = /(facebookexternalhit|Facebot|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|TelegramBot|Pinterestbot|Googlebot|bingbot)/i;
   const xmlEscape = (value: string) => value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -1102,7 +1112,7 @@ export function createApp(options: { dbPath?: string } = {}) {
   const businessSocialImageUrl = (business: NonNullable<Awaited<ReturnType<typeof findBusinessForSlug>>>) => {
     const image = firstBusinessImage(business);
     if (isPublicImageUrl(image)) return image;
-    if (isDataImageUrl(image)) return `${siteUrl}/api/social-image/business/${encodeURIComponent(businessSlug(business))}`;
+    if (isDataImageUrl(image)) return `${siteUrl}/social-image/business/${encodeURIComponent(businessSlug(business))}`;
     return DEFAULT_SOCIAL_IMAGE;
   };
   const buildDirectoryItemListSchema = (businesses: Awaited<ReturnType<typeof repository.listBusinesses>>) => ({
@@ -1258,6 +1268,9 @@ export function createApp(options: { dbPath?: string } = {}) {
     <meta property="og:url" content="${metaEscape(canonical)}" />
     <meta property="og:image" content="${metaEscape(image)}" />
     <meta property="og:image:secure_url" content="${metaEscape(image)}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="${metaEscape(title)}" />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${metaEscape(title)}" />
@@ -1278,6 +1291,8 @@ export function createApp(options: { dbPath?: string } = {}) {
     res.type("text/plain").send([
       "User-agent: *",
       "Allow: /",
+      "Allow: /social-image/",
+      "Allow: /api/social-image/",
       "Disallow: /api/",
       `Sitemap: ${siteUrl}/sitemap.xml`,
       "",
@@ -1447,7 +1462,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     }));
   });
 
-  app.get("/api/social-image/business/:slug", async (req, res) => {
+  app.get(["/api/social-image/business/:slug", "/social-image/business/:slug"], async (req, res) => {
     const business = await findBusinessForSlug(req.params.slug);
     const image = firstBusinessImage(business);
 
@@ -1470,8 +1485,8 @@ export function createApp(options: { dbPath?: string } = {}) {
     res.type(`image/${imageType}`).send(bytes);
   });
 
-  app.get("/api/share/business/:slug", async (req, res) => {
-    const business = await findBusinessForSlug(req.params.slug);
+  const sendBusinessShareHtml = async (slugParam: string, res: express.Response) => {
+    const business = await findBusinessForSlug(slugParam);
     if (!business) {
       return res.redirect(302, siteUrl);
     }
@@ -1510,7 +1525,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     };
 
     res.setHeader("cache-control", "public, max-age=0, s-maxage=3600");
-    res.type("html").send(renderShareHtml({
+    return res.type("html").send(renderShareHtml({
       title,
       description,
       canonical,
@@ -1520,6 +1535,20 @@ export function createApp(options: { dbPath?: string } = {}) {
       intro: description,
       schema,
     }));
+  };
+
+  app.get("/api/share/business/:slug", async (req, res) => {
+    return sendBusinessShareHtml(req.params.slug, res);
+  });
+
+  app.get("/business/:slug", async (req, res, next) => {
+    const userAgent = req.header("user-agent") || "";
+    if (!socialCrawlerUserAgentPattern.test(userAgent)) {
+      return next();
+    }
+
+    res.setHeader("vary", "User-Agent");
+    return sendBusinessShareHtml(req.params.slug, res);
   });
 
   app.get("/api/payment-config", (_req, res) => {
@@ -1564,6 +1593,16 @@ export function createApp(options: { dbPath?: string } = {}) {
       console.error("Admin login error:", error);
       return res.status(500).json({ error: "We could not sign you in right now. Please try again." });
     }
+  });
+
+  app.post('/api/logout', (_req, res) => {
+    const suffix = `HttpOnly; Path=/; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
+    res.setHeader('Set-Cookie', [
+      `${ownerCookieName}=; ${suffix}`,
+      `${adminCookieName}=; ${suffix}`,
+    ]);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ authenticated: false });
   });
 
   app.post("/api/admin/logout", (_req, res) => {
@@ -1645,23 +1684,37 @@ export function createApp(options: { dbPath?: string } = {}) {
 </html>`;
   };
 
+  app.get('/api/listing-images/:id/:slot/:version.webp', async (req, res) => {
+    const { id, slot, version } = req.params;
+    if (!/^(logo|[0-9]{1,2})$/.test(slot) || !/^[a-f0-9]{32}$/.test(version)) {
+      return res.status(404).end();
+    }
+    try {
+      const image = await repository.getPublicListingImage(id, slot);
+      if (!image || listingImageVersion(image) !== version) return res.status(404).end();
+      const bytes = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
+      const output = await sharp(bytes, { limitInputPixels: 40000000 })
+        .rotate().resize({ width: slot === 'logo' ? 320 : 1200, withoutEnlargement: true })
+        .webp({ quality: 80 }).toBuffer();
+      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      return res.type('image/webp').send(output);
+    } catch (error) {
+      console.error('Listing image unavailable:', error instanceof Error ? error.message : 'Unknown error');
+      return res.status(503).end();
+    }
+  });
+
   app.get("/api/bootstrap", async (_req, res) => {
     try {
-      const businesses = await repository.listBusinesses();
-      const reportedBugs = await repository.listBugs();
-      const businessList = Array.isArray(businesses) && businesses.length > 0
-        ? businesses
-        : INITIAL_BUSINESSES;
-      return res.json({
-        businesses: businessList,
-        reportedBugs: Array.isArray(reportedBugs) ? reportedBugs : [],
-      });
+      const [businesses, reportedBugs] = await Promise.all([
+        repository.listPublicBusinesses(), repository.listBugs(),
+      ]);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({ businesses, reportedBugs });
     } catch (error) {
       console.error("Bootstrap query error:", error);
-      return res.json({
-        businesses: INITIAL_BUSINESSES,
-        reportedBugs: [],
-      });
+      return res.status(503).json({ error: "The directory is temporarily unavailable. Please try again shortly." });
     }
   });
 
@@ -1691,7 +1744,23 @@ export function createApp(options: { dbPath?: string } = {}) {
 
     try {
       const contactId = await syncLegacyHillsPetitionSignatureViaGhl(signature);
-      const savedSignature = await repository.createLegacyHillsPetitionSignature({ ...signature, contactId });
+      let savedSignature;
+      try {
+        savedSignature = await withPetitionDatabaseTimeout(repository.createLegacyHillsPetitionSignature({ ...signature, contactId }));
+      } catch (databaseError) {
+        // GoHighLevel is the durable capture path for petition submissions. If the
+        // reporting database is temporarily unavailable (for example, a Neon
+        // quota suspension), do not tell the resident that a successful GHL
+        // capture failed. The next database recovery will restore admin reporting.
+        console.error("Legacy Hills petition database save failed after GHL capture:", databaseError);
+        savedSignature = {
+          ...signature,
+          contactId,
+          id: `ghl-${contactId}`,
+          signedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
       sendAdminPetitionSignatureNotification(savedSignature).catch((notificationError) => {
         console.error("Petition signature admin notification failed:", notificationError instanceof Error ? notificationError.message : String(notificationError));
       });
@@ -1703,7 +1772,13 @@ export function createApp(options: { dbPath?: string } = {}) {
   });
 
   app.get("/api/petitions/legacy-hills/signatures", async (_req, res) => {
-    const signatures = await repository.listLegacyHillsPetitionSignatures();
+    let signatures;
+    try {
+      signatures = await withPetitionDatabaseTimeout(repository.listLegacyHillsPetitionSignatures());
+    } catch (error) {
+      console.error("Legacy Hills petition list failed:", error);
+      return res.status(503).json({ error: "Petition signatures are temporarily unavailable. Please try again shortly." });
+    }
     const publicSignatures = signatures.map((signature) => ({
       id: signature.id,
       displayName: `${signature.firstName} ${signature.lastName ? `${signature.lastName.charAt(0)}.` : ''}`.trim(),
@@ -1715,7 +1790,13 @@ export function createApp(options: { dbPath?: string } = {}) {
   });
 
   app.get("/api/admin/petitions/legacy-hills/signatures", requireAdminToken, async (_req, res) => {
-    const signatures = await repository.listLegacyHillsPetitionSignatures();
+    let signatures;
+    try {
+      signatures = await withPetitionDatabaseTimeout(repository.listLegacyHillsPetitionSignatures());
+    } catch (error) {
+      console.error("Admin Legacy Hills petition list failed:", error);
+      return res.status(503).json({ error: "Petition reporting is temporarily unavailable. Please restore the database quota and try again." });
+    }
     return res.json({ signatures });
   });
 

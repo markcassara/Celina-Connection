@@ -6,6 +6,9 @@ import path from 'node:path';
 import { createServer as createHttpServer } from 'node:http';
 import { AddressInfo, createServer } from 'node:net';
 import Stripe from 'stripe';
+import sharp from 'sharp';
+import { CelinaRepository } from '../server/database.ts';
+import { listingImageUrl } from '../server/listingMedia.ts';
 
 import { createApp } from '../server/app.ts';
 import { CATEGORIES } from '../src/data/mockBusinesses.ts';
@@ -976,6 +979,7 @@ test('existing databases promote demo placeholders and connect Celina financial 
 
 test('directory copy uses friendly claim and removal request wording', () => {
   const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+  const cssSource = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf8');
 
   assert.match(directorySource, /Claim this listing/);
   assert.match(directorySource, /Request to remove this listing/);
@@ -1001,6 +1005,82 @@ test('directory listings include share buttons with copy-link fallback', () => {
   assert.match(directorySource, /navigator\.clipboard\.writeText\(url\)/);
   assert.match(directorySource, /share-listing-btn/);
   assert.match(directorySource, /Take a look at \$\{business\.name\} on Celina Connection/);
+});
+
+test('homepage is community-centric with directory and owner paths secondary', () => {
+  const directorySource = fs.readFileSync(path.join(process.cwd(), 'src/components/DirectoryView.tsx'), 'utf8');
+  const cssSource = fs.readFileSync(path.join(process.cwd(), 'src/index.css'), 'utf8');
+
+  assert.match(directorySource, /id=\{homeMode \? 'community-front-page-hero'/);
+  assert.match(directorySource, /Celina Connection local front page/);
+  assert.match(directorySource, /The people, places, and happenings that keep/);
+  assert.match(directorySource, /home-local-imagery-hero/);
+  assert.match(directorySource, /Celina Texas water tower overlooking town/);
+  assert.match(directorySource, /Friday night lights/);
+  assert.match(directorySource, /Bobcat community pulse/);
+  assert.match(directorySource, /home-community-news-ticker/);
+  assert.match(directorySource, /Community Wire/);
+  assert.match(directorySource, /home-category-shortcuts/);
+  assert.match(directorySource, /Open the local sections/);
+  assert.match(directorySource, /home-community-magazine-rails/);
+  assert.match(directorySource, /Latest happenings/);
+  assert.match(directorySource, /Networking close to home/);
+  assert.match(directorySource, /future Celina Connection magazine/);
+  assert.match(directorySource, /home-featured-local-picks/);
+  assert.match(directorySource, /Local spotlights, useful profiles, and places to know/);
+  assert.match(directorySource, /home-owner-claim-card/);
+  assert.match(directorySource, /Be part of the local story/);
+  assert.match(directorySource, /Events, offers, and future magazine features/);
+  assert.match(cssSource, /@keyframes home-news-ticker/);
+  assert.match(cssSource, /prefers-reduced-motion: reduce/);
+  assert.match(directorySource, /!homeMode && \(/);
+  assert.match(directorySource, /competitive-launch-banner/);
+});
+
+test('facebook crawler sees business banner metadata on public listing URLs', async () => {
+  const dbPath = makeDbPath('business-social-card');
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+  const bannerDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+
+  try {
+    await withServer(dbPath, async (baseUrl) => {
+      const createRes = await fetch(`${baseUrl}/api/businesses`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({
+          name: 'Celina Social Bakery',
+          category: 'Dining',
+          description: 'Fresh pastries and coffee on the square.',
+          phone: '(972) 555-4411',
+          email: 'hello@celinasocialbakery.com',
+          tier: 'basic',
+          isUnclaimed: false,
+          logoUrl: TEST_LOGO_URL,
+          images: [bannerDataUrl],
+        }),
+      });
+      assert.equal(createRes.status, 201);
+      const created = await createRes.json();
+
+      const crawlerRes = await fetch(`${baseUrl}/business/${created.slug}?ref=${created.id}`, {
+        headers: { 'user-agent': 'facebookexternalhit/1.1' },
+      });
+      assert.equal(crawlerRes.status, 200);
+      const html = await crawlerRes.text();
+      assert.match(html, /<meta property="og:title" content="Celina Social Bakery \| Celina Connection" \/>/);
+      assert.match(html, /<link rel="canonical" href="https:\/\/www\.celinaconnection\.com\/business\/celina-social-bakery" \/>/);
+      assert.match(html, /<meta property="og:image" content="https:\/\/www\.celinaconnection\.com\/social-image\/business\/celina-social-bakery" \/>/);
+      assert.match(html, /<meta property="og:image:width" content="1200" \/>/);
+      assert.match(html, /<meta property="og:image:height" content="630" \/>/);
+      assert.doesNotMatch(html, /\/api\/social-image\/business/);
+
+      const imageRes = await fetch(`${baseUrl}/social-image/business/${created.slug}`);
+      assert.equal(imageRes.status, 200);
+      assert.equal(imageRes.headers.get('content-type'), 'image/png');
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
 });
 
 test('admin-created listings default to free and Growth Credits includes referral sharing instructions', () => {
@@ -1404,8 +1484,8 @@ test('owner login supports password sign-in and owner-only safe profile updates'
     const bootstrap = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
     const persisted = bootstrap.businesses.find((business: any) => business.id === registered.business.id);
     assert.equal(persisted.address, '123 Main St, Celina, TX 75009');
-    assert.equal(persisted.logoUrl, 'data:image/png;base64,logo');
-    assert.deepEqual(persisted.images, ['data:image/png;base64,one']);
+    assert.equal(persisted.logoUrl, listingImageUrl(persisted.id, 'logo', 'data:image/png;base64,logo'));
+    assert.deepEqual(persisted.images, [listingImageUrl(persisted.id, '0', 'data:image/png;base64,one')]);
     });
   } finally {
     delete process.env.CELINA_EXPOSE_VERIFICATION_LINK;
@@ -1780,7 +1860,7 @@ test('public claim requests can be submitted and reviewed by admin session', asy
     await withServer(dbPath, async (baseUrl) => {
       const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
       const bootstrap = await bootstrapRes.json();
-      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed && business.logoUrl && business.images?.length);
       assert.ok(target);
 
       const createClaimRes = await fetch(`${baseUrl}/api/claims`, {
@@ -1839,7 +1919,7 @@ test('POST /api/businesses/:id/claim requires admin auth and works with a server
     await withServer(dbPath, async (baseUrl) => {
       const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
       const bootstrap = await bootstrapRes.json();
-      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed && business.logoUrl && business.images?.length);
       assert.ok(target);
 
       const unauthenticatedClaimRes = await fetch(`${baseUrl}/api/businesses/${target.id}/claim`, {
@@ -1876,7 +1956,7 @@ test('admin can assign listing owner access and reset owner passwords', async ()
     await withServer(dbPath, async (baseUrl) => {
       const bootstrapRes = await fetch(`${baseUrl}/api/bootstrap`);
       const bootstrap = await bootstrapRes.json();
-      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed);
+      const target = bootstrap.businesses.find((business: any) => business.isUnclaimed && business.logoUrl && business.images?.length);
       assert.ok(target);
 
       const weakPasswordRes = await fetch(`${baseUrl}/api/businesses/${target.id}`, {
@@ -2044,8 +2124,8 @@ test('admin listing updates persist large uploaded logo and image data', async (
       const afterRes = await fetch(`${baseUrl}/api/bootstrap`);
       const after = await afterRes.json();
       const persisted = after.businesses.find((business: any) => business.id === target.id);
-      assert.equal(persisted.logoUrl, logoUrl);
-      assert.deepEqual(persisted.images, [imageUrl]);
+      assert.equal(persisted.logoUrl, listingImageUrl(persisted.id, 'logo', logoUrl));
+      assert.deepEqual(persisted.images, [listingImageUrl(persisted.id, '0', imageUrl)]);
     });
   } finally {
     delete process.env.ADMIN_API_TOKEN;
@@ -2289,4 +2369,117 @@ test('bug endpoints create publicly, then update, delete, and reset with admin a
   } finally {
     delete process.env.ADMIN_API_TOKEN;
   }
+});
+
+
+test('public media loads separately, preserves originals during edits, and protects unverified photos', async () => {
+  const dbPath = makeDbPath('public-media');
+  const repository = new CelinaRepository(dbPath);
+  const pixels = await sharp({ create: { width: 1800, height: 1000, channels: 3, background: '#bf612b' } }).png().toBuffer();
+  const original = `data:image/png;base64,${pixels.toString('base64')}`;
+  const business = repository.createBusiness({ name: 'Media Test', category: 'Shopping & Retail', description: 'Media fixture', phone: '555-0100', email: 'media@example.invalid', tier: 'free', logoUrl: original, images: [original], emailVerified: true });
+  const hidden = repository.createBusiness({ name: 'Unverified Media', category: 'Shopping & Retail', description: 'Private fixture', phone: '555-0101', email: 'hidden@example.invalid', tier: 'free', logoUrl: original, images: [original], emailVerified: false });
+  process.env.ADMIN_API_TOKEN = ADMIN_TOKEN;
+  try {
+    await withServer(dbPath, async baseUrl => {
+      const response = await fetch(`${baseUrl}/api/bootstrap`);
+      const feed = await response.json();
+      const listing = feed.businesses.find((b: any) => b.id === business.id);
+      assert.ok(listing);
+      assert.ok(!feed.businesses.some((b: any) => b.id === hidden.id));
+      assert.ok(!JSON.stringify(listing).includes('data:image/'));
+      const photo = await fetch(`${baseUrl}${listing.images[0]}`);
+      assert.equal(photo.status, 200);
+      assert.match(photo.headers.get('content-type') || '', /image\/webp/);
+      assert.match(photo.headers.get('cache-control') || '', /s-maxage=86400/);
+      const rendered = Buffer.from(await photo.arrayBuffer());
+      assert.equal((await sharp(rendered).metadata()).width, 1200);
+      const logo = await fetch(`${baseUrl}${listing.logoUrl}`);
+      assert.equal((await sharp(Buffer.from(await logo.arrayBuffer())).metadata()).width, 320);
+      const changed = await fetch(`${baseUrl}/api/businesses/${business.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ description: 'Edited using public media references', logoUrl: listing.logoUrl, images: listing.images }),
+      });
+      assert.equal(changed.status, 200);
+      const saved = await changed.json();
+      assert.equal(saved.logoUrl, original);
+      assert.deepEqual(saved.images, [original]);
+      assert.equal((await fetch(`${baseUrl}${listing.images[0]}`)).status, 200);
+      const hiddenUrl = listingImageUrl(hidden.id, 'logo', original);
+      assert.equal((await fetch(`${baseUrl}${hiddenUrl}`)).status, 404);
+      assert.equal((await fetch(`${baseUrl}${listing.images[0].replace(/[a-f0-9]{32}/, '00000000000000000000000000000000')}`)).status, 404);
+      const newOriginal = `data:image/png;base64,${(await sharp(pixels).negate().png().toBuffer()).toString('base64')}`;
+      const replacement = await fetch(`${baseUrl}/api/businesses/${business.id}`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json', 'x-admin-token': ADMIN_TOKEN },
+        body: JSON.stringify({ images: [newOriginal] }),
+      });
+      assert.equal(replacement.status, 200);
+      const refreshed = await (await fetch(`${baseUrl}/api/bootstrap`)).json();
+      const newListing = refreshed.businesses.find((b: any) => b.id === business.id);
+      assert.notEqual(newListing.images[0], listing.images[0]);
+      assert.equal((await fetch(`${baseUrl}${listing.images[0]}`)).status, 404);
+      assert.equal((await fetch(`${baseUrl}${newListing.images[0]}`)).status, 200);
+    });
+  } finally {
+    delete process.env.ADMIN_API_TOKEN;
+  }
+});
+
+test('an expired verification can be resent and the owner can sign in after using the new link', async () => {
+  const dbPath = makeDbPath('expired-verification-recovery');
+  const repository = new CelinaRepository(dbPath);
+  const crypto = await import('node:crypto');
+  const salt = crypto.randomBytes(16).toString('hex');
+  const password = 'VerificationRecovery2026!';
+  const hash = `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`;
+  const expiredToken = 'expired-verification-fixture';
+  repository.createOwnedBusiness({ name: 'Verification Recovery', category: 'Professional Services', description: 'Recovery fixture', email: 'recovery@example.com', phone: '555-0100', tier: 'free', logoUrl: TEST_LOGO_URL, images: [TEST_COVER_URL] }, hash, {
+    tokenHash: crypto.createHash('sha256').update(expiredToken).digest('hex'), expiresAt: '2020-01-01T00:00:00.000Z',
+  });
+  await withFakeGhl(async (ghlBaseUrl, requests) => {
+    process.env.GHL_API_KEY = 'test-ghl-key';
+    process.env.GHL_LOCATION_ID = 'test-location-id';
+    process.env.GHL_API_BASE_URL = ghlBaseUrl;
+    try {
+      await withServer(dbPath, async baseUrl => {
+        const login = () => fetch(`${baseUrl}/api/owner/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'recovery@example.com', password }) });
+        assert.equal((await login()).status, 403);
+        assert.equal((await fetch(`${baseUrl}/api/owner/verify-email?token=${expiredToken}`)).status, 400);
+        const resend = await fetch(`${baseUrl}/api/owner/resend-verification`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'recovery@example.com' }) });
+        assert.equal(resend.status, 200);
+        const email = requests.find(request => request.url === '/conversations/messages');
+        assert.ok(email);
+        assert.equal(email.body.emailTo, 'recovery@example.com');
+        const token = email.body.html.match(/verify-email\?token=([a-f0-9]+)/)?.[1];
+        assert.ok(token);
+        assert.equal((await fetch(`${baseUrl}/api/owner/verify-email?token=${token}`)).status, 200);
+        const signedIn = await login();
+        assert.equal(signedIn.status, 200);
+        const cookie = signedIn.headers.get('set-cookie') || '';
+        assert.match(cookie, /HttpOnly/i);
+        assert.equal((await fetch(`${baseUrl}/api/owner/session`, { headers: { cookie } })).status, 200);
+      });
+    } finally {
+      delete process.env.GHL_API_KEY;
+      delete process.env.GHL_LOCATION_ID;
+      delete process.env.GHL_API_BASE_URL;
+    }
+  });
+});
+
+test('sign out expires both owner and admin session cookies', async () => {
+  await withServer(makeDbPath('logout-cookies'), async baseUrl => {
+    const response = await fetch(`${baseUrl}/api/logout`, { method: 'POST' });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { authenticated: false });
+    const cookies = response.headers.getSetCookie();
+    for (const name of ['celina_owner_session', 'celina_admin_session']) {
+      const cookie = cookies.find(value => value.startsWith(`${name}=`));
+      assert.ok(cookie);
+      assert.match(cookie, /Max-Age=0/);
+      assert.match(cookie, /Path=\//);
+      assert.match(cookie, /HttpOnly/);
+    }
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+  });
 });

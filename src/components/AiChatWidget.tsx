@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Sparkles, Building2, ExternalLink, HelpCircle, User } from 'lucide-react';
+import { MessageSquare, X, Send, Sparkles, ExternalLink, HelpCircle, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Business } from '../types';
 
@@ -22,6 +22,164 @@ const STARTER_PROMPTS = [
   "🛍️ Show me shopping and boutique options",
   "💼 Show me some Premium verified businesses"
 ];
+
+const BLOCK_START_PATTERN = /^(#{1,3}\s+|[-*•]\s+|\d+[.)]\s+)/;
+
+function renderInlineMarkdown(text: string, keyPrefix: string, isAi: boolean) {
+  const nodes: React.ReactNode[] = [];
+  const inlinePattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\)|https?:\/\/[^\s)]+|\*[^*]+\*)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = inlinePattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    const key = `${keyPrefix}-${match.index}`;
+
+    if (token.startsWith('**') && token.endsWith('**')) {
+      nodes.push(
+        <strong key={key} className={`font-extrabold ${isAi ? 'text-slate-950' : 'text-white'}`}>
+          {token.slice(2, -2)}
+        </strong>
+      );
+    } else if (token.startsWith('`') && token.endsWith('`')) {
+      nodes.push(
+        <code key={key} className={`rounded px-1.5 py-0.5 text-[0.92em] font-semibold ${isAi ? 'bg-slate-100 text-slate-800' : 'bg-white/20 text-white'}`}>
+          {token.slice(1, -1)}
+        </code>
+      );
+    } else if (token.startsWith('[')) {
+      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        nodes.push(
+          <a
+            key={key}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`font-bold underline underline-offset-2 ${isAi ? 'text-sky-700 hover:text-orange-600' : 'text-white hover:text-amber-100'}`}
+          >
+            {linkMatch[1]}
+          </a>
+        );
+      } else {
+        nodes.push(token);
+      }
+    } else if (token.startsWith('http')) {
+      nodes.push(
+        <a
+          key={key}
+          href={token}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`font-bold underline underline-offset-2 ${isAi ? 'text-sky-700 hover:text-orange-600' : 'text-white hover:text-amber-100'}`}
+        >
+          {token.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+        </a>
+      );
+    } else {
+      nodes.push(
+        <em key={key} className={isAi ? 'font-semibold text-slate-700' : 'font-semibold text-white'}>
+          {token.slice(1, -1)}
+        </em>
+      );
+    }
+
+    lastIndex = inlinePattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function renderMarkdownContent(text: string, isAi: boolean) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const blocks: React.ReactNode[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      blocks.push(
+        <h4 key={`heading-${index}`} className={`mt-2 first:mt-0 text-[13px] font-extrabold leading-snug ${isAi ? 'text-slate-950' : 'text-white'}`}>
+          {renderInlineMarkdown(heading[2], `heading-${index}`, isAi)}
+        </h4>
+      );
+      index += 1;
+      continue;
+    }
+
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const item = lines[index].trim().match(/^[-*•]\s+(.+)$/);
+        if (!item) break;
+        items.push(item[1]);
+        index += 1;
+      }
+      blocks.push(
+        <ul key={`ul-${index}`} className="my-2 space-y-1.5 pl-4">
+          {items.map((item, itemIndex) => (
+            <li key={`${item}-${itemIndex}`} className="pl-1 leading-relaxed marker:text-orange-500 marker:text-[0.85em]">
+              {renderInlineMarkdown(item, `ul-${index}-${itemIndex}`, isAi)}
+            </li>
+          ))}
+        </ul>
+      );
+      continue;
+    }
+
+    const ordered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (ordered) {
+      const items: string[] = [];
+      while (index < lines.length) {
+        const item = lines[index].trim().match(/^\d+[.)]\s+(.+)$/);
+        if (!item) break;
+        items.push(item[1]);
+        index += 1;
+      }
+      blocks.push(
+        <ol key={`ol-${index}`} className="my-2 space-y-1.5 pl-4 list-decimal">
+          {items.map((item, itemIndex) => (
+            <li key={`${item}-${itemIndex}`} className="pl-1 leading-relaxed marker:text-orange-500 marker:font-extrabold">
+              {renderInlineMarkdown(item, `ol-${index}-${itemIndex}`, isAi)}
+            </li>
+          ))}
+        </ol>
+      );
+      continue;
+    }
+
+    const paragraphLines = [line];
+    index += 1;
+    while (index < lines.length && lines[index].trim() && !BLOCK_START_PATTERN.test(lines[index].trim())) {
+      paragraphLines.push(lines[index].trim());
+      index += 1;
+    }
+
+    blocks.push(
+      <p key={`p-${index}`} className="leading-relaxed">
+        {renderInlineMarkdown(paragraphLines.join(' '), `p-${index}`, isAi)}
+      </p>
+    );
+  }
+
+  return <div className={`space-y-2 ${isAi ? 'text-slate-800' : 'text-white'}`}>{blocks}</div>;
+}
 
 export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -214,7 +372,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
                 return (
                   <div
                     key={msg.id}
-                    className={`flex items-start gap-2 max-w-[85%] ${
+                    className={`flex items-start gap-2 min-w-0 ${isAi ? 'max-w-[92%] sm:max-w-[88%]' : 'max-w-[84%] sm:max-w-[82%]'} ${
                       isAi ? 'self-start mr-auto' : 'self-end ml-auto flex-row-reverse'
                     }`}
                   >
@@ -223,23 +381,18 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
                     }`}>
                       {isAi ? <Sparkles className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
                     </div>
-                    <div className="space-y-1">
-                      <div className={`rounded-2xl px-4 py-2.5 text-xs font-medium leading-relaxed shadow-sm ${
+                    <div className="space-y-1 min-w-0">
+                      <div className={`rounded-2xl px-4 py-3 text-[13px] font-medium shadow-sm overflow-hidden ${
                         isAi 
-                          ? 'bg-white text-slate-800 border border-slate-100 rounded-tl-none' 
+                          ? 'bg-white text-slate-800 border border-slate-100 rounded-tl-none shadow-slate-200/80' 
                           : 'bg-gradient-to-br from-orange-500 to-amber-500 text-white rounded-tr-none'
                       }`}>
-                        {/* Custom Mini Markdown parsing */}
-                        <p className="whitespace-pre-line">
-                          {msg.text.split('**').map((part, index) => 
-                            index % 2 === 1 ? <strong key={index} className="font-black">{part}</strong> : part
-                          )}
-                        </p>
+                        {renderMarkdownContent(msg.text, isAi)}
 
                         {/* Search Grounding Citation Sources */}
                         {isAi && msg.sources && msg.sources.length > 0 && (
-                          <div className="mt-3 pt-2 border-t border-slate-100 space-y-1">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Grounding Sources:</span>
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1.5">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Sources</span>
                             <div className="flex flex-wrap gap-1">
                               {msg.sources.map((src, sIdx) => (
                                 <a
@@ -247,10 +400,10 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
                                   href={src.uri}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-[var(--cc-deep-navy)] font-semibold transition-colors text-[9px]"
+                                  className="inline-flex max-w-full items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-600 transition-colors hover:bg-orange-50 hover:text-orange-700"
                                   title={src.title}
                                 >
-                                  <span>{src.title.length > 20 ? src.title.substring(0, 18) + '...' : src.title}</span>
+                                  <span className="truncate">{src.title.length > 28 ? src.title.substring(0, 26) + '...' : src.title}</span>
                                   <ExternalLink className="w-2.5 h-2.5 text-slate-400" />
                                 </a>
                               ))}
