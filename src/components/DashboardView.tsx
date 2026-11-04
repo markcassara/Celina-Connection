@@ -304,6 +304,8 @@ export default function DashboardView({
   const [ownerLoginEmail, setOwnerLoginEmail] = useState('');
   const [ownerLoginPassword, setOwnerLoginPassword] = useState('');
   const [ownerLoginError, setOwnerLoginError] = useState('');
+  const [verificationMessage, setVerificationMessage] = useState('');
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [forgotPasswordMessage, setForgotPasswordMessage] = useState('');
   const [forgotPasswordError, setForgotPasswordError] = useState('');
   const [isSendingReset, setIsSendingReset] = useState(false);
@@ -461,6 +463,7 @@ export default function DashboardView({
   const handleOwnerLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setOwnerLoginError('');
+    setVerificationMessage('');
     if (!ownerLoginEmail || !ownerLoginEmail.trim() || !ownerLoginPassword) {
       setOwnerLoginError('Please enter your email and password.');
       return;
@@ -473,6 +476,23 @@ export default function DashboardView({
       setActiveSubTab('profile');
     } catch (error) {
       setOwnerLoginError(error instanceof Error ? error.message : 'We could not sign you in. Please check your email and password.');
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setVerificationMessage('');
+    if (!ownerLoginEmail.trim()) {
+      setOwnerLoginError('Please enter your registered business email first.');
+      return;
+    }
+    setIsResendingVerification(true);
+    try {
+      const result = await api.ownerResendVerification(ownerLoginEmail.trim());
+      setVerificationMessage(result.message);
+    } catch (error) {
+      setVerificationMessage(error instanceof Error ? error.message : 'We could not send a new link. Please try again.');
+    } finally {
+      setIsResendingVerification(false);
     }
   };
 
@@ -1263,6 +1283,12 @@ export default function DashboardView({
                 </div>
 
 	                {ownerLoginError && <p className="text-rose-600 text-[11px] font-semibold leading-normal">{ownerLoginError}</p>}
+                  <button type="button" onClick={handleResendVerification} disabled={isResendingVerification}
+                    className="text-[11px] font-bold text-[var(--cc-copper)] disabled:opacity-50">
+                    {isResendingVerification ? 'Sending verification email…' : 'Resend verification email'}
+                  </button>
+                  {verificationMessage && <p role="status" className="text-slate-600 text-[11px] font-semibold leading-normal">{verificationMessage}</p>}
+
 
 	                <button
 	                  type="button"
@@ -3592,7 +3618,14 @@ function AdminDashboardView({
     }
   }, [adminActiveTab, loadPetitionSignatures]);
 
-  const handleLocalLogout = () => {
+  const handleLocalLogout = async () => {
+    try {
+      await api.logout();
+    } catch {
+      window.alert('We could not sign you out. Please check your connection and try again.');
+      return;
+    }
+    localStorage.removeItem('celina_current_user');
     setCurrentUser({
       id: '',
       email: '',
