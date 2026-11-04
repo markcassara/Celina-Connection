@@ -220,6 +220,7 @@ export default function Header({
   };
 
   const getItemHref = (item: MenuItem) => {
+    if (item.isExternal && item.url) return item.url;
     const path = item.targetTab === 'home' ? '/' : `/${item.targetTab}`;
     return item.dashboardSection ? `${path}#dashboard-${item.dashboardSection}` : path;
   };
@@ -290,6 +291,10 @@ export default function Header({
                     id={`nav-btn-${item.id}`}
                     href={getItemHref(item)}
                     onClick={(e) => {
+                      if (item.isExternal) {
+                        setActiveDropdownId(null);
+                        return;
+                      }
                       e.preventDefault();
                       if (hasSub) {
                         setActiveDropdownId(isDropdownOpen ? null : item.id);
@@ -660,6 +665,10 @@ export default function Header({
                       <a
                         href={getItemHref(item)}
                         onClick={(e) => {
+                          if (item.isExternal) {
+                            setIsMobileMenuOpen(false);
+                            return;
+                          }
                           e.preventDefault();
                           handleMenuClick(item.targetTab, item.dashboardSection);
                         }}
