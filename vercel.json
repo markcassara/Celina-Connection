@@ -12,13 +12,34 @@
     }
   },
   "rewrites": [
-    { "source": "/api", "destination": "/api/route" },
-    { "source": "/api/(.*)", "destination": "/api/route" },
-    { "source": "/social-image/(.*)", "destination": "/api/route" },
-    { "source": "/sitemap.xml", "destination": "/api/route" },
-    { "source": "/server.cjs", "destination": "/api/not-found" },
-    { "source": "/server.cjs.map", "destination": "/api/not-found" },
-    { "source": "/images/mobile_service_van_(.*)", "destination": "/api/not-found" },
+    {
+      "source": "/api",
+      "destination": "/api/route"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/route"
+    },
+    {
+      "source": "/social-image/(.*)",
+      "destination": "/api/route"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/route"
+    },
+    {
+      "source": "/server.cjs",
+      "destination": "/api/not-found"
+    },
+    {
+      "source": "/server.cjs.map",
+      "destination": "/api/not-found"
+    },
+    {
+      "source": "/images/mobile_service_van_(.*)",
+      "destination": "/api/not-found"
+    },
     {
       "source": "/",
       "has": [
@@ -107,6 +128,9 @@
       ],
       "destination": "/api/share/business/:slug"
     },
-    { "source": "/((?!api/|api$|sitemap\\.xml$).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/|api$|sitemap\\.xml$).*)",
+      "destination": "/index.html"
+    }
   ]
 }
