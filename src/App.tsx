@@ -8,6 +8,7 @@ import PricingView from './components/PricingView';
 import LaunchView from './components/LaunchView';
 import DashboardView from './components/DashboardView';
 import EventsView from './components/EventsView';
+import NetworkingEventView from './components/NetworkingEventView';
 import LegacyHillsPetitionView from './components/LegacyHillsPetitionView';
 import LegacyHillsPetitionSignaturesView from './components/LegacyHillsPetitionSignaturesView';
 import PolicyView from './components/PolicyView';
@@ -304,6 +305,13 @@ function buildPageSeoConfig(activeTab: string, selectedBusiness: Business | null
         canonical: `${SITE_URL}/legacyhillspetition/signatures`,
         ogImage: DEFAULT_OG_IMAGE,
         noIndex: true,
+      };
+    case 'networking-event':
+      return {
+        title: 'Celina Connection Networking Event — Nov 23, 2026 | Celina Connection',
+        description: 'RSVP for the first Celina Connection Networking Event: Monday, November 23, 2026, 5:30–7:30 PM at Voodoo Brewing Company, 1440 W Frontier Pkwy, Prosper, TX.',
+        canonical: `${SITE_URL}/networking-event`,
+        ogImage: DEFAULT_OG_IMAGE,
       };
     case 'launch':
       return {
@@ -1128,6 +1136,10 @@ export default function App() {
             }}
             onPromoteEvent={handleEventPromotionCheckout}
           />
+        )}
+
+        {activeTab === 'networking-event' && (
+          <NetworkingEventView />
         )}
 
         {activeTab === 'legacyhillspetition-signatures' && (
