@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Business, Review, Tier } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
+import { CELINA_EVENTS } from '../data/mockEvents';
 import MapModal from './MapModal';
+import HeroPhotoBackdrop from './HeroPhotoBackdrop';
 import { countOutsideUserClaimedListings, hasRequiredListingVisuals, isNewListing } from '../lib/listingVisuals';
 import { api } from '../lib/api';
 import {
@@ -21,6 +23,7 @@ import {
   Instagram,
   Twitter,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   Check,
   ShieldAlert,
@@ -62,6 +65,11 @@ interface DirectoryViewProps {
 }
 
 const INLINE_AI_AUTO_COLLAPSE_MS = 30000;
+const HERO_STATEMENTS = [
+  'Find something local in Celina.',
+  'Meet your next favorite place in Celina.',
+  'See what is happening around Celina.',
+];
 
 export default function DirectoryView({
   businesses,
@@ -77,6 +85,7 @@ export default function DirectoryView({
   setActiveTab,
   homeMode = false,
 }: DirectoryViewProps) {
+  businesses = businesses.filter(business => business.tier !== 'pending');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(() => {
     if (typeof window === 'undefined') return 'All';
@@ -105,6 +114,10 @@ export default function DirectoryView({
     },
   ]);
   const [isInlineAiExpanded, setIsInlineAiExpanded] = useState(false);
+  const [heroStatementIndex, setHeroStatementIndex] = useState(0);
+  const [typedHeroStatement, setTypedHeroStatement] = useState('');
+  const [isDeletingHeroStatement, setIsDeletingHeroStatement] = useState(false);
+  const [prefersReducedMotion] = useState(() => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [copiedShareId, setCopiedShareId] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(() => {
     try {
@@ -114,13 +127,60 @@ export default function DirectoryView({
     }
   });
   const [likingIds, setLikingIds] = useState<Set<string>>(new Set());
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt: string } | null>(null);
   const inlineAiEndRef = useRef<HTMLDivElement>(null);
   const publicBusinesses = businesses.filter((business) => business.isUnclaimed || hasRequiredListingVisuals(business));
+  const activeHeroStatement = HERO_STATEMENTS[heroStatementIndex];
+
+  useEffect(() => {
+    if (!homeMode || prefersReducedMotion) {
+      if (homeMode && prefersReducedMotion && typedHeroStatement !== activeHeroStatement) {
+        setTypedHeroStatement(activeHeroStatement);
+      }
+      return;
+    }
+
+    const isComplete = typedHeroStatement === activeHeroStatement;
+    const isEmpty = typedHeroStatement.length === 0;
+    const delay = isDeletingHeroStatement ? 34 : isComplete ? 2300 : 62;
+    const timer = window.setTimeout(() => {
+      if (isComplete && !isDeletingHeroStatement) {
+        setIsDeletingHeroStatement(true);
+      } else if (isEmpty && isDeletingHeroStatement) {
+        setIsDeletingHeroStatement(false);
+        setHeroStatementIndex((current) => (current + 1) % HERO_STATEMENTS.length);
+      } else if (isDeletingHeroStatement) {
+        setTypedHeroStatement((current) => current.slice(0, -1));
+      } else {
+        setTypedHeroStatement(activeHeroStatement.slice(0, typedHeroStatement.length + 1));
+      }
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [activeHeroStatement, homeMode, isDeletingHeroStatement, prefersReducedMotion, typedHeroStatement]);
 
   const primaryListingImage = (business: Business) => (
     business.images?.find((image) => image.trim()) || business.logoUrl || ''
   );
+  const handleListingImageError = (event: React.SyntheticEvent<HTMLImageElement>, fallback = '/celina-water-tower-bg.jpg') => {
+    const image = event.currentTarget;
+    if (image.dataset.fallbackApplied === 'true') {
+      image.style.display = 'none';
+      return;
+    }
+    image.dataset.fallbackApplied = 'true';
+    image.src = fallback;
+  };
   const listingUrl = (business: Business) => `${window.location.origin}/business/${business.slug || business.id}?ref=${encodeURIComponent(business.id)}`;
+
+  useEffect(() => {
+    if (!lightboxImage) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLightboxImage(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [lightboxImage]);
 
   useEffect(() => {
     const ref = new URLSearchParams(window.location.search).get('ref');
@@ -495,8 +555,8 @@ export default function DirectoryView({
       title: 'Events',
       category: 'Events & Venues',
       icon: <CalendarDays className="h-5 w-5" />,
-      prompt: 'Venues, meetups, markets, and things to put on the calendar',
-      count: publicBusinesses.filter(b => b.category === 'Events & Venues').length,
+      prompt: 'Explore community gatherings, markets, and local events',
+      count: CELINA_EVENTS.length,
     },
     {
       title: 'Health',
@@ -533,41 +593,17 @@ export default function DirectoryView({
     {
       icon: <Newspaper className="h-5 w-5" />,
       title: 'Latest happenings',
-      copy: 'A front-page rail for markets, grand openings, school fundraisers, city moments, and the local updates people usually hunt for in scattered posts.',
+      copy: 'Markets, grand openings, school fundraisers, city moments, and local updates worth knowing about.',
     },
     {
       icon: <UsersRound className="h-5 w-5" />,
       title: 'Networking close to home',
-      copy: 'A warmer path for business owners, residents, and local leaders to find each other before they need a transaction.',
+      copy: 'A simple way for business owners, residents, and local leaders to find one another and stay connected.',
     },
     {
       icon: <BookOpen className="h-5 w-5" />,
-      title: 'Magazine-ready stories',
-      copy: 'The structure can grow into seasonal guides, neighborhood features, local interviews, and a future Celina Connection magazine.',
-    },
-  ];
-
-  const homeHeroStories = [
-    {
-      title: 'Friday night lights',
-      label: 'Bobcat community pulse',
-      copy: 'Football, school pride, and the kind of weeknight rhythm that makes Celina feel shared.',
-      image: '/celina-water-tower-bg.jpg',
-      icon: <Award className="h-4 w-4" />,
-    },
-    {
-      title: 'On the Square',
-      label: 'Local places',
-      copy: homeFeaturedListings[0]?.name ? `${homeFeaturedListings[0].name} and nearby storefronts residents keep in their regular rotation.` : 'Downtown storefronts, familiar faces, and places residents keep in their regular rotation.',
-      image: homeFeaturedListings[0] ? primaryListingImage(homeFeaturedListings[0]) : '/celina-water-tower-bg.jpg',
-      icon: <MapPin className="h-4 w-4" />,
-    },
-    {
-      title: 'Community calendar',
-      label: 'Happenings',
-      copy: 'Markets, movie nights, grand openings, fundraisers, and family-friendly moments worth putting on the calendar.',
-      image: homeFeaturedListings[1] ? primaryListingImage(homeFeaturedListings[1]) : '/celina-water-tower-bg.jpg',
-      icon: <CalendarDays className="h-4 w-4" />,
+      title: 'Local stories worth sharing',
+      copy: 'Discover seasonal guides, neighborhood features, local interviews, and stories from around Celina.',
     },
   ];
 
@@ -649,7 +685,7 @@ export default function DirectoryView({
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700 uppercase tracking-wide border border-emerald-200">
-            Free Listing
+            Legacy Listing
           </span>
       );
     }
@@ -701,63 +737,44 @@ export default function DirectoryView({
   };
 
   return (
-    <div className={`${homeMode ? 'space-y-7 py-4 sm:py-6' : 'space-y-8 py-6'}`}>
-      {/* Competitive Free Claim Banner */}
+    <div className={`${homeMode ? 'space-y-7 pt-0 pb-4 sm:pb-6' : 'space-y-8 py-6'}`}>
       {!homeMode && (
-      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-orange-200/60 rounded-3xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 text-xs font-semibold text-slate-800 shadow-sm" id="competitive-launch-banner">
-        <div className="flex items-start gap-3">
-          <span className="flex h-3 w-3 relative mt-0.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-          </span>
-          <div>
-            <p className="font-display font-extrabold text-[var(--cc-deep-navy)] text-sm">🔥 Celina Connection Competitive Launch</p>
-            <p className="text-slate-500 font-medium text-[11px] mt-0.5 leading-relaxed">
-              FREE listing slots are strictly capped for the first 100 businesses. Claim your local business profile today to secure a lifetime free listing.
-            </p>
-          </div>
+        <div className="rounded-3xl border border-orange-200 bg-orange-50 p-5 flex flex-wrap items-center justify-between gap-4">
+          <div><h2 className="font-bold">Put your business on the Celina map</h2><p>Paid listings start at $6/month or $60/year. Payment is required to activate a new listing.</p></div>
+          <button onClick={() => setActiveTab?.('pricing')} className="rounded-xl bg-orange-500 px-5 py-3 font-bold">View paid plans</button>
         </div>
-        <div className="flex items-center gap-3.5 w-full md:w-auto justify-between md:justify-start flex-shrink-0">
-          <div className="bg-white border border-orange-200/80 px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-sm">
-            <span className="text-orange-700 font-black text-sm tracking-tight">{claimedBasicCount}/100</span>
-            <span className="text-slate-600 font-semibold text-[9px] uppercase tracking-wider">Listings Claimed</span>
-          </div>
-          {claimedBasicCount >= 100 ? (
-            <span className="text-red-600 text-xs font-bold bg-red-50 border border-red-200 px-3 py-2 rounded-xl">ALL FREE SLOTS CLAIMED</span>
-          ) : (
-            <button
-              onClick={() => setActiveTab?.('dashboard')}
-              className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl hover:from-orange-600 hover:to-amber-600 transition-colors cursor-pointer shadow-sm shadow-orange-100"
-            >
-            Claim Your Free Spot
-          </button>
-          )}
-        </div>
-      </div>
       )}
 
       {/* Search and Hero Area */}
-      <div className={`${isInlineAiExpanded ? 'min-h-[410px]' : ''} relative overflow-hidden ${homeMode ? 'rounded-2xl sm:rounded-3xl p-4 sm:p-7 md:p-9' : 'rounded-3xl p-5 sm:p-7 md:p-9'} ${homeMode ? 'bg-gradient-to-br from-[#fef7ec] via-white to-[#e8f4f2] text-[var(--cc-deep-navy)] border border-orange-100' : 'bg-gradient-to-br from-[var(--cc-deep-navy)] via-[#1b4a78] to-[#143a63] text-white'} shadow-md flex`} id={homeMode ? 'community-front-page-hero' : undefined}>
-        <div className={`absolute inset-0 pointer-events-none ${homeMode ? 'bg-[linear-gradient(135deg,rgba(249,115,22,0.08),transparent_40%,rgba(20,83,45,0.08))]' : 'bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent'}`} />
-        <div className={`relative z-10 w-full ${homeMode ? 'grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.82fr)] lg:items-stretch' : 'flex flex-col space-y-4'}`}>
-          <div className="flex min-w-0 flex-col space-y-4">
+      <div>
+      <div className={`${isInlineAiExpanded ? 'min-h-[410px]' : ''} relative overflow-visible ${homeMode ? 'left-1/2 min-h-[560px] w-screen -translate-x-1/2 rounded-none border-y border-white/10 px-4 py-10 sm:min-h-[600px] sm:px-8 sm:py-16 lg:min-h-[640px] lg:px-12 lg:py-20' : 'rounded-3xl p-5 sm:p-7 md:p-9'} ${homeMode ? 'bg-[var(--cc-deep-navy)] text-white' : 'bg-gradient-to-br from-[var(--cc-deep-navy)] via-[#1b4a78] to-[#143a63] text-white'} shadow-md flex`} id={homeMode ? 'community-front-page-hero' : undefined}>
+        {homeMode && <HeroPhotoBackdrop />}
+        <div className={`absolute inset-0 pointer-events-none ${homeMode ? 'bg-[linear-gradient(90deg,rgba(4,22,42,0.80)_0%,rgba(7,36,65,0.62)_44%,rgba(7,36,65,0.38)_100%),radial-gradient(ellipse_at_82%_18%,rgba(249,115,22,0.18),transparent_34%)]' : 'bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent'}`} />
+        <div className={`relative z-10 w-full ${homeMode ? 'mx-auto flex max-w-5xl flex-col items-center text-center' : 'flex flex-col space-y-4'}`}>
+          <div className={`flex min-w-0 flex-col space-y-4 ${homeMode ? 'w-full items-center' : ''}`}>
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
             <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${homeMode ? 'bg-white/80 text-orange-700 border border-orange-200 shadow-sm' : 'bg-orange-500/20 text-orange-300 border border-orange-500/30'}`}>
-              <MapPin className={`w-3.5 h-3.5 ${homeMode ? 'text-orange-600' : 'text-orange-400'}`} /> {homeMode ? 'Celina Connection local front page' : 'Celina, Texas'}
+              <MapPin className={`w-3.5 h-3.5 ${homeMode ? 'text-orange-600' : 'text-orange-400'}`} /> {homeMode ? 'Celina, Texas' : 'Celina, Texas'}
             </span>
           </motion.div>
           <motion.h2
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className={`font-display text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight ${homeMode ? 'text-[var(--cc-deep-navy)]' : 'text-white'}`}
+            className={`font-display text-3xl font-extrabold tracking-tight leading-tight text-white sm:text-5xl ${homeMode ? 'min-h-[4em] max-w-4xl text-center sm:min-h-[1.35em]' : ''}`}
+            aria-label={homeMode ? activeHeroStatement : undefined}
           >
             {homeMode ? (
-              <>The people, places, and happenings that keep <span className="text-orange-600">Celina connected</span>.</>
+              <>
+                {typedHeroStatement.includes('Celina') ? (
+                  <>{typedHeroStatement.split('Celina')[0]}<span className="text-orange-400">Celina</span>{typedHeroStatement.split('Celina').slice(1).join('Celina')}</>
+                ) : typedHeroStatement}
+                {!prefersReducedMotion && <span aria-hidden="true" className="ml-1 inline-block h-[0.9em] w-[0.08em] translate-y-[0.08em] animate-pulse bg-orange-400" />}
+              </>
             ) : (
               <>Connect with the Best of <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">Celina</span></>
             )}
@@ -766,29 +783,32 @@ export default function DirectoryView({
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className={`${homeMode ? 'text-slate-700' : 'text-slate-300'} text-sm sm:text-base leading-relaxed max-w-2xl`}
+            className={`max-w-2xl text-sm leading-relaxed text-slate-200 sm:text-base ${homeMode ? 'text-center' : ''}`}
           >
             {homeMode
-              ? 'A softer local front page for finding trusted businesses, seeing what is new around town, discovering upcoming moments, and making the everyday connections that help a community feel like home.'
+              ? 'Search local businesses, events, places, and things to do around town.'
               : 'Explore our rich community directory, discover local treasures on the Square, or register your own business and grow your Celina reach today.'}
           </motion.p>
 
-          {/* Hero Quick Stats Bar */}
+          {/* Hero credibility / browse paths */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.25 }}
-            className={`flex flex-wrap items-center gap-2 pt-1 text-xs font-semibold ${homeMode ? 'text-slate-600' : 'text-slate-300'}`}
+            className="pt-1 text-sm font-semibold text-slate-200"
           >
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold ${homeMode ? 'bg-white/80 border border-orange-100 text-orange-700 shadow-sm' : 'bg-white/10 border border-white/10 text-amber-300'}`}>
-              <Check className="w-3.5 h-3.5 text-emerald-400" /> {publicBusinesses.length} Local Listings
-            </div>
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold ${homeMode ? 'bg-white/80 border border-emerald-100 text-emerald-800 shadow-sm' : 'bg-white/10 border border-white/10 text-slate-200'}`}>
-              <HeartHandshake className="w-3.5 h-3.5 text-emerald-500" /> Community Guide
-            </div>
-            <div className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold ${homeMode ? 'bg-white/80 border border-sky-100 text-slate-700 shadow-sm' : 'bg-white/10 border border-white/10 text-orange-200'}`}>
-              <Newspaper className={`w-3.5 h-3.5 ${homeMode ? 'text-sky-700' : 'text-orange-300'}`} /> Happenings, People & Places
-            </div>
+            {homeMode ? (
+              <span className="sr-only">{publicBusinesses.length} local businesses and fresh community events</span>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-bold text-amber-300">
+                  <Check className="h-3.5 w-3.5 text-emerald-400" /> {publicBusinesses.length} Local Listings
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-bold text-slate-200">
+                  <HeartHandshake className="h-3.5 w-3.5 text-emerald-500" /> Community Guide
+                </div>
+              </div>
+            )}
           </motion.div>
 
           {/* Blended Search + AI Chat Bar */}
@@ -796,47 +816,48 @@ export default function DirectoryView({
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3 }}
-            className={`${isInlineAiExpanded ? 'min-h-[220px] flex-1' : 'flex-none'} w-full pt-2 sm:pt-3 flex transition-all duration-300`}
+            className={`${isInlineAiExpanded ? 'h-[360px]' : 'flex-none'} w-full ${homeMode ? 'max-w-4xl' : 'max-w-none'} pt-2 sm:pt-3 flex transition-all duration-300`}
           >
             <div
               id="directory-inline-ai-chat"
-              className={`${isInlineAiExpanded ? 'min-h-full' : ''} w-full flex flex-col overflow-hidden rounded-[1.65rem] ${homeMode ? 'bg-white/85 text-slate-900 ring-1 ring-orange-100 shadow-sm' : 'bg-white/10 text-white ring-1 ring-white/10'} backdrop-blur-md`}
+              className={`w-full flex h-full flex-col overflow-hidden rounded-[1.65rem] ${homeMode ? 'bg-slate-100/95 text-slate-900 ring-2 ring-white/80 shadow-[0_24px_70px_rgba(2,20,40,0.34)]' : 'bg-white/10 text-white ring-1 ring-white/10'} backdrop-blur-md`}
             >
               {isAiEnabled && isInlineAiExpanded && (
-                <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-3 space-y-2 bg-transparent">
-                  <div className={`mb-1 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-widest ${homeMode ? 'text-orange-700' : 'text-orange-200/90'}`}>
+                <div className={`relative h-[250px] flex-none overflow-hidden px-3 sm:px-5 py-3 ${homeMode ? 'bg-slate-100/95' : 'bg-[var(--cc-deep-navy)]/20'}`}>
+                  <div className={`mb-1 flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-widest ${homeMode ? 'text-[var(--cc-deep-navy)]' : 'text-orange-200/90'}`}>
                     <span>Celina AI</span>
                     <button
                       type="button"
                       onClick={() => setIsInlineAiExpanded(false)}
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${homeMode ? 'bg-slate-100 text-slate-600 hover:bg-orange-100 hover:text-orange-700' : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'}`}
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${homeMode ? 'bg-white text-slate-700 ring-1 ring-slate-300 hover:bg-orange-50 hover:text-orange-700' : 'bg-white/10 text-white/80 hover:bg-white/20 hover:text-white'}`}
                       aria-label="Close Celina AI chat"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  {inlineAiMessages.map((msg) => {
+                  {inlineAiMessages.filter((msg) => msg.id !== 'welcome').slice(-4).map((msg, index, visibleMessages) => {
                     const isAi = msg.role === 'assistant';
                     const isWelcome = msg.id === 'welcome';
 
                     if (isWelcome) {
                       return (
-                        <div key={msg.id} className={`flex items-center gap-2 px-1.5 py-0.5 text-[11px] font-medium leading-relaxed ${homeMode ? 'text-slate-600' : 'text-slate-300'}`}>
+                        <div key={msg.id} className={`flex items-center gap-2 px-1.5 py-0.5 text-[11px] font-medium leading-relaxed ${homeMode ? 'text-slate-700' : 'text-slate-300'}`}>
                           <Sparkles className="h-3.5 w-3.5 text-orange-300 flex-shrink-0" />
                           <span>{msg.text}</span>
                         </div>
                       );
                     }
 
+                    const age = visibleMessages.length - index - 1;
                     return (
-                      <div key={msg.id} className={`flex ${isAi ? 'justify-start' : 'justify-end'}`}>
+                      <div key={msg.id} className={`absolute inset-x-3 top-12 sm:inset-x-5 flex transition-all duration-700 ease-out ${isAi ? 'justify-start' : 'justify-end'} ${age === 0 ? 'z-30 translate-y-0 scale-100 opacity-100' : age === 1 ? 'z-20 -translate-y-3 scale-[0.985] opacity-35' : age === 2 ? 'z-10 -translate-y-6 scale-[0.97] opacity-15' : 'z-0 -translate-y-9 scale-[0.95] opacity-0'}`}>
                         <div className={`flex items-start gap-2 max-w-[92%] ${isAi ? '' : 'flex-row-reverse'}`}>
                           <div className={`mt-0.5 h-6 w-6 rounded-full flex items-center justify-center flex-shrink-0 ${isAi ? (homeMode ? 'bg-orange-100 text-orange-700' : 'bg-white/10 text-orange-200') : 'bg-orange-500 text-white'}`}>
                             {isAi ? <Sparkles className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
                           </div>
                           <div className={`rounded-2xl px-3.5 py-2 text-xs font-medium leading-relaxed ${
                             isAi
-                              ? homeMode ? 'bg-slate-100 text-slate-700 rounded-tl-md' : 'bg-white/10 text-slate-100 rounded-tl-md'
+                              ? homeMode ? 'bg-white text-slate-800 ring-1 ring-slate-200 rounded-tl-md shadow-sm' : 'bg-white/10 text-slate-100 rounded-tl-md'
                               : 'bg-orange-500 text-white rounded-tr-md shadow-sm shadow-orange-950/20'
                           }`}>
                             {isAi ? renderFormattedAiText(msg.text) : <p>{msg.text}</p>}
@@ -852,21 +873,22 @@ export default function DirectoryView({
                         <span className="h-1.5 w-1.5 bg-orange-500 rounded-full animate-bounce [animation-delay:-0.15s]" />
                         <span className="h-1.5 w-1.5 bg-orange-500 rounded-full animate-bounce" />
                       </div>
-                      Celina AI is checking local listings...
+                      <span className={homeMode ? 'text-slate-700' : ''}>Celina AI is checking local listings...</span>
                     </div>
                   )}
                   <div ref={inlineAiEndRef} />
                 </div>
               )}
 
-              <div className={`flex flex-col sm:flex-row items-stretch gap-2 p-2 border-t ${homeMode ? 'bg-white/70 border-orange-100' : 'bg-white/10 border-white/10'}`}>
+              <div className={`flex flex-col sm:flex-row items-stretch gap-2 p-2 border-t ${homeMode ? 'bg-white border-slate-200' : 'bg-white/10 border-white/10'}`}>
                 <div className="relative flex-grow">
                   <Search className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 ${homeMode ? 'text-orange-500' : 'text-orange-200'}`} />
                   <input
                     type="text"
                     id="search-input"
-                    placeholder={isAiEnabled ? "Ask about Celina happenings, people, places..." : "Search dining, boutique shops, home services..."}
+                    placeholder={homeMode ? "Search businesses, events, or categories..." : isAiEnabled ? "Ask about Celina happenings, people, places..." : "Search dining, boutique shops, home services..."}
                     value={searchTerm}
+                    onFocus={() => setIsInlineAiExpanded(true)}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
                       if (!e.target.value) {
@@ -876,11 +898,11 @@ export default function DirectoryView({
                       }
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && isAiEnabled) {
+                      if (e.key === 'Enter' && (homeMode || isAiEnabled)) {
                         handleAiSearch();
                       }
                     }}
-                    className="w-full pl-11 pr-4 py-3.5 bg-white/90 text-[var(--cc-deep-navy)] rounded-[1.35rem] font-medium placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm border border-white/20"
+                    className="w-full pl-11 pr-4 py-3.5 bg-white text-[var(--cc-deep-navy)] rounded-[1.35rem] font-medium placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-300 text-sm border border-slate-200 shadow-sm"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -892,13 +914,13 @@ export default function DirectoryView({
                         setAiSearchInsights(null);
                         setAiMatchingIds(null);
                       }}
-                      className="px-3 py-3.5 bg-white/15 hover:bg-white/25 text-[10px] font-bold text-white rounded-[1.35rem] cursor-pointer flex items-center gap-1 transition-all"
+                      className={`px-3 py-3.5 rounded-[1.35rem] cursor-pointer flex items-center gap-1 transition-all text-[10px] font-bold ${homeMode ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-white/15 hover:bg-white/25 text-white'}`}
                     >
                       <X className="w-3 h-3" />
                       Clear
                     </button>
                   )}
-                  {isAiEnabled && (
+                  {(isAiEnabled || homeMode) && (
                     <button
                       type="button"
                       id="ai-search-insights-btn"
@@ -912,14 +934,14 @@ export default function DirectoryView({
                       title="Ask Celina AI and filter matching listings"
                     >
                       <Send className={`w-3.5 h-3.5 ${isAiSearching ? 'animate-pulse' : ''}`} />
-                      <span>{isAiSearching ? 'Thinking...' : 'Ask'}</span>
+                      <span>{isAiSearching ? 'Searching...' : 'Ask Celina'}</span>
                     </button>
                   )}
                 </div>
               </div>
 
               {/* Trending Quick Search Chips */}
-              <div className={`flex flex-wrap items-center gap-1.5 px-3.5 pb-2.5 pt-1 text-[11px] border-t ${homeMode ? 'border-orange-100' : 'border-white/5'}`}>
+              <div className={`flex flex-wrap items-center gap-1.5 px-3.5 pb-2.5 pt-1 text-[11px] border-t ${homeMode ? 'border-slate-200 bg-slate-50' : 'border-white/5'}`}>
                 <span className={`${homeMode ? 'text-slate-600' : 'text-slate-300'} font-bold tracking-wide uppercase text-[9px] mr-1 flex items-center gap-1`}>
                   <Sparkles className="w-2.5 h-2.5 text-amber-300" /> Trending:
                 </span>
@@ -946,6 +968,29 @@ export default function DirectoryView({
               </div>
             </div>
           </motion.div>
+          {homeMode && (
+            <div className="w-full max-w-3xl pt-5 sm:pt-7">
+              <p className="text-xs font-semibold text-white/75 sm:text-sm">Just looking around? Use quick search by category:</p>
+              <nav aria-label="Browse local categories" className="mt-4 flex max-w-full items-start justify-center gap-6 overflow-x-auto px-1 pb-1 sm:gap-10">
+                {[
+                  { label: 'Restaurants', icon: <Utensils className="h-8 w-8" />, action: () => handleHomeCategoryClick('Dining') },
+                  { label: 'Home services', icon: <Wrench className="h-8 w-8" />, action: () => handleHomeCategoryClick('Home Services') },
+                  { label: 'Shopping', icon: <ShoppingBag className="h-8 w-8" />, action: () => handleHomeCategoryClick('Shopping') },
+                  { label: 'Health', icon: <Stethoscope className="h-8 w-8" />, action: () => handleHomeCategoryClick('Health & Wellness') },
+                  { label: 'Events', icon: <CalendarDays className="h-8 w-8" />, action: () => setActiveTab?.('events') },
+                ].map((category) => (
+                  <button key={category.label} type="button" onClick={category.action} aria-label={`Browse ${category.label}`} title={`Browse ${category.label}`} className="group inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white/80 transition hover:text-white">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-sky-300/50 bg-sky-400/10 text-sky-300 transition group-hover:-translate-y-1 group-hover:border-orange-300 group-hover:bg-orange-400/15 group-hover:text-orange-200">
+                      {category.icon}
+                    </span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          )}
+          {homeMode && (
+            <p className="pt-1 text-xs font-semibold text-white/70">Explore trusted local businesses, upcoming events, and community favorites.</p>
+          )}
           </div>
 
           {homeMode && (
@@ -953,60 +998,64 @@ export default function DirectoryView({
               initial={{ opacity: 0, x: 18 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.55, delay: 0.2 }}
-              className="grid min-h-[360px] gap-3 sm:grid-cols-[1.2fr_0.8fr] lg:min-h-full"
+              className="hidden"
               id="home-local-imagery-hero"
             >
               <button
                 type="button"
-                onClick={() => setSearchTerm('Downtown Square')}
-                className="group relative min-h-[260px] overflow-hidden rounded-2xl border border-white/70 bg-slate-900 text-left shadow-sm"
+                onClick={() => homeFeaturedListings[0] ? onSelectBusiness(homeFeaturedListings[0]) : setActiveTab?.('events')}
+                aria-label={homeFeaturedListings[0] ? `Open ${homeFeaturedListings[0].name} business listing` : 'Open local events'}
+                className="group relative flex min-h-[360px] w-full flex-col overflow-hidden rounded-[1.75rem] border border-white/15 bg-white text-left shadow-2xl shadow-black/20"
               >
                 <img loading="lazy" decoding="async"
-                  src="/celina-water-tower-bg.jpg"
-                  alt="Celina Texas water tower overlooking town"
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  onError={(event) => handleListingImageError(event)}
+                  src={homeFeaturedListings[0] ? primaryListingImage(homeFeaturedListings[0]) : '/celina-water-tower-bg.jpg'}
+                  alt={homeFeaturedListings[0] ? `${homeFeaturedListings[0].name} featured local business` : 'Celina Texas water tower overlooking town'}
+                  className="relative h-48 w-full object-cover transition-transform duration-700 group-hover:scale-105 sm:h-56"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/18 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 text-white">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider backdrop-blur-sm">
-                    <Newspaper className="h-3.5 w-3.5 text-orange-200" /> Local front page
+                <div className="relative flex flex-1 flex-col justify-center bg-white p-5 sm:p-7">
+                  <span className="inline-flex w-fit items-center gap-2 rounded-full border border-orange-100 bg-orange-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-orange-700">
+                    <Star className="h-3.5 w-3.5 fill-orange-500 text-orange-500" /> Featured locally
                   </span>
-                  <h3 className="mt-3 font-display text-2xl font-black leading-tight">Start with the place people already recognize.</h3>
-                  <p className="mt-2 max-w-sm text-xs font-medium leading-relaxed text-white/85">
-                    The water tower, downtown, football nights, and local storefronts should make the page feel like Celina before anyone reads a sentence.
+                  <h3 className="mt-4 max-w-xl font-display text-2xl font-black leading-tight text-[var(--cc-deep-navy)] sm:text-3xl">
+                    {homeFeaturedListings[0]?.name || 'Discover what makes Celina special.'}
+                  </h3>
+                  <p className="mt-2 line-clamp-3 max-w-xl text-sm font-medium leading-relaxed text-slate-600">
+                    {homeFeaturedListings[0]?.description || 'Explore trusted businesses, upcoming events, and local favorites around town.'}
                   </p>
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm font-black text-orange-600 transition group-hover:text-orange-700">
+                    View featured business <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </span>
                 </div>
               </button>
-
-              <div className="grid gap-3">
-                {homeHeroStories.map((story) => (
-                  <button
-                    key={story.title}
-                    type="button"
-                    onClick={() => setSearchTerm(story.title)}
-                    className="group relative min-h-[112px] overflow-hidden rounded-2xl border border-white/70 bg-white text-left shadow-sm"
-                  >
-                    <img loading="lazy" decoding="async"
-                      src={story.image || '/celina-water-tower-bg.jpg'}
-                      alt={`${story.title} visual`}
-                      referrerPolicy="no-referrer"
-                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-r from-slate-950/78 via-slate-950/36 to-transparent" />
-                    <div className="relative z-10 flex h-full min-h-[112px] flex-col justify-end p-3.5 text-white">
-                      <span className="inline-flex w-fit items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-orange-100 backdrop-blur-sm">
-                        {story.icon}
-                        {story.label}
-                      </span>
-                      <h4 className="mt-2 font-display text-sm font-black leading-tight">{story.title}</h4>
-                      <p className="mt-1 line-clamp-2 text-[10px] font-semibold leading-snug text-white/80">{story.copy}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
             </motion.div>
           )}
         </div>
+      </div>
+
+      {homeMode && (
+        <section className="relative z-10 left-1/2 w-screen -translate-x-1/2 border-b border-orange-100/70 bg-[var(--cc-cream)] px-5 pb-9 pt-12 text-center sm:pb-11 sm:pt-14" aria-labelledby="home-discover-heading" id="home-discover-stripe">
+          <button
+            type="button"
+            aria-label="Explore Celina categories"
+            onClick={() => document.getElementById('home-category-shortcuts')?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'start' })}
+            className="absolute -top-8 left-1/2 flex h-12 w-36 -translate-x-1/2 items-start justify-center pt-3 text-orange-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-600"
+          >
+            <svg aria-hidden="true" viewBox="0 0 144 32" className="pointer-events-none absolute inset-x-0 top-0 h-8 w-full fill-[var(--cc-cream)]"><path d="M0 32 C30 32 36 0 72 0 C108 0 114 32 144 32 Z" /></svg>
+            <ChevronDown className="relative h-4 w-4" aria-hidden="true" />
+          </button>
+          <div className="mx-auto max-w-3xl">
+            <div className="relative isolate py-2">
+              <span aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 flex items-center justify-center whitespace-nowrap font-display text-[clamp(2rem,6vw,4.5rem)] font-black leading-none tracking-tight text-[var(--cc-deep-navy)]/[0.045]">AROUND TOWN</span>
+              <h2 id="home-discover-heading" className="font-display text-2xl font-black tracking-tight text-[var(--cc-deep-navy)] sm:text-3xl">Discover Celina</h2>
+            </div>
+            <div className="mx-auto mt-3 h-0.5 w-10 rounded-full bg-orange-500" />
+            <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-slate-600 sm:text-base">
+              Local businesses, community events, and places worth getting to know.
+            </p>
+          </div>
+        </section>
+      )}
       </div>
 
       {homeMode && (
@@ -1015,7 +1064,7 @@ export default function DirectoryView({
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--cc-deep-navy)] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white">
               <Megaphone className="h-3.5 w-3.5 text-orange-300" /> Community Wire
             </span>
-            <span className="text-[11px] font-bold text-slate-500">A future home for real local updates, events, and business announcements.</span>
+            <span className="text-[11px] font-bold text-slate-500">Local updates, events, and business news from around Celina.</span>
           </div>
           <div className="relative flex overflow-hidden py-2.5">
             <div className="home-news-ticker-track flex min-w-full shrink-0 items-center gap-3 px-3">
@@ -1033,14 +1082,14 @@ export default function DirectoryView({
         </div>
       )}
 
-      {searchTerm.trim() && (
+      {!homeMode && searchTerm.trim() && (
         <div className="rounded-2xl bg-gradient-to-r from-[var(--cc-deep-navy)] via-[#1b4a78] to-[var(--cc-deep-navy)] border border-slate-700 p-4 text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-200" id="search-claim-assistant-banner">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Search & Claim Assistant</p>
+              <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Directory search</p>
               <p className="text-sm font-bold text-white">
                 Searching for <span className="text-amber-300">"{searchTerm}"</span> in Celina Directory
               </p>
@@ -1049,7 +1098,7 @@ export default function DirectoryView({
                   ? `${filteredBusinesses.filter(b => b.isUnclaimed).length} unclaimed listing(s) matched. Click "Claim Now" on any card to activate instant owner access.`
                   : filteredBusinesses.length > 0
                   ? 'Matching businesses found! Click "Claim Now" or create a new listing if yours is missing.'
-                  : `No exact match found for "${searchTerm}". You can create your instant business listing in under 30 seconds!`}
+                  : `We couldn't find an exact match for "${searchTerm}". If you own this business, you can add it to the directory.`}
               </p>
             </div>
           </div>
@@ -1062,7 +1111,7 @@ export default function DirectoryView({
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 text-[var(--cc-deep-navy)] font-black text-xs shadow-md hover:from-amber-300 hover:to-orange-400 transition-all flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Create Listing for "{searchTerm}"</span>
+            <span>Add "{searchTerm}" to the directory</span>
           </button>
         </div>
       )}
@@ -1140,9 +1189,10 @@ export default function DirectoryView({
       ) : (
         <div className="space-y-4" id="home-category-shortcuts">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
+            <div className="relative">
+              <span aria-hidden="true" className="pointer-events-none absolute -top-5 left-0 select-none font-display text-5xl font-black uppercase tracking-[0.12em] text-[var(--cc-deep-navy)]/[0.045] sm:text-7xl">LOCAL</span>
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Around town</span>
-              <h3 className="font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Open the local sections</h3>
+              <h3 className="relative font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Open the local sections</h3>
             </div>
             <button
               type="button"
@@ -1158,7 +1208,7 @@ export default function DirectoryView({
               <button
                 key={card.title}
                 type="button"
-                onClick={() => handleHomeCategoryClick(card.category)}
+                onClick={() => card.title === 'Events' ? setActiveTab?.('events') : handleHomeCategoryClick(card.category)}
                 className="group min-h-[144px] rounded-xl bg-white border border-slate-200/80 p-3.5 text-left transition-all hover:border-orange-300 hover:shadow-sm cursor-pointer flex flex-col justify-between"
               >
                 <div className="space-y-2">
@@ -1173,7 +1223,7 @@ export default function DirectoryView({
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between text-[10px] font-black uppercase tracking-wide text-slate-500">
-                  <span>{card.count} listings</span>
+                  <span>{card.count} {card.title === 'Events' ? (card.count === 1 ? 'event' : 'events') : (card.count === 1 ? 'listing' : 'listings')}</span>
                   <ChevronRight className="w-3.5 h-3.5 text-orange-500 group-hover:translate-x-0.5 transition-transform" />
                 </div>
               </button>
@@ -1199,9 +1249,10 @@ export default function DirectoryView({
           {homeMagazineFeatures.length > 0 && (
             <section className="space-y-4" id="home-featured-local-picks">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
+                <div className="relative">
+                  <span aria-hidden="true" className="pointer-events-none absolute -top-5 left-0 select-none font-display text-5xl font-black uppercase tracking-[0.12em] text-[var(--cc-deep-navy)]/[0.045] sm:text-7xl">SPOTLIGHTS</span>
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">From the front page</span>
-                  <h3 className="font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Local spotlights, useful profiles, and places to know</h3>
+                  <h3 className="relative font-display text-xl sm:text-2xl font-black text-[var(--cc-deep-navy)] tracking-tight">Local spotlights, useful profiles, and places to know</h3>
                 </div>
                 <button
                   type="button"
@@ -1228,7 +1279,7 @@ export default function DirectoryView({
                     >
                       <div className="h-32 bg-slate-100">
                         {image ? (
-                          <img loading="lazy" decoding="async" src={image} alt={`${business.name} banner image`} referrerPolicy="no-referrer" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                          <img loading="lazy" decoding="async" src={image} alt={`${business.name} photo`} referrerPolicy="no-referrer" onError={(event) => handleListingImageError(event)} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                         ) : (
                           <div className="flex h-full items-center justify-center bg-orange-50 text-orange-700">
                             <Home className="h-8 w-8" />
@@ -1268,7 +1319,7 @@ export default function DirectoryView({
                   <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600">Neighbor notes</span>
                   <h3 className="font-display text-xl font-black tracking-tight text-[var(--cc-deep-navy)]">Recently claimed, updated, or ready to meet Celina</h3>
                   <p className="max-w-xl text-sm leading-relaxed text-slate-600">
-                    A healthy local front page should feel fresh. New profiles, updated hours, photos, events, and owner notes give people a reason to come back.
+                    New profiles, updated hours, photos, events, and owner notes keep this community guide useful and current.
                   </p>
                 </div>
                 <button
@@ -1289,7 +1340,7 @@ export default function DirectoryView({
                   >
                     <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white border border-slate-200">
                       {business.logoUrl ? (
-                        <img loading="lazy" decoding="async" src={business.logoUrl} alt={`${business.name} profile image`} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                        <img loading="lazy" decoding="async" src={business.logoUrl} alt={`${business.name} logo`} referrerPolicy="no-referrer" onError={(event) => handleListingImageError(event, '/images/celina-connection-logo.png')} className="h-full w-full object-cover" />
                       ) : (
                         <MapPin className="h-5 w-5 text-orange-500" />
                       )}
@@ -1308,10 +1359,10 @@ export default function DirectoryView({
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-700">Be part of the local story</span>
               <h3 className="mt-2 font-display text-xl font-black tracking-tight text-[var(--cc-deep-navy)]">Claim your place in Celina Connection.</h3>
               <p className="mt-3 text-sm leading-relaxed text-slate-700">
-                A listing is the foundation. From there, local businesses can share updates, promote happenings, build trust, and eventually appear in guides, offers, and magazine-style features.
+                A listing gives neighbors a clear way to find your business. From there, you can share updates, promote events, build trust, and be discovered by more local customers.
               </p>
               <div className="mt-4 space-y-2">
-                {['Free profile foundation', 'Community updates and networking path', 'Events, offers, and future magazine features'].map((item) => (
+                {['Paid business profile', 'Community updates and networking', 'Events and local customer discovery'].map((item) => (
                   <div key={item} className="flex items-center gap-2 text-xs font-bold text-slate-700">
                     <Check className="h-4 w-4 flex-shrink-0 text-orange-600" />
                     <span>{item}</span>
@@ -1332,18 +1383,18 @@ export default function DirectoryView({
             {[
               {
                 icon: <HeartHandshake className="h-5 w-5" />,
-                title: 'Connection before conversion',
-                copy: 'Residents should feel oriented first. Revenue follows when the site becomes trusted, useful, and habit-forming.',
+                title: 'Find what feels close to home',
+                copy: 'Start with useful local information, familiar places, and the people who make Celina feel welcoming.',
               },
               {
                 icon: <CalendarDays className="h-5 w-5" />,
-                title: 'Built for weekly visits',
-                copy: 'Latest happenings, seasonal guides, local offers, and newly updated profiles can turn one-time searches into a community rhythm.',
+                title: 'Something new to discover',
+                copy: 'Keep up with local happenings, seasonal guides, offers, and newly updated business profiles.',
               },
               {
                 icon: <Megaphone className="h-5 w-5" />,
-                title: 'Money without losing the soul',
-                copy: 'Premium placement, promoted events, sponsorships, guides, and magazine features can be introduced as useful local visibility.',
+                title: 'A better way to support local',
+                copy: 'Businesses can reach more neighbors through featured placement, promoted events, sponsorships, and local guides.',
               },
             ].map((section) => (
               <div key={section.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -1431,8 +1482,9 @@ export default function DirectoryView({
                                       <div className="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm">
                                         <img loading="lazy" decoding="async"
                                           src={b.logoUrl}
-                                          alt={`${b.name} profile image`}
+                                          alt={`${b.name} logo`}
                                           referrerPolicy="no-referrer"
+                                          onError={(event) => handleListingImageError(event, '/images/celina-connection-logo.png')}
                                           className="h-full w-full object-cover"
                                         />
                                       </div>
@@ -1464,8 +1516,9 @@ export default function DirectoryView({
                                     <div className="h-28 w-full rounded-xl overflow-hidden relative">
                                       <img loading="lazy" decoding="async"
                                         src={bannerImage}
-                                        alt={`${b.name} banner image`}
+                                        alt={`${b.name} photo`}
                                         referrerPolicy="no-referrer"
+                                        onError={(event) => handleListingImageError(event)}
                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                       />
                                     </div>
@@ -1578,8 +1631,9 @@ export default function DirectoryView({
                                       <div className="h-10 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
                                         <img loading="lazy" decoding="async"
                                           src={b.logoUrl}
-                                          alt={`${b.name} profile image`}
+                                          alt={`${b.name} logo`}
                                           referrerPolicy="no-referrer"
+                                          onError={(event) => handleListingImageError(event, '/images/celina-connection-logo.png')}
                                           className="h-full w-full object-cover"
                                         />
                                       </div>
@@ -1619,8 +1673,9 @@ export default function DirectoryView({
                                     <div className="h-24 w-full overflow-hidden rounded-lg bg-slate-100 border border-slate-100">
                                       <img loading="lazy" decoding="async"
                                         src={cardImage}
-                                        alt={`${b.name} banner image`}
-                                        referrerPolicy="no-referrer"
+                                    alt={`${b.name} photo`}
+                                    referrerPolicy="no-referrer"
+                                    onError={(event) => handleListingImageError(event)}
                                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                                       />
                                     </div>
@@ -1818,7 +1873,9 @@ export default function DirectoryView({
                       src={primaryListingImage(selectedBusiness)}
                       alt={selectedBusiness.name}
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
+                      onError={(event) => handleListingImageError(event)}
+                      onClick={() => setLightboxImage({ src: primaryListingImage(selectedBusiness), alt: selectedBusiness.name })}
+                      className="w-full h-full cursor-zoom-in object-cover"
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center">
@@ -1875,12 +1932,15 @@ export default function DirectoryView({
                     <div className="flex items-start gap-3">
                       {selectedBusiness.logoUrl && (
                         <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                          <button type="button" className="h-full w-full cursor-zoom-in" onClick={() => setLightboxImage({ src: selectedBusiness.logoUrl || '', alt: `${selectedBusiness.name} logo` })} aria-label={`View ${selectedBusiness.name} logo full size`}>
                           <img loading="lazy" decoding="async"
                             src={selectedBusiness.logoUrl}
-                            alt={`${selectedBusiness.name} profile image`}
+                            alt={`${selectedBusiness.name} logo`}
                             referrerPolicy="no-referrer"
+                            onError={(event) => handleListingImageError(event, '/images/celina-connection-logo.png')}
                             className="h-full w-full object-cover"
                           />
+                          </button>
                         </div>
                       )}
                       <div className="min-w-0">
@@ -1952,12 +2012,15 @@ export default function DirectoryView({
                             <div className="grid grid-cols-3 gap-2">
                               {selectedBusiness.images.slice(1).map((img, i) => (
                                 <div key={i} className="h-20 rounded-xl overflow-hidden bg-slate-100">
+                                  <button type="button" className="h-full w-full cursor-zoom-in" onClick={() => setLightboxImage({ src: img, alt: `${selectedBusiness.name} gallery ${i + 1}` })} aria-label={`View ${selectedBusiness.name} gallery image full size`}>
                                   <img loading="lazy" decoding="async"
                                     src={img}
-                                    alt={`${selectedBusiness.name} gallery ${i}`}
+                                    alt={`${selectedBusiness.name} gallery photo ${i + 1}`}
                                     referrerPolicy="no-referrer"
+                                    onError={(event) => handleListingImageError(event)}
                                     className="w-full h-full object-cover hover:scale-105 transition-transform"
                                   />
+                                  </button>
                                 </div>
                               ))}
                             </div>
@@ -2386,6 +2449,34 @@ export default function DirectoryView({
             business={selectedMapBusiness}
             onClose={() => setSelectedMapBusiness(null)}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {lightboxImage && (
+          <motion.div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setLightboxImage(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Expanded listing photo"
+          >
+            <button type="button" onClick={() => setLightboxImage(null)} className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/25" aria-label="Close expanded photo">
+              <X className="h-6 w-6" />
+            </button>
+            <motion.img
+              src={lightboxImage.src}
+              alt={lightboxImage.alt}
+              initial={{ scale: 0.94, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.94, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+              className="max-h-[92vh] max-w-[96vw] rounded-2xl object-contain shadow-2xl"
+            />
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
