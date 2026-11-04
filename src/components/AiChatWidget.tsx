@@ -384,7 +384,7 @@ export default function AiChatWidget({ businesses, isAiEnabled }: AiChatWidgetPr
                     <div className="space-y-1 min-w-0">
                       <div className={`rounded-2xl px-4 py-3 text-[13px] font-medium shadow-sm overflow-hidden ${
                         isAi 
-                          ? 'bg-white text-slate-800 border border-slate-100 rounded-tl-none shadow-slate-200/80' 
+                          ? 'bg-white text-slate-800 border border-slate-100 rounded-tl-none shadow-slate-200/80'
                           : 'bg-gradient-to-br from-orange-500 to-amber-500 text-white rounded-tr-none'
                       }`}>
                         {renderMarkdownContent(msg.text, isAi)}
