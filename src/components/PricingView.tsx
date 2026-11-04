@@ -26,7 +26,7 @@ interface PricingViewProps {
   onOpenLogin: () => void;
 }
 
-type PricingCardId = Tier | 'free';
+type PricingCardId = 'basic' | 'pro' | 'premium';
 
 export default function PricingView({
   currentUser,
@@ -36,11 +36,6 @@ export default function PricingView({
   const [billingCycle, setBillingCycle] = useState<'month' | 'year'>('year');
 
   const handleTierClick = (tier: PricingCardId) => {
-    if (tier === 'free') {
-      onOpenLogin();
-      return;
-    }
-
     if (!currentUser.isLoggedIn) {
       onOpenLogin();
     } else {
@@ -50,36 +45,11 @@ export default function PricingView({
 
   const pricingCards = [
     {
-      id: 'free' as PricingCardId,
-      name: 'Free Launch Listing',
-      price: 'Free',
-      period: 'first 100 listings',
-      description: 'A no-card-required starter listing for launch. Perfect for claiming a spot before choosing a paid visibility plan.',
-      icon: <Star className="w-6 h-6 text-emerald-500" />,
-      features: [
-        'Standard search placement',
-        'Basic contact info (Phone, Email)',
-        'Business description',
-        'Full street address with Map view',
-        '1 image upload',
-      ],
-      notIncluded: [
-        'Website link',
-        'Hours of operation',
-        'Review replies',
-        'Featured front-page placement',
-        'Gallery upgrades',
-      ],
-      color: 'border-emerald-200 hover:border-emerald-300 bg-emerald-50/30 text-[var(--cc-deep-navy)]',
-      buttonStyle: 'bg-emerald-600 text-white hover:bg-emerald-700',
-      buttonText: 'Claim Free Listing',
-    },
-    {
       id: 'basic' as PricingCardId,
       name: 'Local Pioneer (Basic)',
       price: billingCycle === 'year' ? '$60' : '$6',
       period: billingCycle === 'year' ? 'per year' : 'per month',
-      description: 'Standard paid directory listing. Keep the affordable $6/month entry tier available for businesses that want a paid presence.',
+      description: 'An affordable local presence with your website, business hours, and up to five photos.',
       icon: <Info className="w-6 h-6 text-slate-500" />,
       features: [
         'Standard search placement',
@@ -226,7 +196,7 @@ export default function PricingView({
           </span>
         </h2>
         <p className="text-slate-500 text-sm sm:text-base leading-relaxed">
-          Select a budget-friendly directory plan designed to list your business, attract customers, and display your brand perfectly. Upgrade or downgrade anytime.
+          Select a budget-friendly directory plan designed to list your business, attract customers, and display your brand perfectly. Choose monthly or annual billing.
         </p>
 
         {/* Dynamic Billing Switch */}
@@ -260,7 +230,7 @@ export default function PricingView({
       {/* Pricing Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 items-stretch" id="pricing-tiers-grid">
         {pricingCards.map((card) => {
-          const isCurrentTier = currentUser.isLoggedIn && card.id !== 'free' && currentUser.tier === card.id;
+          const isCurrentTier = currentUser.isLoggedIn && currentUser.tier === card.id;
           return (
             <motion.div
               key={card.id}
@@ -339,7 +309,7 @@ export default function PricingView({
                 </button>
                 {!currentUser.isLoggedIn && (
                   <p className="text-[10px] text-center mt-2 text-slate-400">
-                    Account registration is free and fast.
+                    A paid plan and confirmed payment are required to publish your listing.
                   </p>
                 )}
               </div>
