@@ -1,4 +1,4 @@
-export type Tier = 'free' | 'basic' | 'pro' | 'premium';
+export type Tier = 'free' | 'pending' | 'basic' | 'pro' | 'premium';
 
 export interface Review {
   id: string;
@@ -74,6 +74,8 @@ export interface Business {
   viewsCount?: number;
   votesCount?: number;
   growthCredits?: BusinessGrowthCredits;
+  notificationsEnabled?: boolean;
+  eventNotificationsEnabled?: boolean;
   isUnclaimed?: boolean;
   isRegistryOnly?: boolean;
   emailVerified?: boolean;
