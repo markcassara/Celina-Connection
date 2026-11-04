@@ -1702,6 +1702,33 @@ export function createApp(options: { dbPath?: string } = {}) {
     }
   });
 
+  app.post("/api/networking-event/rsvps", async (req, res) => {
+    const { name, business, email, guests, notes, company } = req.body || {};
+    if (company) return res.status(400).json({ error: "RSVP failed spam validation." });
+    if (!String(name || "").trim() || !String(business || "").trim()) {
+      return res.status(400).json({ error: "Name and business are required." });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || ""))) {
+      return res.status(400).json({ error: "A valid email is required." });
+    }
+    const guestCount = Math.min(20, Math.max(1, Number(guests) || 1));
+    const adminEmail = adminNotificationEmail();
+    if (adminEmail) {
+      const message: TransactionalEmailMessage = {
+        subject: `Networking Event RSVP: ${String(name).trim()} — ${String(business).trim()}`,
+        html: `<p>A new RSVP was submitted for the Celina Connection Networking Event (Monday, November 23, 2026, 5:30–7:30 PM, Voodoo Brewing Company).</p><p><strong>Name:</strong> ${emailHtmlEscape(String(name).trim())}<br /><strong>Business:</strong> ${emailHtmlEscape(String(business).trim())}<br /><strong>Email:</strong> ${emailHtmlEscape(String(email).trim())}<br /><strong>Attending:</strong> ${guestCount}</p><p><strong>Notes:</strong><br />${emailHtmlEscape(String(notes || "None"))}</p>`,
+        text: `A new RSVP was submitted for the Celina Connection Networking Event (Monday, November 23, 2026, 5:30–7:30 PM, Voodoo Brewing Company).\n\nName: ${String(name).trim()}\nBusiness: ${String(business).trim()}\nEmail: ${String(email).trim()}\nAttending: ${guestCount}\n\nNotes: ${String(notes || "None")}`,
+      };
+      try {
+        await sendOwnerEmailMessage(adminEmail, "Celina Connection Admin", message, "networking-event-rsvp", `${publicSiteUrl()}/networking-event`, parseGhlAdminNotificationTags());
+      } catch (error) {
+        console.error("Networking Event RSVP notification failed:", error instanceof Error ? error.message : String(error));
+        return res.status(503).json({ error: "We could not send your RSVP right now. Please try again shortly." });
+      }
+    }
+    return res.status(201).json({ ok: true });
+  });
+
   app.get("/api/petitions/legacy-hills/signatures", async (_req, res) => {
     const signatures = await repository.listLegacyHillsPetitionSignatures();
     const publicSignatures = signatures.map((signature) => ({
