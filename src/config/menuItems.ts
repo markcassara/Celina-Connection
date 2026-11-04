@@ -13,6 +13,8 @@ export interface MenuItem {
   isPrimary?: boolean;
   subItems?: MenuItemSubItem[];
   role?: 'public' | 'owner' | 'admin';
+  isExternal?: boolean;
+  url?: string;
 }
 
 export interface MenuItemSubItem {
@@ -56,9 +58,9 @@ export const PUBLIC_MENU_ITEMS: MenuItem[] = [
         label: 'Claim Your Listing',
         targetTab: 'directory',
         dashboardSection: 'unclaimed',
-        description: 'Verify your Celina business for free',
+        description: 'Choose a paid plan for your Celina business',
         icon: 'CheckCircle2',
-        badge: 'FREE',
+        badge: 'PLANS',
       },
     ],
   },
@@ -69,6 +71,18 @@ export const PUBLIC_MENU_ITEMS: MenuItem[] = [
     icon: 'Calendar',
     badge: 'July 2026',
     isPrimary: true,
+  },
+  {
+    id: 'growth-club',
+    label: 'Growth Club',
+    targetTab: 'launch',
+    icon: 'Award',
+    badge: 'NEW',
+    badgeColor: 'amber',
+    isPrimary: true,
+    isExternal: true,
+    url: 'https://celina-business-growth-club.mackcally.chatgpt.site',
+    description: 'Join the local business growth community',
   },
   {
     id: 'pricing',
