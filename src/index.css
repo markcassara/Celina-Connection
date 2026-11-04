@@ -30,3 +30,23 @@ body {
   font-optical-sizing: auto;
   letter-spacing: 0;
 }
+
+@keyframes home-news-ticker {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.home-news-ticker-track {
+  animation: home-news-ticker 34s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-news-ticker-track {
+    animation: none;
+  }
+}
