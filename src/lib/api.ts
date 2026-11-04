@@ -166,6 +166,15 @@ export const api = {
       method: 'POST',
     });
   },
+  updateOwnerNotificationSettings(id: string, payload: { notificationsEnabled: boolean; eventNotificationsEnabled: boolean }) {
+    return request<Business>(`/api/owner/businesses/${id}/notification-settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+  adminBugs() {
+    return request<{ reportedBugs: ReportedBug[] }>('/api/admin/bugs');
+  },
   createBug(payload: Omit<ReportedBug, 'id' | 'createdAt' | 'status'>) {
     return request<ReportedBug>('/api/bugs', {
       method: 'POST',
