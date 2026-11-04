@@ -1,0 +1,38 @@
+.celina-hero-photo-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.celina-hero-photo-layer {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+.celina-hero-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: var(--photo-mobile, 50% 50%);
+}
+
+@media (min-width: 640px) {
+  .celina-hero-photo-layer { inset: -20px 0; }
+  .celina-hero-photo { object-position: var(--photo-desktop, 50% 50%); }
+  /* The cupola is at the very top of this original: keep this one frame still,
+     cancelling its parent's movement and overscan while the other photos pan. */
+  .celina-hero-photo--roof {
+    top: 20px;
+    height: calc(100% - 40px);
+    transform: translateY(calc(0px - var(--hero-photo-offset, 0px)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .celina-hero-photo-layer { inset: 0; transform: none !important; will-change: auto; }
+  .celina-hero-photo--roof { top: 0; height: 100%; transform: none; }
+}
