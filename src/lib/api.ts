@@ -43,6 +43,9 @@ async function request<T>(url: string, init?: RequestInit) {
 }
 
 export const api = {
+  logout() {
+    return request<{ authenticated: false }>('/api/logout', { method: 'POST' });
+  },
   bootstrap() {
     return request<{ businesses: Business[]; reportedBugs: ReportedBug[] }>('/api/bootstrap');
   },
