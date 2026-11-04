@@ -59,7 +59,7 @@ const SITE_URL = 'https://www.celinaconnection.com';
 const SITE_NAME = 'Celina Connection';
 const BRAND_LOGO_PATH = '/images/celina-connection-logo.png';
 const DEFAULT_OG_IMAGE = `${SITE_URL}${BRAND_LOGO_PATH}`;
-const DEFAULT_DESCRIPTION = 'Find local restaurants, shops, services, events, and featured small businesses in Celina, Texas. Claim a free Celina business listing on Celina Connection.';
+const DEFAULT_DESCRIPTION = 'Find local restaurants, shops, services, events, and featured small businesses in Celina, Texas. Choose a paid business listing on Celina Connection.';
 
 type PageSeoConfig = {
   title: string;
@@ -150,7 +150,7 @@ function buildDirectorySchema(businessCount: number) {
             name: 'How can a Celina business claim a listing?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Celina business owners can claim a free listing on Celina Connection, add business details, and upgrade for premium placement, more photos, and enhanced directory features.',
+              text: 'Celina business owners can register for a paid Basic, Pro, or Premium listing. Email verification and confirmed payment are required before publication.',
             },
           },
         ],
@@ -279,7 +279,7 @@ function buildPageSeoConfig(activeTab: string, selectedBusiness: Business | null
     case 'pricing':
       return {
         title: 'Membership Tiers for Celina Businesses | Celina Connection',
-        description: 'Compare free, paid, pro, and premium Celina Connection listing options for local businesses that want more visibility in Celina, Texas.',
+        description: 'Compare paid Basic, Pro, and Premium Celina Connection listing options for local businesses that want more visibility in Celina, Texas.',
         canonical: `${SITE_URL}/pricing`,
         ogImage: DEFAULT_OG_IMAGE,
       };
@@ -349,7 +349,7 @@ function buildPageSeoConfig(activeTab: string, selectedBusiness: Business | null
     default:
       return {
         title: 'Add or Claim a Celina Business Listing | Celina Connection',
-        description: 'Claim a free Celina Connection listing, update business details, and help local customers find your Celina, TX business.',
+        description: 'Create a paid Celina Connection listing, update business details, and help local customers find your Celina, TX business.',
         canonical: `${SITE_URL}/dashboard`,
         ogImage: DEFAULT_OG_IMAGE,
         noIndex: true,
@@ -539,15 +539,12 @@ export default function App() {
       }
 
       let currentBusinesses: Business[] = [];
-      let currentBugs: ReportedBug[] = [];
 
       try {
         const bootstrap = await api.bootstrap();
         currentBusinesses = bootstrap.businesses;
-        currentBugs = bootstrap.reportedBugs;
         if (isMounted) {
           setBusinesses(currentBusinesses);
-          setReportedBugs(currentBugs);
         }
       } catch {
         if (isMounted) setPaymentNotification({ type: 'error', message: 'The directory could not load. Please refresh to try again.' });
@@ -604,7 +601,7 @@ export default function App() {
             localStorage.setItem('celina_current_user', JSON.stringify(user));
             setPaymentNotification({
               type: 'success',
-              message: 'Email verified — your owner dashboard is active.',
+              message: 'Email verified. Complete paid checkout in your dashboard to publish your listing.',
             });
             setActiveTab('dashboard');
             navigate('/dashboard?verified=1', { replace: true });
@@ -624,42 +621,16 @@ export default function App() {
       const redirectBusinessId = params.get('businessId');
       const redirectAddonQty = parseInt(params.get('addon_qty') || '0', 10);
 
-      if (paymentStatus === 'success' && redirectTier) {
-        const targetBusId = redirectBusinessId || user.businessId;
-        currentBusinesses = currentBusinesses.map((business) => {
-          if (business.ownerId !== user.id && business.id !== targetBusId) {
-            return business;
-          }
-
-          return {
-            ...business,
-            tier: redirectTier,
-            featured: redirectTier === 'premium',
-            images: business.images && business.images.length > 0
-              ? business.images
-              : ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80'],
-          };
-        });
-
-        const updatedUser: UserProfile = {
-          ...user,
-          tier: redirectTier,
-          addonSlots: redirectAddonQty,
-        };
-
+      if (paymentStatus === 'success') {
+        const owner = await api.ownerSession();
+        user = owner.currentUser;
+        currentBusinesses = currentBusinesses.filter(business => business.id !== owner.business.id);
+        currentBusinesses.push(owner.business);
         if (isMounted) {
-          setCurrentUser(updatedUser);
-          setPaymentNotification({
-            type: 'success',
-              message: `Welcome to ${redirectTier === 'premium' ? 'Premium Partner' : 'Pro Partner'} Membership. Your new listing features are almost ready.${
-                redirectAddonQty > 0 ? ` Included: ${redirectAddonQty} additional business listing${redirectAddonQty > 1 ? 's' : ''}.` : ''
-              }`,
-          });
+          setCurrentUser(user);
+          setPaymentNotification({ type: 'success', message: owner.business.tier === 'pending' ? 'Checkout returned. Your listing will activate after Stripe confirms payment.' : 'Your current membership has been refreshed.' });
         }
-        localStorage.setItem('celina_current_user', JSON.stringify(updatedUser));
-
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, document.title, newUrl);
+        window.history.replaceState({}, document.title, window.location.pathname);
       } else if (paymentStatus === 'event_success' && isMounted) {
         setPaymentNotification({
           type: 'success',
@@ -678,7 +649,6 @@ export default function App() {
 
       if (isMounted) {
         setBusinesses(currentBusinesses);
-        setReportedBugs(currentBugs);
       }
     };
 
@@ -690,6 +660,15 @@ export default function App() {
   }, []);
 
   // Sync user state changes
+  useEffect(() => {
+    if (!currentUser.isLoggedIn || currentUser.role !== 'admin') return;
+    let active = true;
+    api.adminBugs().then(({ reportedBugs }) => {
+      if (active) setReportedBugs(reportedBugs);
+    }).catch(() => { /* preserve existing reports during a temporary outage */ });
+    return () => { active = false; };
+  }, [currentUser.isLoggedIn, currentUser.role]);
+
   useEffect(() => {
     localStorage.setItem('celina_current_user', JSON.stringify(currentUser));
   }, [currentUser]);
@@ -838,65 +817,6 @@ export default function App() {
   };
 
   // Checkout Upgrade Handler
-  const handlePaymentSuccess = async (tier: Tier, addonQty: number = 0) => {
-    // Find all businesses owned by this user
-    const myBuses = businesses.filter(
-      (b) => b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase())
-    );
-
-    // Sort so that the main business is first
-    const sortedBuses = [...myBuses].sort((a, b) => {
-      if (a.id === currentUser.businessId) return -1;
-      if (b.id === currentUser.businessId) return 1;
-      return 0;
-    });
-
-    // The user has selected a tier (e.g. 'pro' or 'premium').
-    // The main business gets the tier.
-    // Up to addonQty of other businesses also get upgraded.
-    let upgradedAddonsCount = 0;
-    const updated = businesses.map((b) => {
-      const isOwned = b.ownerId === currentUser.id || (currentUser.email && b.email.toLowerCase() === currentUser.email.toLowerCase());
-      if (!isOwned) return b;
-
-      const isMain = b.id === currentUser.businessId || (sortedBuses[0] && b.id === sortedBuses[0].id);
-      const shouldUpgrade = isMain || (upgradedAddonsCount < addonQty);
-      
-      if (!isMain && shouldUpgrade) {
-        upgradedAddonsCount++;
-      }
-
-      if (shouldUpgrade) {
-        return {
-          ...b,
-          tier: tier,
-          featured: tier === 'premium',
-          images: b.images && b.images.length > 0 
-            ? b.images 
-            : ['https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=800&q=80'],
-        };
-      } else {
-        // Return to free if not covered by add-on slots
-        return {
-          ...b,
-          tier: 'free' as Tier,
-          featured: false,
-        };
-      }
-    });
-
-    setBusinesses(updated);
-
-    // Upgrade active login session
-    setCurrentUser((prev) => ({
-      ...prev,
-      tier: tier,
-      addonSlots: addonQty,
-    }));
-
-    setTargetTier(null);
-  };
-
   const handleOpenLoginPrompt = () => {
     openOwnerLogin();
   };
@@ -1132,6 +1052,7 @@ export default function App() {
         {activeTab === 'events' && (
           <EventsView
             currentUser={currentUser}
+            initialEventId={sessionStorage.getItem('celina_pending_event') || undefined}
             onOpenLogin={handleOpenLoginPrompt}
             onOpenEventWorkspace={() => {
               setDashboardPortalMode('owner');
@@ -1209,7 +1130,6 @@ export default function App() {
         targetInterval={targetInterval}
         onChangeInterval={setTargetInterval}
         onClose={() => setTargetTier(null)}
-        onPaymentSuccess={handlePaymentSuccess}
         currentUser={currentUser}
         businesses={businesses}
       />
