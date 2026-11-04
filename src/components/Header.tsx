@@ -41,6 +41,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { MenuItem, PUBLIC_MENU_ITEMS, OWNER_MENU_ITEMS, ADMIN_MENU_ITEMS } from '../config/menuItems';
 import CommandMenuModal from './CommandMenuModal';
+import { api } from '../lib/api';
 
 const BRAND_LOGO_PATH = '/images/celina-connection-logo.png';
 
@@ -182,7 +183,14 @@ export default function Header({
     }
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await api.logout();
+    } catch {
+      window.alert('We could not sign you out. Please check your connection and try again.');
+      return;
+    }
+    localStorage.removeItem('celina_current_user');
     setCurrentUser({
       id: '',
       email: '',
