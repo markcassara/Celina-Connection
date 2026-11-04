@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CELINA_EVENTS, CelinaEvent } from '../data/mockEvents';
 import { UserProfile } from '../types';
 import {
@@ -12,7 +12,10 @@ import {
   Megaphone,
   ShieldCheck,
   ArrowRight,
-  Lock
+  Lock,
+  Heart,
+  Bell,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -21,6 +24,7 @@ interface EventsViewProps {
   onOpenLogin?: () => void;
   onOpenEventWorkspace?: () => void;
   onPromoteEvent?: () => Promise<void> | void;
+  initialEventId?: string;
 }
 
 export default function EventsView({
@@ -28,6 +32,7 @@ export default function EventsView({
   onOpenLogin,
   onOpenEventWorkspace,
   onPromoteEvent,
+  initialEventId,
 }: EventsViewProps = {}) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -35,7 +40,40 @@ export default function EventsView({
   const [selectedEvent, setSelectedEvent] = useState<CelinaEvent | null>(null);
   const [isOpeningCheckout, setIsOpeningCheckout] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
+  const [likedEventIds, setLikedEventIds] = useState<Set<string>>(new Set());
+  const [eventLikes, setEventLikes] = useState<Record<string, number>>({});
+  const [eventEmail, setEventEmail] = useState('');
+  const [eventSubscriptionMessage, setEventSubscriptionMessage] = useState('');
   const isOwner = Boolean(currentUser?.isLoggedIn && currentUser.role !== 'admin');
+
+  useEffect(() => {
+    try { setLikedEventIds(new Set(JSON.parse(localStorage.getItem('celina_liked_events') || '[]'))); } catch { /* ignore malformed local state */ }
+  }, []);
+
+  useEffect(() => {
+    if (!initialEventId) return;
+    const event = CELINA_EVENTS.find((candidate) => candidate.id === initialEventId);
+    if (event) setSelectedEvent(event);
+  }, [initialEventId]);
+
+  const toggleEventLike = (event: React.MouseEvent, evt: CelinaEvent) => {
+    event.stopPropagation();
+    const next = new Set(likedEventIds);
+    const liked = !next.has(evt.id);
+    if (liked) next.add(evt.id); else next.delete(evt.id);
+    setLikedEventIds(next);
+    setEventLikes((current) => ({ ...current, [evt.id]: Math.max(0, (current[evt.id] || 0) + (liked ? 1 : -1)) }));
+    localStorage.setItem('celina_liked_events', JSON.stringify(Array.from(next)));
+  };
+
+  const subscribeToEvent = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!eventEmail.trim() || !selectedEvent) return;
+    const subscriptionKey = `celina_event_subscription_${selectedEvent.id}`;
+    localStorage.setItem(subscriptionKey, eventEmail.trim().toLowerCase());
+    setEventSubscriptionMessage(`You're on the list for ${selectedEvent.title}. We'll send updates to ${eventEmail.trim()}.`);
+    setEventEmail('');
+  };
 
   const handlePromoCheckout = async () => {
     if (!isOwner) {
@@ -370,6 +408,9 @@ export default function EventsView({
                         >
                           View Details
                         </button>
+                        <button type="button" onClick={(event) => toggleEventLike(event, evt)} className={`inline-flex items-center gap-1 text-[11px] font-black ${likedEventIds.has(evt.id) ? 'text-rose-600' : 'text-slate-500 hover:text-rose-600'}`}>
+                          <Heart className="h-3.5 w-3.5" fill={likedEventIds.has(evt.id) ? 'currentColor' : 'none'} /> {eventLikes[evt.id] || 0}
+                        </button>
                       </div>
                     </motion.div>
                   );
@@ -476,6 +517,10 @@ export default function EventsView({
                 <img
                   src={selectedEvent.imageUrl}
                   alt={selectedEvent.title}
+                  onError={(event) => {
+                    event.currentTarget.onerror = null;
+                    event.currentTarget.src = '/celina-water-tower-bg.jpg';
+                  }}
                   className="h-full w-full object-cover"
                   referrerPolicy="no-referrer"
                 />
@@ -519,6 +564,24 @@ export default function EventsView({
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Address</p>
                   <p className="mt-1 text-sm font-semibold text-slate-700">{selectedEvent.address}</p>
+                </div>
+
+                <div className="rounded-2xl border border-orange-100 bg-orange-50/70 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-[var(--cc-deep-navy)]">Make plans together</p>
+                      <p className="mt-1 text-xs font-semibold text-slate-600">Like this event and get a note if details change.</p>
+                    </div>
+                    <button type="button" onClick={(event) => toggleEventLike(event, selectedEvent)} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-black ${likedEventIds.has(selectedEvent.id) ? 'bg-rose-100 text-rose-700' : 'bg-white text-slate-700 ring-1 ring-orange-200'}`}>
+                      <Heart className="h-4 w-4" fill={likedEventIds.has(selectedEvent.id) ? 'currentColor' : 'none'} /> {likedEventIds.has(selectedEvent.id) ? 'Liked' : 'Like event'} · {eventLikes[selectedEvent.id] || 0}
+                    </button>
+                  </div>
+                  <form onSubmit={subscribeToEvent} className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <label className="sr-only" htmlFor="event-notification-email">Email for event notifications</label>
+                    <div className="relative flex-1"><Mail className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" /><input id="event-notification-email" type="email" required value={eventEmail} onChange={(event) => setEventEmail(event.target.value)} placeholder="you@example.com" className="w-full rounded-xl border border-orange-100 bg-white py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-800" /></div>
+                    <button type="submit" className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--cc-deep-navy)] px-4 py-2.5 text-xs font-black text-white"><Bell className="h-3.5 w-3.5" /> Notify me</button>
+                  </form>
+                  {eventSubscriptionMessage && <p className="mt-2 text-xs font-bold text-emerald-700">{eventSubscriptionMessage}</p>}
                 </div>
 
                 {selectedEvent.link && (
