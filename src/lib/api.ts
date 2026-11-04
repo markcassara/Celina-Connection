@@ -225,4 +225,10 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  submitNetworkingEventRsvp(payload: { name: string; business: string; email: string; guests: number; notes?: string; company?: string }) {
+    return request<{ ok: true }>('/api/networking-event/rsvps', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };
