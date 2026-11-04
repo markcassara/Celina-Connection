@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { publicListingMedia, restoreListingMedia } from './listingMedia';
 import path from 'node:path';
 import os from 'node:os';
@@ -48,6 +49,8 @@ export interface CreateBusinessInput {
   viewsCount?: number;
   votesCount?: number;
   growthCredits?: Business['growthCredits'];
+  notificationsEnabled?: boolean;
+  eventNotificationsEnabled?: boolean;
   reviews?: Review[];
   isUnclaimed?: boolean;
   isRegistryOnly?: boolean;
@@ -157,7 +160,7 @@ function fromJson<T>(value: unknown, fallback: T): T {
   }
 }
 
-function rowToBusiness(row: any): Business {
+export function rowToBusiness(row: any): Business {
   return {
     id: row.id,
     slug: row.slug,
@@ -182,6 +185,8 @@ function rowToBusiness(row: any): Business {
     viewsCount: Number(row.views_count || 0),
     votesCount: Number(row.votes_count || 0),
     growthCredits: fromJson(row.growth_credits_json, { shareClicks: 0, referralVisits: 0 }),
+    notificationsEnabled: row.owner_notifications_enabled !== 0,
+    eventNotificationsEnabled: row.owner_event_notifications_enabled !== 0,
     isUnclaimed: Boolean(row.is_unclaimed),
     isRegistryOnly: Boolean(row.is_registry_only),
     emailVerified: Boolean(row.email_verified),
@@ -309,6 +314,8 @@ function makeBusiness(input: CreateBusinessInput): Business {
     viewsCount: input.viewsCount ?? 0,
     votesCount: input.votesCount ?? 0,
     growthCredits: input.growthCredits || { shareClicks: 0, referralVisits: 0 },
+    notificationsEnabled: input.notificationsEnabled ?? true,
+    eventNotificationsEnabled: input.eventNotificationsEnabled ?? true,
     isUnclaimed: input.isUnclaimed ?? false,
     isRegistryOnly: input.isRegistryOnly ?? false,
     emailVerified: input.emailVerified ?? true,
@@ -426,6 +433,8 @@ export class CelinaRepository implements CelinaDataStore {
           views_count INTEGER NOT NULL DEFAULT 0,
           votes_count INTEGER NOT NULL DEFAULT 0,
           growth_credits_json TEXT NOT NULL DEFAULT '{"shareClicks":0,"referralVisits":0}',
+          owner_notifications_enabled INTEGER NOT NULL DEFAULT 1,
+          owner_event_notifications_enabled INTEGER NOT NULL DEFAULT 1,
           is_unclaimed INTEGER NOT NULL DEFAULT 0,
           is_registry_only INTEGER NOT NULL DEFAULT 0,
           owner_password_hash TEXT,
@@ -498,6 +507,8 @@ export class CelinaRepository implements CelinaDataStore {
         'ALTER TABLE businesses ADD COLUMN events_json TEXT NOT NULL DEFAULT \'[]\'',
         'ALTER TABLE businesses ADD COLUMN votes_count INTEGER NOT NULL DEFAULT 0',
         'ALTER TABLE businesses ADD COLUMN growth_credits_json TEXT NOT NULL DEFAULT \'{"shareClicks":0,"referralVisits":0}\'',
+        'ALTER TABLE businesses ADD COLUMN owner_notifications_enabled INTEGER NOT NULL DEFAULT 1',
+        'ALTER TABLE businesses ADD COLUMN owner_event_notifications_enabled INTEGER NOT NULL DEFAULT 1',
         'ALTER TABLE legacy_hills_petition_signatures ADD COLUMN phase_section TEXT',
         'ALTER TABLE legacy_hills_petition_signatures ADD COLUMN lot_block TEXT',
         'ALTER TABLE legacy_hills_petition_signatures ADD COLUMN builder TEXT',
@@ -594,12 +605,12 @@ export class CelinaRepository implements CelinaDataStore {
   }
 
   listPublicBusinesses() {
-    return this.listBusinesses().map(publicListingMedia);
+    return this.listBusinesses().filter(business => business.tier !== 'pending').map(publicListingMedia);
   }
 
   getPublicListingImage(id: string, slot: string) {
     const business = this.getBusiness(id);
-    if (!business || !business.emailVerified) return null;
+    if (!business || !business.emailVerified || business.tier === 'pending') return null;
     return (slot === 'logo' ? business.logoUrl : business.images?.[Number(slot)]) || null;
   }
 
@@ -728,12 +739,12 @@ export class CelinaRepository implements CelinaDataStore {
         id, slug, name, category, description, phone, email, website, address,
         hours_json, logo_url, images_json, social_links_json, featured, cta_text,
         tier, owner_id, created_at, reviews_json, events_json, views_count, votes_count, growth_credits_json, is_unclaimed, is_registry_only,
-        email_verified, email_verified_at
+        email_verified, email_verified_at, owner_notifications_enabled, owner_event_notifications_enabled
       ) VALUES (
         @id, @slug, @name, @category, @description, @phone, @email, @website, @address,
         @hours_json, @logo_url, @images_json, @social_links_json, @featured, @cta_text,
         @tier, @owner_id, @created_at, @reviews_json, @events_json, @views_count, @votes_count, @growth_credits_json, @is_unclaimed, @is_registry_only,
-        @email_verified, @email_verified_at
+        @email_verified, @email_verified_at, @owner_notifications_enabled, @owner_event_notifications_enabled
       )
       ON CONFLICT(id) DO UPDATE SET
         slug = excluded.slug,
@@ -761,7 +772,9 @@ export class CelinaRepository implements CelinaDataStore {
         is_unclaimed = excluded.is_unclaimed,
         is_registry_only = excluded.is_registry_only,
         email_verified = excluded.email_verified,
-        email_verified_at = excluded.email_verified_at
+        email_verified_at = excluded.email_verified_at,
+        owner_notifications_enabled = excluded.owner_notifications_enabled,
+        owner_event_notifications_enabled = excluded.owner_event_notifications_enabled
     `).run(toBusinessParams(business));
   }
 
@@ -811,7 +824,7 @@ export class CelinaRepository implements CelinaDataStore {
   claimBusiness(id: string, email: string) {
     const current = this.getBusiness(id);
     if (!current) return null;
-    const business: Business = { ...current, email, isUnclaimed: false, ownerId: `owner-${id}` };
+    const business: Business = { ...current, tier: 'pending', email, isUnclaimed: false, ownerId: `owner-${id}` };
     this.upsertBusiness(business);
     return makeClaimPayload(business, email);
   }
@@ -1045,12 +1058,13 @@ export class CelinaRepository implements CelinaDataStore {
   }
 }
 
-class PostgresRepository implements CelinaDataStore {
-  private sql: any = null;
+export class PostgresRepository implements CelinaDataStore {
+  protected sql: any = null;
   private initialized?: Promise<void>;
   private fallbackRepo: CelinaRepository;
 
-  constructor(databaseUrl: string) {
+  constructor(databaseUrl: string, sqlOverride?: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<any[]>) {
+    if (sqlOverride) { this.sql = sqlOverride; return; }
     this.fallbackRepo = new CelinaRepository(':memory:');
     if (neonFn) {
       try {
@@ -1067,17 +1081,19 @@ class PostgresRepository implements CelinaDataStore {
   }
 
   private async ensureInitialized() {
-    if (!this.sql) return;
+    if (!this.sql) throw new Error('Persistent database client is unavailable.');
     if (!this.initialized) {
       this.initialized = this.initialize().catch((err) => {
-        console.warn("Postgres initialization failed, using in-memory fallback:", err);
-        this.sql = null;
+        // Keep the persistent client and allow a later request to recover.
+        // Never silently replace production records with demo data.
+        this.initialized = undefined;
+        throw err;
       });
     }
     await this.initialized;
   }
 
-  private async initialize() {
+  protected async initialize() {
     await this.sql`
       CREATE TABLE IF NOT EXISTS businesses (
         id TEXT PRIMARY KEY,
@@ -1103,6 +1119,8 @@ class PostgresRepository implements CelinaDataStore {
         views_count INTEGER NOT NULL DEFAULT 0,
         votes_count INTEGER NOT NULL DEFAULT 0,
         growth_credits_json JSONB NOT NULL DEFAULT '{"shareClicks":0,"referralVisits":0}'::jsonb,
+        owner_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+        owner_event_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
         is_unclaimed BOOLEAN NOT NULL DEFAULT FALSE,
         is_registry_only BOOLEAN NOT NULL DEFAULT FALSE,
         owner_password_hash TEXT,
@@ -1123,6 +1141,8 @@ class PostgresRepository implements CelinaDataStore {
     await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS password_reset_expires_at TEXT`;
     await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS events_json JSONB NOT NULL DEFAULT '[]'::jsonb`;
     await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS votes_count INTEGER NOT NULL DEFAULT 0`;
+    await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS owner_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE`;
+    await this.sql`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS owner_event_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE`;
     await this.sql`
       CREATE TABLE IF NOT EXISTS reported_bugs (
         id TEXT PRIMARY KEY,
@@ -1202,6 +1222,9 @@ class PostgresRepository implements CelinaDataStore {
   }
 
   private async ensureFeaturedPlaceholderBusinesses() {
+    const seedVersion = 'public-directory-v2-' + createHash('sha256').update(JSON.stringify(INITIAL_BUSINESSES)).digest('hex');
+    const versionRows = await this.sql`SELECT value FROM app_settings WHERE key = 'directory_seed_version'` as any[];
+    if (versionRows[0]?.value === seedVersion) return;
     // Keep the persistent production directory in sync with newly added initial listings
     // without resetting or overwriting existing businesses.
     for (const initBiz of INITIAL_BUSINESSES) {
@@ -1251,6 +1274,8 @@ class PostgresRepository implements CelinaDataStore {
     } else {
       await this.upsertBusiness(celinaFinancial, false);
     }
+    await this.sql`INSERT INTO app_settings (key, value) VALUES ('directory_seed_version', ${seedVersion})
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
   }
 
   private async resetLaunchCountersOnce() {
@@ -1283,7 +1308,7 @@ class PostgresRepository implements CelinaDataStore {
               WITH ORDINALITY AS media(image, position)
           ), '[]'::jsonb)
         ) AS business
-      FROM businesses b WHERE email_verified = TRUE
+      FROM businesses b WHERE email_verified = TRUE AND tier != 'pending'
       ORDER BY featured DESC, views_count DESC, name ASC
     ` as any[];
     return rows.map(row => publicListingMedia(rowToBusiness(row.business)));
@@ -1292,8 +1317,8 @@ class PostgresRepository implements CelinaDataStore {
   async getPublicListingImage(id: string, slot: string) {
     await this.ensureInitialized();
     const rows = slot === 'logo'
-      ? await this.sql`SELECT logo_url AS image FROM businesses WHERE id = ${id} AND email_verified = TRUE`
-      : await this.sql`SELECT images_json::jsonb ->> ${Number(slot)}::int AS image FROM businesses WHERE id = ${id} AND email_verified = TRUE`;
+      ? await this.sql`SELECT logo_url AS image FROM businesses WHERE id = ${id} AND email_verified = TRUE AND tier != 'pending'`
+      : await this.sql`SELECT images_json::jsonb ->> ${Number(slot)}::int AS image FROM businesses WHERE id = ${id} AND email_verified = TRUE AND tier != 'pending'`;
     return (rows[0]?.image as string) || null;
   }
 
@@ -1379,8 +1404,11 @@ class PostgresRepository implements CelinaDataStore {
     return this.getOwnedBusinessByOwnerId(rows[0].owner_id);
   }
 
+  protected async prepareBusinessMedia(business: Business): Promise<Business> { return business; }
+
   private async upsertBusiness(business: Business, initialize = true) {
     if (initialize) await this.ensureInitialized();
+    business = await this.prepareBusinessMedia(business);
     const values = toBusinessParams(business);
     await this.sql`
       INSERT INTO businesses (
@@ -1388,11 +1416,12 @@ class PostgresRepository implements CelinaDataStore {
         hours_json, logo_url, images_json, social_links_json, featured, cta_text,
         tier, owner_id, created_at, reviews_json, events_json, views_count, votes_count, growth_credits_json, is_unclaimed, is_registry_only,
         email_verified, email_verified_at
+        , owner_notifications_enabled, owner_event_notifications_enabled
       ) VALUES (
         ${values.id}, ${values.slug}, ${values.name}, ${values.category}, ${values.description}, ${values.phone}, ${values.email}, ${values.website}, ${values.address},
         ${values.hours_json}, ${values.logo_url}, ${values.images_json}, ${values.social_links_json}, ${Boolean(values.featured)}, ${values.cta_text},
         ${values.tier}, ${values.owner_id}, ${values.created_at}, ${values.reviews_json}, ${values.events_json}, ${values.views_count}, ${values.votes_count}, ${values.growth_credits_json}, ${Boolean(values.is_unclaimed)}, ${Boolean(values.is_registry_only)},
-        ${Boolean(values.email_verified)}, ${values.email_verified_at}
+        ${Boolean(values.email_verified)}, ${values.email_verified_at}, ${Boolean(values.owner_notifications_enabled)}, ${Boolean(values.owner_event_notifications_enabled)}
       )
       ON CONFLICT(id) DO UPDATE SET
         slug = EXCLUDED.slug,
@@ -1420,7 +1449,9 @@ class PostgresRepository implements CelinaDataStore {
         is_unclaimed = EXCLUDED.is_unclaimed,
         is_registry_only = EXCLUDED.is_registry_only,
         email_verified = EXCLUDED.email_verified,
-        email_verified_at = EXCLUDED.email_verified_at
+        email_verified_at = EXCLUDED.email_verified_at,
+        owner_notifications_enabled = EXCLUDED.owner_notifications_enabled,
+        owner_event_notifications_enabled = EXCLUDED.owner_event_notifications_enabled
     `;
   }
 
@@ -1466,7 +1497,7 @@ class PostgresRepository implements CelinaDataStore {
   async claimBusiness(id: string, email: string) {
     const current = await this.getBusiness(id);
     if (!current) return null;
-    const business: Business = { ...current, email, isUnclaimed: false, ownerId: `owner-${id}` };
+    const business: Business = { ...current, tier: 'pending', email, isUnclaimed: false, ownerId: `owner-${id}` };
     await this.upsertBusiness(business);
     return makeClaimPayload(business, email);
   }
@@ -1658,7 +1689,7 @@ class PostgresRepository implements CelinaDataStore {
   }
 }
 
-function toBusinessParams(business: Business) {
+export function toBusinessParams(business: Business) {
   return {
     id: business.id,
     slug: business.slug || slugify(business.name),
@@ -1687,6 +1718,8 @@ function toBusinessParams(business: Business) {
     is_registry_only: business.isRegistryOnly ? 1 : 0,
     email_verified: business.emailVerified === false ? 0 : 1,
     email_verified_at: business.emailVerifiedAt || '',
+    owner_notifications_enabled: business.notificationsEnabled === false ? 0 : 1,
+    owner_event_notifications_enabled: business.eventNotificationsEnabled === false ? 0 : 1,
   };
 }
 
