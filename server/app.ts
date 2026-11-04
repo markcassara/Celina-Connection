@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import sharp from "sharp";
 import { listingImageVersion } from "./listingMedia";
 import express from "express";
 import dotenv from "dotenv";
@@ -222,15 +221,52 @@ const fetchGooglePlaceSignals = async (businessName: string) => {
   };
 };
 
-export function createApp(options: { dbPath?: string } = {}) {
+export function createApp(options: { dbPath?: string; repository?: CelinaDataStore } = {}) {
   const app = express();
   let repository: CelinaDataStore;
   try {
-    repository = createRepository(options);
+    repository = options.repository || createRepository(options);
   } catch (err) {
+    if (options.repository || process.env.NODE_ENV === "production") throw err;
     console.error("Repository initialization failed, falling back to memory repository:", err);
     repository = new CelinaRepository(':memory:');
   }
+
+  // A bounded, shared public read collapses concurrent requests on each instance.
+  // Never cache errors, owner sessions, or administrative data.
+  let publicDirectory: Awaited<ReturnType<CelinaDataStore['listPublicBusinesses']>> | undefined;
+  let publicDirectoryExpires = 0;
+  let publicDirectoryGeneration = 0;
+  let publicDirectoryPending: Promise<Awaited<ReturnType<CelinaDataStore['listPublicBusinesses']>>> | undefined;
+  const readPublicDirectory = async () => {
+    if (publicDirectory && Date.now() < publicDirectoryExpires) return publicDirectory;
+    if (!publicDirectoryPending) {
+      const generation = publicDirectoryGeneration;
+      publicDirectoryPending = Promise.resolve().then(() => repository.listPublicBusinesses())
+        .then((businesses) => {
+          if (generation === publicDirectoryGeneration) {
+            publicDirectory = businesses;
+            publicDirectoryExpires = Date.now() + 60000;
+          }
+          return businesses;
+        }).finally(() => { publicDirectoryPending = undefined; });
+    }
+    return publicDirectoryPending;
+  };
+  app.use('/api', (req, res, next) => {
+    if (/^\/(admin|owner)(\/|$)/.test(req.path)) res.setHeader('Cache-Control', 'no-store');
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path === '/owner/verify-email') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.on('finish', () => {
+        if (res.statusCode < 400) {
+          publicDirectoryGeneration++;
+          publicDirectory = undefined;
+          publicDirectoryExpires = 0;
+        }
+      });
+    }
+    next();
+  });
 
   const applyPaidMembership = async ({
     tier,
@@ -261,10 +297,8 @@ export function createApp(options: { dbPath?: string } = {}) {
       .filter((business) => business.id !== targetBusiness.id)
       .slice(0, Math.max(0, addonQuantity));
     const coveredIds = new Set([targetBusiness.id, ...additionalBusinesses.map((business) => business.id)]);
-    const updated = await Promise.all(ownedBusinesses.map((business) =>
-      repository.updateBusiness(business.id, coveredIds.has(business.id)
-        ? { tier: tier as any, featured: tier === "premium" }
-        : { tier: "free" as any, featured: false })
+    const updated = await Promise.all(ownedBusinesses.filter(business => coveredIds.has(business.id)).map((business) =>
+      repository.updateBusiness(business.id, { tier: tier as any, featured: tier === "premium" })
     ));
 
     return updated.filter(Boolean);
@@ -290,9 +324,9 @@ export function createApp(options: { dbPath?: string } = {}) {
     }
 
     try {
-      if (event.type === "checkout.session.completed") {
+      if ((event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded")) {
         const session = event.data.object as Stripe.Checkout.Session;
-        if (session.mode === "subscription" && session.payment_status === "paid") {
+        if (session.mode === "subscription" && session.payment_status === "paid" && Number(session.amount_total) > 0) {
           const metadata = session.metadata || {};
           await applyPaidMembership({
             tier: metadata.tier || "",
@@ -504,9 +538,24 @@ export function createApp(options: { dbPath?: string } = {}) {
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+  const parseGhlOwnerEngagementTags = () => (process.env.GHL_OWNER_ENGAGEMENT_TAGS || "celina-connection,owner-engagement")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
   const isDeliverableOwnerEmail = (email: unknown) => {
     const value = String(email || "").trim().toLowerCase();
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && !value.endsWith("@example.com");
+  };
+  const sendOwnerEngagementNotification = async (business: any, action: "like" | "share") => {
+    if (!business?.notificationsEnabled || !isDeliverableOwnerEmail(business.email)) return;
+    const actionLabel = action === "like" ? "liked your listing" : "shared your listing";
+    const listingUrl = `${publicSiteUrl()}/business/${business.slug || business.id}`;
+    const message: TransactionalEmailMessage = {
+      subject: `${business.name} just got a little more love on Celina Connection`,
+      html: `<p>Great news — someone just <strong>${actionLabel}</strong> on Celina Connection.</p><p>Keep the momentum going by adding fresh photos, replying to reviews, and sharing your referral link.</p><p><a href="${emailHtmlEscape(listingUrl)}">View your listing</a> &nbsp; <a href="${emailHtmlEscape(`${publicSiteUrl()}/owner-login`)}">Open owner dashboard</a></p>`,
+      text: `Great news — someone just ${actionLabel} on Celina Connection.\n\nView your listing: ${listingUrl}\nOpen your owner dashboard: ${publicSiteUrl()}/owner-login`,
+    };
+    await sendOwnerEmailMessage(String(business.email), String(business.name || "Celina business"), message, `owner-${action}`, listingUrl, parseGhlOwnerEngagementTags());
   };
   const adminNotificationEmail = () => String(process.env.CELINA_ADMIN_NOTIFICATION_EMAIL || process.env.ADMIN_NOTIFICATION_EMAIL || "info@celinaconnection.com").trim();
   const missingListingVisualsEmail = (business: any, deadline: Date): TransactionalEmailMessage => {
@@ -768,7 +817,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     return {
       business: safeBusiness,
       requiresEmailVerification: true,
-      message: "Check your email to verify your listing before signing in.",
+      message: "Verify your email, then sign in and complete paid checkout to publish your listing.",
       ...(process.env.CELINA_EXPOSE_VERIFICATION_LINK === "true" ? { verificationUrl } : {}),
     };
   };
@@ -817,7 +866,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     isLoggedIn: true,
     role: 'owner',
   }) : null;
-  const imageLimitForTier = (tier: string) => tier === 'free' || tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
+  const imageLimitForTier = (tier: string) => tier === 'pending' || tier === 'free' || tier === 'basic' ? 1 : tier === 'pro' ? 5 : 10;
   const eventPromotionWindowDays = 30;
   const dateInputValue = (date: Date) => {
     const year = date.getFullYear();
@@ -1097,7 +1146,7 @@ export function createApp(options: { dbPath?: string } = {}) {
   const businessSlug = (business: { slug?: string; id?: string }) => business.slug || business.id || "";
   const findBusinessForSlug = async (slug: string) => {
     const decodedSlug = decodeURIComponent(slug || "").toLowerCase();
-    const businesses = await repository.listBusinesses();
+    const businesses = await readPublicDirectory();
     return businesses.find((business) => {
       const slugOrId = businessSlug(business).toLowerCase();
       return slugOrId === decodedSlug || business.id.toLowerCase() === decodedSlug;
@@ -1112,6 +1161,7 @@ export function createApp(options: { dbPath?: string } = {}) {
   const businessSocialImageUrl = (business: NonNullable<Awaited<ReturnType<typeof findBusinessForSlug>>>) => {
     const image = firstBusinessImage(business);
     if (isPublicImageUrl(image)) return image;
+    if (image.startsWith('/api/listing-images/')) return `${siteUrl}/social-image/business/${encodeURIComponent(businessSlug(business))}`;
     if (isDataImageUrl(image)) return `${siteUrl}/social-image/business/${encodeURIComponent(businessSlug(business))}`;
     return DEFAULT_SOCIAL_IMAGE;
   };
@@ -1208,7 +1258,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     mainEntity: [
       {
         "@type": "Question",
-        name: "Is the free launch listing really free?",
+        name: PRICING_FAQ[0].question,
         acceptedAnswer: {
           "@type": "Answer",
           text: PRICING_FAQ[0].answer,
@@ -1299,8 +1349,17 @@ export function createApp(options: { dbPath?: string } = {}) {
     ].join("\n"));
   });
 
-  app.get(["/sitemap.xml", "/api/sitemap.xml"], async (_req, res) => {
-    const businesses = await repository.listBusinesses();
+  const publicReadHandler = (handler: express.RequestHandler): express.RequestHandler => (req, res, next) => {
+    Promise.resolve().then(() => handler(req, res, next)).catch((error) => {
+      console.error('Public directory read failed:', error instanceof Error ? error.message : 'Unknown error');
+      if (res.headersSent) return next(error);
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('The directory is temporarily unavailable. Please try again shortly.');
+    });
+  };
+
+  app.get(["/sitemap.xml", "/api/sitemap.xml"], publicReadHandler(async (_req, res) => {
+    const businesses = await readPublicDirectory();
     type SitemapPage = { loc: string; priority: string; changefreq: string; lastmod?: string };
     const staticPages: SitemapPage[] = [
       { loc: siteUrl, priority: "1.0", changefreq: "daily" },
@@ -1328,10 +1387,11 @@ export function createApp(options: { dbPath?: string } = {}) {
 
     const urls = [...staticPages, ...categoryPages, ...businessPages].map((page) => `  <url>\n    <loc>${xmlEscape(page.loc)}</loc>\n    ${page.lastmod ? `<lastmod>${xmlEscape(new Date(page.lastmod).toISOString())}</lastmod>\n    ` : ""}<changefreq>${page.changefreq}</changefreq>\n    <priority>${page.priority}</priority>\n  </url>`).join("\n");
 
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600");
     res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
-  });
+  }));
 
-  app.get("/api/share/page/:page", async (req, res) => {
+  app.get("/api/share/page/:page", publicReadHandler(async (req, res) => {
     const page = req.params.page.toLowerCase();
     if (!isPublicPageKey(page)) {
       return res.status(404).json({ error: "Share page not found." });
@@ -1339,7 +1399,7 @@ export function createApp(options: { dbPath?: string } = {}) {
 
     const definition = PUBLIC_PAGE_META[page];
     const canonical = publicPagePath(page);
-    const businesses = await repository.listBusinesses();
+    const businesses = await readPublicDirectory();
     const schema: unknown[] = [
       {
         "@context": "https://schema.org",
@@ -1406,15 +1466,15 @@ export function createApp(options: { dbPath?: string } = {}) {
       intro: definition.intro,
       schema,
     }));
-  });
+  }));
 
-  app.get("/api/share/category/:slug", async (req, res) => {
+  app.get("/api/share/category/:slug", publicReadHandler(async (req, res) => {
     const category = categoryLandingForSlug(req.params.slug);
     if (!category) {
       return res.redirect(302, `${siteUrl}/directory`);
     }
 
-    const businesses = await repository.listBusinesses();
+    const businesses = await readPublicDirectory();
     const categoryBusinesses = businesses.filter((business) => business.category === category.name);
     const canonical = `${siteUrl}/directory/${category.slug}`;
     const schema: unknown[] = [
@@ -1460,11 +1520,16 @@ export function createApp(options: { dbPath?: string } = {}) {
       intro,
       schema,
     }));
-  });
+  }));
 
-  app.get(["/api/social-image/business/:slug", "/social-image/business/:slug"], async (req, res) => {
+  app.get(["/api/social-image/business/:slug", "/social-image/business/:slug"], publicReadHandler(async (req, res) => {
     const business = await findBusinessForSlug(req.params.slug);
-    const image = firstBusinessImage(business);
+    let image = firstBusinessImage(business);
+
+    if (business && image.startsWith('/api/listing-images/')) {
+      const slot = image.split('/')[4];
+      image = await repository.getPublicListingImage(business.id, slot) || '';
+    }
 
     if (isPublicImageUrl(image)) {
       return res.redirect(302, image);
@@ -1483,7 +1548,7 @@ export function createApp(options: { dbPath?: string } = {}) {
     const bytes = Buffer.from(match[2], "base64");
     res.setHeader("cache-control", "public, max-age=3600, s-maxage=86400");
     res.type(`image/${imageType}`).send(bytes);
-  });
+  }));
 
   const sendBusinessShareHtml = async (slugParam: string, res: express.Response) => {
     const business = await findBusinessForSlug(slugParam);
@@ -1537,11 +1602,11 @@ export function createApp(options: { dbPath?: string } = {}) {
     }));
   };
 
-  app.get("/api/share/business/:slug", async (req, res) => {
+  app.get("/api/share/business/:slug", publicReadHandler(async (req, res) => {
     return sendBusinessShareHtml(req.params.slug, res);
-  });
+  }));
 
-  app.get("/business/:slug", async (req, res, next) => {
+  app.get("/business/:slug", publicReadHandler(async (req, res, next) => {
     const userAgent = req.header("user-agent") || "";
     if (!socialCrawlerUserAgentPattern.test(userAgent)) {
       return next();
@@ -1549,7 +1614,7 @@ export function createApp(options: { dbPath?: string } = {}) {
 
     res.setHeader("vary", "User-Agent");
     return sendBusinessShareHtml(req.params.slug, res);
-  });
+  }));
 
   app.get("/api/payment-config", (_req, res) => {
     res.json({
@@ -1693,27 +1758,44 @@ export function createApp(options: { dbPath?: string } = {}) {
       const image = await repository.getPublicListingImage(id, slot);
       if (!image || listingImageVersion(image) !== version) return res.status(404).end();
       const bytes = Buffer.from(image.slice(image.indexOf(',') + 1), 'base64');
-      const output = await sharp(bytes, { limitInputPixels: 40000000 })
-        .rotate().resize({ width: slot === 'logo' ? 320 : 1200, withoutEnlargement: true })
-        .webp({ quality: 80 }).toBuffer();
+      const mimeType = image.match(/^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,/i)?.[1] || 'image/jpeg';
+      let output = bytes;
+      let outputType = mimeType;
+      try {
+        const { default: sharp } = await import('sharp');
+        output = await sharp(bytes, { limitInputPixels: 40000000 })
+          .rotate().resize({ width: slot === 'logo' ? 320 : 1200, withoutEnlargement: true })
+          .webp({ quality: 80 }).toBuffer();
+        outputType = 'image/webp';
+      } catch (imageProcessingError) {
+        console.warn('Listing image optimization unavailable; serving original image:', imageProcessingError instanceof Error ? imageProcessingError.message : String(imageProcessingError));
+      }
       res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      return res.type('image/webp').send(output);
+      return res.type(outputType).send(output);
     } catch (error) {
       console.error('Listing image unavailable:', error instanceof Error ? error.message : 'Unknown error');
       return res.status(503).end();
     }
   });
 
+  app.get('/api/admin/bugs', requireAdminToken, async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      return res.json({ reportedBugs: await repository.listBugs() });
+    } catch {
+      return res.status(503).json({ error: 'Bug reports are temporarily unavailable.' });
+    }
+  });
+
   app.get("/api/bootstrap", async (_req, res) => {
     try {
-      const [businesses, reportedBugs] = await Promise.all([
-        repository.listPublicBusinesses(), repository.listBugs(),
-      ]);
-      res.setHeader('Cache-Control', 'no-store');
-      return res.json({ businesses, reportedBugs });
+      const businesses = await readPublicDirectory();
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300');
+      return res.json({ businesses, reportedBugs: [] });
     } catch (error) {
       console.error("Bootstrap query error:", error);
+      res.setHeader('Cache-Control', 'no-store');
       return res.status(503).json({ error: "The directory is temporarily unavailable. Please try again shortly." });
     }
   });
@@ -1980,6 +2062,9 @@ export function createApp(options: { dbPath?: string } = {}) {
  
   app.post("/api/owner/register", async (req, res) => {
     try {
+      if (req.body?.tier !== undefined && !['basic', 'pro', 'premium'].includes(req.body.tier)) {
+        return res.status(400).json({ error: 'A paid Basic, Pro, or Premium plan is required. Complimentary signups are no longer available.' });
+      }
       const { name, category, description, phone, email, password, startedAt, company } = req.body || {};
       if (company) return res.status(400).json({ error: "Registration failed spam validation." });
       if (!startedAt || Date.now() - Number(startedAt) < 3000) {
@@ -2010,7 +2095,7 @@ export function createApp(options: { dbPath?: string } = {}) {
         description,
         phone,
         email,
-        tier: 'free',
+        tier: 'pending',
         address: req.body.address || '',
         website: req.body.website || '',
         logoUrl: req.body.logoUrl || '',
@@ -2192,8 +2277,21 @@ export function createApp(options: { dbPath?: string } = {}) {
     }
   });
 
+  app.patch("/api/owner/businesses/:id/notification-settings", requireOwnerSession, async (req, res) => {
+    const ownerBusiness = (req as any).ownerBusiness;
+    if (ownerBusiness.id !== req.params.id) return res.status(403).json({ error: "Owners can only update their own notification settings." });
+    const notificationsEnabled = req.body?.notificationsEnabled !== false;
+    const eventNotificationsEnabled = req.body?.eventNotificationsEnabled !== false;
+    const business = await repository.updateBusiness(req.params.id, { notificationsEnabled, eventNotificationsEnabled });
+    if (!business) return res.status(404).json({ error: "We could not find that business listing." });
+    return res.json(business);
+  });
+
   app.post("/api/businesses", requireAdminToken, async (req, res) => {
     try {
+      if (!['basic', 'pro', 'premium', 'pending'].includes(req.body?.tier)) {
+        return res.status(400).json({ error: 'New listings require a paid plan or pending-payment status.' });
+      }
       const { name, category, description, phone, email, tier } = req.body || {};
       if (!name || !category || !description || !phone || !email || !tier) {
         return res.status(400).json({ error: "Please add the business name, category, description, phone, email, and membership tier." });
@@ -2305,6 +2403,7 @@ export function createApp(options: { dbPath?: string } = {}) {
 
   app.patch("/api/businesses/:id", requireAdminToken, async (req, res) => {
     try {
+      if (req.body?.tier === 'free') return res.status(400).json({ error: 'The complimentary tier is closed. Choose a paid plan or pending-payment status.' });
       const body = req.body || {};
       if (body.ownerPassword !== undefined && String(body.ownerPassword).length > 0 && String(body.ownerPassword).length < 10) {
         return res.status(400).json({ error: "Owner password must be at least 10 characters." });
@@ -2401,6 +2500,9 @@ export function createApp(options: { dbPath?: string } = {}) {
     if (!business) {
       return res.status(404).json({ error: "We could not find that business listing." });
     }
+    if (liked) {
+      sendOwnerEngagementNotification(business, "like").catch((error) => console.error("Owner like notification failed:", error instanceof Error ? error.message : String(error)));
+    }
     return res.json({ business, votesCount: business.votesCount || 0, liked });
   });
 
@@ -2409,6 +2511,9 @@ export function createApp(options: { dbPath?: string } = {}) {
     if (!action) return res.status(400).json({ error: "Unknown growth action." });
     const business = await repository.trackBusinessGrowthAction(req.params.id, action as "shareClick" | "referralVisit");
     if (!business) return res.status(404).json({ error: "We could not find that business listing." });
+    if (action === "shareClick") {
+      sendOwnerEngagementNotification(business, "share").catch((error) => console.error("Owner share notification failed:", error instanceof Error ? error.message : String(error)));
+    }
     return res.json({ business, growthCredits: business.growthCredits });
   });
 
@@ -2562,7 +2667,9 @@ Context & Rules:
 1. Current Local Time and Date: ${localTime}
 2. Use the directory database to provide extremely accurate details on local businesses. Always favor recommending Premium Partners when appropriate!
 3. This is a lightweight Q&A assistant. Do not claim live weather, live events, sports scores, or real-time facts unless that information is present in the provided directory data. If a question needs real-time information, say you can help with directory basics and suggest checking an official current source.
-4. Keep answers brief, conversational, and helpful. Always maintain a warm, welcoming Texas tone. Use Markdown formatting.`;
+4. If the directory has no exact or useful match, still be helpful: recommend one real, recognizable Celina-area place or destination from your general knowledge when you are confident it exists. Clearly say that it is not currently listed in the Celina Connection directory, and do not invent an address, phone number, hours, rating, availability, or other details. If you are not confident about a specific place, recommend a relevant local destination such as Downtown Celina or the Celina Square without making unsupported business claims.
+5. Whenever you recommend something that is not currently in the directory, end with a friendly invitation such as: “If you visit or know them, let them know about Celina Connection so they can get their own listing here too.”
+6. Keep answers brief, conversational, and helpful. Always maintain a warm, welcoming Texas tone. Use Markdown formatting.`;
 
       const formattedContents = messages
         .map((m: any) => ({
@@ -2606,173 +2713,47 @@ Context & Rules:
     }
   });
 
-  app.post("/api/create-checkout-session", async (req, res) => {
+  app.post("/api/create-checkout-session", requireOwnerSession, async (req, res) => {
     try {
-      const { tier, userId, businessId, addonQuantity = 0, interval = "year" } = req.body;
-
-      if (tier !== "pro" && tier !== "premium" && tier !== "basic") {
-        return res.status(400).json({ error: "Please choose a current Celina Connection membership." });
-      }
-
-      if (interval !== "month" && interval !== "year") {
-        return res.status(400).json({ error: "Please choose monthly or annual billing." });
-      }
-
-      const host = req.headers.host;
-      const protocol = (req.headers["x-forwarded-proto"] as string) || (process.env.NODE_ENV === "production" ? "https" : "http");
-      const appUrl = process.env.APP_URL || (host ? `${protocol}://${host}` : "http://localhost:3000");
+      const { tier, interval = 'year', addonQuantity = 0 } = req.body || {};
+      if (!['basic', 'pro', 'premium'].includes(tier)) return res.status(400).json({ error: 'Choose a paid Basic, Pro, or Premium plan.' });
+      if (!['month', 'year'].includes(interval)) return res.status(400).json({ error: 'Choose monthly or annual billing.' });
+      if (!Number.isInteger(addonQuantity) || addonQuantity < 0 || addonQuantity > 20) return res.status(400).json({ error: 'Choose a valid number of additional listings.' });
+      if (!process.env.STRIPE_WEBHOOK_SECRET) return res.status(503).json({ error: 'Paid activation is temporarily unavailable. Please contact Celina Connection.' });
+      const owner = (req as any).ownerBusiness;
+      if (req.body.businessId && req.body.businessId !== owner.id) return res.status(403).json({ error: 'Choose your own business listing.' });
       const stripe = getStripe();
-
-      const priceIdProAnnual = process.env.STRIPE_PRICE_ID_PRO_ANNUAL || process.env.STRIPE_PRICE_ID_PRO || "price_1TqislIQqe0SJtgjvfYKRChx";
-      const priceIdPremiumAnnual = process.env.STRIPE_PRICE_ID_PREMIUM_ANNUAL || process.env.STRIPE_PRICE_ID_PREMIUM || "price_1TqirvIQqe0SJtgjTcWN8HAb";
-      const priceIdBasic = process.env.STRIPE_PRICE_ID_BASIC || "price_1TqhN9IQqe0SJtgjZY569vkL";
-      const priceIdAddonAnnual = process.env.STRIPE_PRICE_ID_ADDON_ANNUAL || process.env.STRIPE_PRICE_ID_ADDON;
-      const priceIdProMonthly = process.env.STRIPE_PRICE_ID_PRO_MONTHLY || "price_1Tr7zkIQqe0SJtgjL2POPOUI";
-      const priceIdPremiumMonthly = process.env.STRIPE_PRICE_ID_PREMIUM_MONTHLY;
-      const priceIdAddonMonthly = process.env.STRIPE_PRICE_ID_ADDON_MONTHLY;
-
-      const line_items: any[] = [];
-
-      if (tier === "premium") {
-        if (interval === "year") {
-          if (priceIdPremiumAnnual) {
-            line_items.push({ price: priceIdPremiumAnnual, quantity: 1 });
-          } else {
-            line_items.push({
-              price_data: {
-                currency: "usd",
-                product_data: {
-                  name: "Celina Connection - Premium Partner Membership (Annual)",
-                  description: "Featured carousel placement, photo gallery, review responses, and priority directory sorting. Billed annually.",
-                },
-                unit_amount: 12000,
-                recurring: { interval: "year" },
-              },
-              quantity: 1,
-            });
-          }
-        } else if (priceIdPremiumMonthly) {
-          line_items.push({ price: priceIdPremiumMonthly, quantity: 1 });
-        } else {
-          line_items.push({
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: "Celina Connection - Premium Partner Membership (Monthly)",
-                description: "Featured carousel placement, photo gallery, review responses, and priority directory sorting. Billed monthly.",
-              },
-              unit_amount: 2900,
-              recurring: { interval: "month" },
-            },
-            quantity: 1,
-          });
+      const plans = {
+        basic: { name: 'Local Pioneer (Basic)', month: 600, year: 6000 },
+        pro: { name: 'Celina Champion (Pro)', month: 1600, year: 16000 },
+        premium: { name: 'Preston Elite (Premium)', month: 2900, year: 29000 },
+      };
+      const plan = plans[tier as keyof typeof plans];
+      const configuredPrice = process.env[`STRIPE_PRICE_ID_${tier.toUpperCase()}_${interval === 'year' ? 'ANNUAL' : 'MONTHLY'}`]
+        || (interval === 'year' ? process.env[`STRIPE_PRICE_ID_${tier.toUpperCase()}`] : undefined);
+      const amount = plan[interval as 'month' | 'year'];
+      const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+      if (configuredPrice) {
+        const price = await stripe.prices.retrieve(configuredPrice);
+        if (!price.active || price.unit_amount !== amount || price.currency !== 'usd' || price.recurring?.interval !== interval || price.recurring.interval_count !== 1) {
+          return res.status(503).json({ error: 'The selected billing plan needs configuration. Please contact Celina Connection.' });
         }
-      } else if (tier === "pro") {
-        if (interval === "year") {
-          if (priceIdProAnnual) {
-            line_items.push({ price: priceIdProAnnual, quantity: 1 });
-          } else {
-            line_items.push({
-              price_data: {
-                currency: "usd",
-                product_data: {
-                  name: "Celina Connection - Pro Partner Membership (Annual)",
-                  description: "Standard active listing, review tools, and Verified Business badge. Billed annually.",
-                },
-                unit_amount: 6000,
-                recurring: { interval: "year" },
-              },
-              quantity: 1,
-            });
-          }
-        } else if (priceIdProMonthly) {
-          line_items.push({ price: priceIdProMonthly, quantity: 1 });
-        } else {
-          line_items.push({
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: "Celina Connection - Pro Partner Membership (Monthly)",
-                description: "Standard active listing, review tools, and Verified Business badge. Billed monthly.",
-              },
-              unit_amount: 600,
-              recurring: { interval: "month" },
-            },
-            quantity: 1,
-          });
-        }
-      } else if (priceIdBasic) {
-        line_items.push({ price: priceIdBasic, quantity: 1 });
+        line_items.push({ price: configuredPrice, quantity: 1 });
       } else {
-        line_items.push({
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "Celina Connection - Basic Listing",
-              description: "Standard active listing on the free directory plan.",
-            },
-            unit_amount: 0,
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        });
+        line_items.push({ price_data: { currency: 'usd', product_data: { name: `Celina Connection — ${plan.name}` }, unit_amount: amount, recurring: { interval } }, quantity: 1 });
       }
-
-      if (addonQuantity && addonQuantity > 0) {
-        if (interval === "year") {
-          if (priceIdAddonAnnual) {
-            line_items.push({ price: priceIdAddonAnnual, quantity: addonQuantity });
-          } else {
-            line_items.push({
-              price_data: {
-                currency: "usd",
-                product_data: {
-                  name: "Additional Business Listing Add-on (Annual)",
-                  description: "Extends full membership benefits to one additional business listing under your account. Billed annually.",
-                },
-                unit_amount: 3600,
-                recurring: { interval: "year" },
-              },
-              quantity: addonQuantity,
-            });
-          }
-        } else if (priceIdAddonMonthly) {
-          line_items.push({ price: priceIdAddonMonthly, quantity: addonQuantity });
-        } else {
-          line_items.push({
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: "Additional Business Listing Add-on (Monthly)",
-                description: "Extends full membership benefits to one additional business listing under your account. Billed monthly.",
-              },
-              unit_amount: 400,
-              recurring: { interval: "month" },
-            },
-            quantity: addonQuantity,
-          });
-        }
-      }
-
+      if (addonQuantity) line_items.push({ price_data: { currency: 'usd', product_data: { name: 'Additional business listing' }, unit_amount: interval === 'year' ? 3600 : 400, recurring: { interval } }, quantity: addonQuantity });
+      const appUrl = process.env.APP_URL || SITE_URL;
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        line_items,
-        mode: "subscription",
-        success_url: `${appUrl}?payment_status=success&tier=${tier}&businessId=${businessId || ""}&addon_qty=${addonQuantity}&interval=${interval}`,
-        cancel_url: `${appUrl}?payment_status=cancel`,
-        metadata: {
-          tier,
-          userId: userId || "",
-          businessId: businessId || "",
-          addonQuantity: addonQuantity.toString(),
-          interval,
-        },
+        line_items, mode: 'subscription',
+        success_url: `${appUrl}/dashboard?payment_status=success`,
+        cancel_url: `${appUrl}/dashboard?payment_status=cancel`,
+        metadata: { tier, userId: owner.ownerId, businessId: owner.id, addonQuantity: String(addonQuantity), interval },
       });
-
       return res.json({ url: session.url });
-    } catch (error: any) {
-      console.error("Stripe Checkout error:", error);
-      return res.status(500).json({ error: "We could not open checkout right now. Please try again in a moment." });
+    } catch (error) {
+      console.error('Stripe checkout failed:', error instanceof Error ? error.message : 'Unknown error');
+      return res.status(503).json({ error: 'Checkout is temporarily unavailable. Your listing has not been activated.' });
     }
   });
 
