@@ -44,15 +44,15 @@ export const PUBLIC_PAGE_META: Record<PublicPageKey, PageMeta> = {
   },
   pricing: {
     title: 'Claim Your Celina Business Listing | Celina Connection Plans',
-    description: 'Compare free, basic, pro, and premium Celina Connection listing options for local businesses in Celina, Texas.',
+    description: 'Compare paid Basic, Pro, and Premium Celina Connection listing options for local businesses in Celina, Texas.',
     path: '/pricing',
     h1: 'Celina Connection listing plans',
-    intro: 'Business owners can claim a free listing or choose a paid visibility plan with richer profile features and placement options.',
+    intro: 'New business listings require a paid Basic, Pro, or Premium plan and confirmed payment.',
     schemaType: 'WebPage',
   },
   launch: {
-    title: 'Celina Connection Launch | First 100 Free Listings',
-    description: 'Join the Celina Connection launch and claim one of the first 100 free local business listings for Celina, Texas.',
+    title: 'Celina Connection | Paid Business Listings',
+    description: 'Choose a paid Celina Connection listing for your local business in Celina, Texas. Plans start at $6 per month or $60 per year.',
     path: '/launch',
     h1: 'Celina Connection launch',
     intro: 'The launch campaign helps the first Celina business owners claim a local directory presence and reach nearby customers.',
@@ -71,7 +71,7 @@ export const PUBLIC_PAGE_META: Record<PublicPageKey, PageMeta> = {
 export const PRIVATE_PAGE_META: Record<string, PageMeta> = {
   dashboard: {
     title: 'Add or Claim a Celina Business Listing | Celina Connection',
-    description: 'Claim a free Celina Connection listing, update business details, and help local customers find your Celina, TX business.',
+    description: 'Create a paid Celina Connection listing, update business details, and help local customers find your Celina, TX business.',
     path: '/dashboard',
     h1: 'Add or claim a Celina business listing',
     intro: 'Business owners can sign in, claim listings, and manage local business profiles.',
@@ -107,7 +107,7 @@ export const DIRECTORY_FAQ = [
   },
   {
     question: 'How can a Celina business claim a listing?',
-    answer: 'Business owners can claim a free listing, update business details, add photos, and choose paid visibility plans when they want more placement.',
+    answer: 'Business owners can register, verify their email, and activate a listing with a paid Basic, Pro, or Premium plan.',
   },
   {
     question: 'What types of businesses are listed?',
@@ -117,8 +117,8 @@ export const DIRECTORY_FAQ = [
 
 export const PRICING_FAQ = [
   {
-    question: 'Is the free launch listing really free?',
-    answer: 'Yes. The free launch listing is a no-card-required starter option for early Celina businesses while the first 100 free slots remain available.',
+    question: 'Is a paid plan required for a new listing?',
+    answer: 'Yes. All new listings require a paid plan. Basic starts at $6 per month or $60 per year. Your listing is published only after email verification and confirmed payment.',
   },
   {
     question: 'Which paid plan adds a website link and hours?',
