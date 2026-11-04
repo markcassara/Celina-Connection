@@ -1863,6 +1863,37 @@ export function createApp(options: { dbPath?: string; repository?: CelinaDataSto
       return res.status(400).json({ error: "A valid email is required." });
     }
     const guestCount = Math.min(20, Math.max(1, Number(guests) || 1));
+    // Save the attendee as a contact in the configured HighLevel sub-account
+    // (best-effort: a contact failure must not block the admin email below).
+    try {
+      const ghlApiKey = process.env.GHL_API_KEY || process.env.GOHIGHLEVEL_API_KEY || process.env.LEADCONNECTOR_API_KEY;
+      const ghlLocationId = process.env.GHL_LOCATION_ID || process.env.GOHIGHLEVEL_LOCATION_ID || process.env.LEADCONNECTOR_LOCATION_ID;
+      if (ghlApiKey && ghlLocationId) {
+        const ghlBaseUrl = (process.env.GHL_API_BASE_URL || "https://services.leadconnectorhq.com").replace(/\/$/, "");
+        const upsertRes = await fetchWithEmailTimeout(`${ghlBaseUrl}/contacts/upsert`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${ghlApiKey}`,
+            version: process.env.GHL_API_VERSION || "2021-07-28",
+            "content-type": "application/json",
+            accept: "application/json",
+          },
+          body: JSON.stringify({
+            locationId: ghlLocationId,
+            name: String(name).trim(),
+            email: String(email).trim(),
+            companyName: String(business).trim(),
+            tags: process.env.GHL_NETWORKING_EVENT_TAGS || "celina-connection,networking-event-rsvp",
+            source: "Celina Connection - Networking Event Nov 23",
+          }),
+        });
+        if (!upsertRes.ok) {
+          console.error("Networking Event RSVP contact upsert failed:", upsertRes.status, await upsertRes.text().catch(() => ""));
+        }
+      }
+    } catch (error) {
+      console.error("Networking Event RSVP contact upsert failed:", error instanceof Error ? error.message : String(error));
+    }
     const adminEmail = adminNotificationEmail();
     if (adminEmail) {
       const message: TransactionalEmailMessage = {
