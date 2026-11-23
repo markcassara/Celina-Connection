@@ -91,6 +91,14 @@ export const PUBLIC_MENU_ITEMS: MenuItem[] = [
     icon: 'Sparkles',
     isPrimary: true,
   },
+  {
+    id: 'join',
+    label: 'Join',
+    targetTab: 'join',
+    icon: 'UserCheck',
+    isPrimary: true,
+    description: 'Join the community and get listed in the directory',
+  },
 ];
 
 // 2. REGISTERED BUSINESS OWNER MENU ITEMS
