@@ -6,7 +6,6 @@ const INITIAL_FORM = {
   name: '',
   business: '',
   email: '',
-  guests: '1',
   notes: '',
   company: '',
 };
@@ -31,7 +30,6 @@ export default function NetworkingEventView() {
         name: form.name.trim(),
         business: form.business.trim(),
         email: form.email.trim(),
-        guests: form.guests === '5+' ? 5 : Number(form.guests) || 1,
         notes: form.notes.trim(),
         company: form.company,
       });
@@ -107,12 +105,6 @@ export default function NetworkingEventView() {
             <label className="block text-sm font-semibold text-slate-800">
               Email *
               <input required type="email" value={form.email} onChange={(e) => updateField('email', e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal" placeholder="you@yourbusiness.com" />
-            </label>
-            <label className="block text-sm font-semibold text-slate-800">
-              How many attending? *
-              <select value={form.guests} onChange={(e) => updateField('guests', e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 font-normal">
-                {['1', '2', '3', '4', '5+'].map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
             </label>
             <label className="block text-sm font-semibold text-slate-800 sm:col-span-2">
               Anything we should know? (optional)
