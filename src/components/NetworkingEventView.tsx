@@ -70,7 +70,7 @@ export default function NetworkingEventView() {
             <p className="flex items-start gap-3"><CalendarIcon className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>Monday, November 23, 2026</strong></span></p>
             <p className="flex items-start gap-3"><Clock className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>5:30 – 7:30 PM</strong></span></p>
             <p className="flex items-start gap-3"><MapPin className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>Voodoo Brewing Company – Frontier</strong><br />1440 W Frontier Pkwy, Ste 116, Prosper, TX 75078<br />On the Prosper / Celina border</span></p>
-            <p className="flex items-start gap-3"><Users className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span>Open to Celina-area business owners. Just check in below when you arrive.</sp>p></p>
+            <p className="flex items-start gap-3"><Users className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span>Open to Celina-area business owners. Just check in below when you arrive.</span></p>
           </div>
           <div className="flex flex-wrap gap-3">
             <a href="#rsvp" className="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white hover:bg-slate-700">Check In Below</a>
