@@ -9,6 +9,7 @@ import LaunchView from './components/LaunchView';
 import DashboardView from './components/DashboardView';
 import EventsView from './components/EventsView';
 import NetworkingEventView from './components/NetworkingEventView';
+import JoinView from './components/JoinView';
 import LegacyHillsPetitionView from './components/LegacyHillsPetitionView';
 import LegacyHillsPetitionSignaturesView from './components/LegacyHillsPetitionSignaturesView';
 import PolicyView from './components/PolicyView';
@@ -311,6 +312,13 @@ function buildPageSeoConfig(activeTab: string, selectedBusiness: Business | null
         title: 'Celina Connection Networking Event — Nov 23, 2026 | Celina Connection',
         description: 'RSVP for the first Celina Connection Networking Event: Monday, November 23, 2026, 5:30–7:30 PM at Voodoo Brewing Company, 1440 W Frontier Pkwy, Prosper, TX.',
         canonical: `${SITE_URL}/networking-event`,
+        ogImage: DEFAULT_OG_IMAGE,
+      };
+    case 'join':
+      return {
+        title: 'Join Celina Connection | Celina, TX Business Directory & Community',
+        description: 'Join the Celina Connection community for event updates and get your Celina business listed in the local directory — one form, free to join.',
+        canonical: `${SITE_URL}/join`,
         ogImage: DEFAULT_OG_IMAGE,
       };
     case 'launch':
@@ -1065,7 +1073,12 @@ export default function App() {
 
         {activeTab === 'networking-event' && (
           <NetworkingEventView />
-        )}
+)}
+        
+      {activeTab === 'join' && (
+      <JoinView />
+  )}
+      
 
         {activeTab === 'legacyhillspetition-signatures' && (
           <LegacyHillsPetitionSignaturesView setActiveTab={setActiveTab} />
