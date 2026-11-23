@@ -243,4 +243,10 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
+  submitRegistration(payload: { name: string; business: string; email: string; phone?: string; category: string; website?: string; description?: string; eventUpdates: boolean; listInDirectory: boolean; company?: string }) {
+    return request<{ ok: true }>('/api/registrations', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };
