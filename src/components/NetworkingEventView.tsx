@@ -36,11 +36,11 @@ export default function NetworkingEventView() {
         company: form.company,
       });
       setStatus('success');
-      setMessage("You're on the list! We will see you at Voodoo Brewing Company on Monday, November 23.");
+      setMessage("You're checked in! Welcome to the Networking Event at Voodoo Brewing Company.");
       setForm(INITIAL_FORM);
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : 'We could not save your RSVP right now. Please try again.');
+      setMessage(error instanceof Error ? error.message : 'We could not save your check-in right now. Please try again.');
     }
   };
 
@@ -70,10 +70,10 @@ export default function NetworkingEventView() {
             <p className="flex items-start gap-3"><CalendarIcon className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>Monday, November 23, 2026</strong></span></p>
             <p className="flex items-start gap-3"><Clock className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>5:30 – 7:30 PM</strong></span></p>
             <p className="flex items-start gap-3"><MapPin className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>Voodoo Brewing Company – Frontier</strong><br />1440 W Frontier Pkwy, Ste 116, Prosper, TX 75078<br />On the Prosper / Celina border</span></p>
-            <p className="flex items-start gap-3"><Users className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span>Open to Celina-area business owners. Just RSVP below so we know how many to expect.</span></p>
+            <p className="flex items-start gap-3"><Users className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span>Open to Celina-area business owners. Just check in below when you arrive.</sp>p></p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <a href="#rsvp" className="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white hover:bg-slate-700">RSVP Below</a>
+            <a href="#rsvp" className="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white hover:bg-slate-700">Check In Below</a>
             <a
               href="https://www.google.com/maps/search/?api=1&query=Voodoo+Brewing+Company+Frontier+1440+W+Frontier+Pkwy+Prosper+TX+75078"
               target="_blank"
@@ -87,7 +87,7 @@ export default function NetworkingEventView() {
       </div>
 
       <div id="rsvp" className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-        <h2 className="text-2xl font-extrabold text-slate-900">RSVP for November 23</h2>
+        <h2 className="text-2xl font-extrabold text-slate-900">Check in to the Networking Event</h2>
         <p className="mt-1 text-sm text-slate-600">RSVPs go to the Celina Connection team at info@celinaconnection.com.</p>
         {status === 'success' ? (
           <div className="mt-6 flex items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900">
@@ -123,7 +123,7 @@ export default function NetworkingEventView() {
             <div className="sm:col-span-2">
               <button type="submit" disabled={status === 'submitting'} className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-8 py-3 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-60">
                 {status === 'submitting' && <Loader2 className="h-4 w-4 animate-spin" />}
-                {status === 'submitting' ? 'Saving your RSVP…' : 'RSVP — See You Nov 23'}
+                {status === 'submitting' ? 'Checking you in…' : 'Check in'}
               </button>
             </div>
           </form>
