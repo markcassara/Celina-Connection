@@ -81,7 +81,7 @@ export default function JoinView() {
             <p className="flex items-start gap-3"><Calendar className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>Event updates</strong> — be first to hear about networking nights and community events.</span></p>
             <p className="flex items-start gap-3"><Store className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>Directory listing</strong> — your business in front of neighbors looking for exactly what you do.</span></p>
             <p className="flex items-start gap-3"><Users className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span><strong>Community</strong> — meet other local owners, swap referrals, and grow together.</span></p>
-            <p className="flex items-start gap-3"><Mail className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span>Free to join. The team reviews every listing before it goes live.</span></p>
+            <p className="flex items-start gap-3"><Mail className="mt-0.5 h-5 w-5 shrink-0 text-orange-700" /><span>Joining the email list for event updates is free. Directory listings start at $6/month or $60/year — the team reviews every listing before it goes live.</span></p>
           </div>
         </div>
       </div>
