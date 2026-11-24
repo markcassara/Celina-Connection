@@ -498,7 +498,16 @@ export function createApp(options: { dbPath?: string; repository?: CelinaDataSto
     html: `<p>We received a password reset request for ${businessName}.</p><p>Click below to choose a new owner password:</p><p><a href=\"${resetUrl}\">Reset my password</a></p><p>This link expires in 1 hour. If you did not request it, you can ignore this email.</p>`,
     text: `We received a password reset request for ${businessName}.\n\nChoose a new owner password: ${resetUrl}\n\nThis link expires in 1 hour. If you did not request it, you can ignore this email.`,
   });
-  const emailDeliveryTimeoutMs = () => Math.max(500, Number(process.env.EMAIL_DELIVERY_TIMEOUT_MS || 8000));
+    const registrationWelcomeEmail = (name: string, business: string): TransactionalEmailMessage => {
+    const pricingUrl = `${publicSiteUrl()}/pricing`;
+    const dashboardUrl = `${publicSiteUrl()}/dashboard`;
+    return {
+      subject: "Welcome to Celina Connection — how to get your business listed",
+      html: `<p>Hi ${emailHtmlEscape(name)},</p><p>Thanks for joining Celina Connection and registering ${emailHtmlEscape(business)} — you're on the list for free event updates, so you'll be first to hear about networking nights and community events.</p><p><strong>To get your business listed in the directory, choose a membership:</strong></p><ul><li><strong>Monthly — $6/month</strong></li><li><strong>Annual — $60/year</strong> (2 months free — save $12 vs. paying monthly)</li></ul><p><strong>Your next steps:</strong></p><ol><li>Open the <a href=\\"${emailHtmlEscape(pricingUrl)}\\">Membership Tiers page</a>, pick Monthly or Annual, and click your plan.</li><li>That takes you to the owner sign-in screen — switch to the Register tab and create your owner account. You'll need a password (at least 10 characters) and your logo and banner images.</li><li>Verify your email — we'll send you a verification link.</li><li>Sign in to your <a href=\\"${emailHtmlEscape(dashboardUrl)}\\">owner dashboard</a> and complete paid checkout (Activate Basic). Your listing goes live once payment is confirmed, and the team reviews every listing before it goes live.</li></ol><p>Questions? Just reply to this email and the Celina Connection team will help.</p>`,
+      text: `Hi ${name},\n\nThanks for joining Celina Connection and registering ${business} — you're on the list for free event updates, so you'll be first to hear about networking nights and community events.\n\nTo get your business listed in the directory, choose a membership:\n- Monthly — $6/month\n- Annual — $60/year (2 months free — save $12 vs. paying monthly)\n\nYour next steps:\n1. Open the Membership Tiers page (${pricingUrl}), pick Monthly or Annual, and click your plan.\n2. That takes you to the owner sign-in screen — switch to the Register tab and create your owner account. You'll need a password (at least 10 characters) and your logo and banner images.\n3. Verify your email — we'll send you a verification link.\n4. Sign in to your owner dashboard (${dashboardUrl}) and complete paid checkout (Activate Basic). Your listing goes live once payment is confirmed, and the team reviews every listing before it goes live.\n\nQuestions? Just reply to this email and the Celina Connection team will help.`,
+    };
+  };
+const emailDeliveryTimeoutMs = () => Math.max(500, Number(process.env.EMAIL_DELIVERY_TIMEOUT_MS || 8000));
   const petitionDatabaseTimeoutMs = () => Math.max(500, Number(process.env.PETITION_DATABASE_TIMEOUT_MS || 3500));
   const withPetitionDatabaseTimeout = async <T>(operation: T | Promise<T>) => Promise.race([
     Promise.resolve(operation),
@@ -515,6 +524,10 @@ export function createApp(options: { dbPath?: string; repository?: CelinaDataSto
     .map((tag) => tag.trim())
     .filter(Boolean);
   const parseGhlAdminNotificationTags = () => (process.env.GHL_ADMIN_NOTIFICATION_TAGS || "celina-connection,admin-notification,new-owner-registration")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+    const parseGhlRegistrationWelcomeTags = () => (process.env.GHL_REGISTRATION_WELCOME_TAGS || "celina-connection,registration")
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
@@ -1922,7 +1935,7 @@ Website: ${normalizedWebsite || "None"}
 Description: ${String(description || "").trim() || "None"}
 
 Event updates: ${wantsUpdates ? "Yes" : "No"}
-List in directory: ${wantsListing ? "Yes" : "No"}` }; try { await sendOwnerEmailMessage(adminEmail, "Celina Connection Admin", message, "registration", `${publicSiteUrl()}/join`, parseGhlAdminNotificationTags()); } catch (error) { console.error("Registration notification failed:", error instanceof Error ? error.message : String(error)); return res.status(503).json({ error: "We could not save your registration right now. Please try again shortly." }); } } return res.status(201).json({ ok: true }); }); app.get("/api/petitions/legacy-hills/signatures", async (_req, res) => {
+List in directory: ${wantsListing ? "Yes" : "No"}` }; try { await sendOwnerEmailMessage(adminEmail, "Celina Connection Admin", message, "registration", `${publicSiteUrl()}/join`, parseGhlAdminNotificationTags()); } catch (error) { console.error("Registration notification failed:", error instanceof Error ? error.message : String(error)); return res.status(503).json({ error: "We could not save your registration right now. Please try again shortly." }); } } try { await sendOwnerEmailMessage(String(email).trim(), String(name).trim(), registrationWelcomeEmail(String(name).trim(), String(business).trim()), "registration-welcome", `${publicSiteUrl()}/pricing`, parseGhlRegistrationWelcomeTags()); } catch (error) { console.error("Registration welcome email failed:", error instanceof Error ? error.message : String(error)); } return res.status(201).json({ ok: true }); }); app.get("/api/petitions/legacy-hills/signatures", async (_req, res) => {
     let signatures;
     try {
       signatures = await withPetitionDatabaseTimeout(repository.listLegacyHillsPetitionSignatures());
