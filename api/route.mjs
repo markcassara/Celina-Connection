@@ -603,7 +603,23 @@ function rowToBug(row) {
     status: row.status
   };
 }
-function rowToLegacyHillsPetitionSignature(row) {
+function rowToAdminEvent(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    eventDate: row.event_date,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    location: row.location || "",
+    address: row.address || "",
+    rsvpsText: row.rsvps_text || "",
+    checkinsText: row.checkins_text || "",
+    createdAt: row.created_at
+  };
+}
+    function rowToLegacyHillsPetitionSignature(row) {
   return {
     id: row.id,
     firstName: row.first_name,
@@ -752,6 +768,7 @@ var CelinaRepository = class {
     this.db = null;
     this.businessesMap = /* @__PURE__ */ new Map();
     this.bugsMap = /* @__PURE__ */ new Map();
+    this.adminEventsMap = /* @__PURE__ */ new Map();
     this.claimsMap = /* @__PURE__ */ new Map();
     this.petitionsMap = /* @__PURE__ */ new Map();
     if (DatabaseSyncClass) {
@@ -834,6 +851,21 @@ var CelinaRepository = class {
           status TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS admin_events (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        event_date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        location TEXT,
+        address TEXT,
+        rsvps_text TEXT,
+        checkins_text TEXT,
+        created_at TEXT NOT NULL
+        );
+        
         CREATE TABLE IF NOT EXISTS claim_requests (
           id TEXT PRIMARY KEY,
           business_id TEXT NOT NULL,
@@ -909,7 +941,7 @@ var CelinaRepository = class {
   }
   seedInitialData() {
     if (this.db) {
-      this.db.exec("DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM claim_requests; DELETE FROM legacy_hills_petition_signatures;");
+      this.db.exec("DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM admin_events; DELETE FROM claim_requests; DELETE FROM legacy_hills_petition_signatures;");
       for (const business of INITIAL_BUSINESSES) {
         this.upsertBusiness(makeBusiness(business));
       }
@@ -1205,6 +1237,24 @@ var CelinaRepository = class {
     }
     return this.db.prepare("SELECT * FROM reported_bugs ORDER BY created_at DESC").all().map(rowToBug);
   }
+  listAdminEvents() {
+    if (!this.db) {
+      return Array.from(this.adminEventsMap.values());
+    }
+    return this.db.prepare("SELECT * FROM admin_events ORDER BY event_date DESC, created_at DESC").all().map(rowToAdminEvent);
+  }
+  createAdminEvent(input) {
+    const event = { id: randomId("admin-event"),...input, createdAt: (/* @__PURE__ */ new Date()).toISOString()};
+    if (!this.db) {
+      this.adminEventsMap.set(event.id, event);
+      return event;
+    }
+        this.db.prepare(`
+        INSERT INTO admin_events (id, title, description, category, event_date, start_time, end_time, location, address, rsvps_text, checkins_text, created_at)
+        VALUES (@id, @title, @description, @category, @event_date, @start_time, @end_time, @location, @address, @rsvps_text, @checkins_text, @created_at)
+    `).run(toAdminEventParams(event));
+    return event;
+  }
   createLegacyHillsPetitionSignature(input) {
     const signature = makeLegacyHillsPetitionSignature(input);
     if (!this.db) {
@@ -1473,6 +1523,22 @@ var PostgresRepository = class {
       )
     `;
     await this.sql`
+    CREATE TABLE IF NOT EXISTS admin_events (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    location TEXT,
+    address TEXT,
+    rsvps_text TEXT,
+    checkins_text TEXT,
+    created_at TEXT NOT NULL
+)
+`;
+    await this.sql`
       CREATE TABLE IF NOT EXISTS claim_requests (
         id TEXT PRIMARY KEY,
         business_id TEXT NOT NULL,
@@ -1530,6 +1596,7 @@ var PostgresRepository = class {
   async seedInitialData() {
     await this.sql`DELETE FROM businesses`;
     await this.sql`DELETE FROM reported_bugs`;
+await this.sql`DELETE FROM admin_events`;
     await this.sql`DELETE FROM claim_requests`;
     await this.sql`DELETE FROM legacy_hills_petition_signatures`;
     for (const business of INITIAL_BUSINESSES) {
@@ -1824,7 +1891,22 @@ var PostgresRepository = class {
     const rows = await this.sql`SELECT * FROM reported_bugs ORDER BY created_at DESC`;
     return rows.map(rowToBug);
   }
-  async createLegacyHillsPetitionSignature(input) {
+  async listAdminEvents() {
+    await this.ensureInitialized();  
+    const rows = await this.sql`SELECT * FROM admin_events ORDER BY event_date DESC, created_at DESC`;
+    return rows.map(rowToAdminEvent);
+  }
+async createAdminEvent(input) {
+    await this.ensureInitialized();
+    const event = { id: randomId("admin-event"),...input, createdAt: (/* @__PURE__ */ new Date()).toISOString()};
+    const values = toAdminEventParams(event);
+    await this.sql`
+    INSERT INTO admin_events (id, title, description, category, event_date, start_time, end_time, location, address, rsvps_text, checkins_text, created_at)
+    VALUES (${values.id}, ${values.title}, ${values.description}, ${values.category}, ${values.event_date}, ${values.start_time}, ${values.end_time}, ${values.location}, ${values.address}, ${values.rsvps_text}, ${values.checkins_text}, ${values.created_at})
+        `;
+  return event;
+}    
+    async createLegacyHillsPetitionSignature(input) {
     await this.ensureInitialized();
     const signature = makeLegacyHillsPetitionSignature(input);
     await this.sql`
@@ -2006,7 +2088,23 @@ function toBugParams(bug) {
     status: bug.status
   };
 }
-function createRepository(options = {}) {
+function toAdminEventParams(event) {
+  return {
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    category: event.category,
+    event_date: event.eventDate,
+    start_time: event.startTime,
+    end_time: event.endTime,
+    location: event.location || "",
+    address: event.address || "",
+    rsvps_text: event.rsvpsText || "",
+    checkins_text: event.checkinsText || "",
+    created_at: event.createdAt
+  };
+}
+    function createRepository(options = {}) {
   const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!options.dbPath && databaseUrl) {
     return new PostgresRepository(databaseUrl);
