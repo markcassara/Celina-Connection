@@ -1166,7 +1166,7 @@ var CelinaRepository = class {
   claimBusiness(id, email) {
     const current = this.getBusiness(id);
     if (!current) return null;
-    const business = { ...current, tier: "pending", email, isUnclaimed: false, ownerId: `owner-${id}` };
+    const business = { ...current, tier: current.tier === "pending" ? "pending" : current.tier, email, isUnclaimed: false, ownerId: `owner-${id}` };
     this.upsertBusiness(business);
     return makeClaimPayload(business, email);
   }
@@ -1786,7 +1786,7 @@ var PostgresRepository = class {
   async claimBusiness(id, email) {
     const current = await this.getBusiness(id);
     if (!current) return null;
-    const business = { ...current, tier: "pending", email, isUnclaimed: false, ownerId: `owner-${id}` };
+    const business = { ...current, tier: current.tier === "pending" ? "pending" : current.tier, email, isUnclaimed: false, ownerId: `owner-${id}` };
     await this.upsertBusiness(business);
     return makeClaimPayload(business, email);
   }
