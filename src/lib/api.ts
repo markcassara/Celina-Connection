@@ -243,8 +243,8 @@ export const api = {
       body: JSON.stringify(payload),
     });
   },
-  submitRegistration(payload: { name: string; business: string; email: string; phone?: string; category: string; website?: string; description?: string; eventUpdates: boolean; listInDirectory: boolean; company?: string }) {
-    return request<{ ok: true }>('/api/registrations', {
+  submitRegistration(payload: { name: string; business: string; email: string; phone?: string; category: string; website?: string; description?: string; eventUpdates: boolean; listInDirectory: boolean; tier?: 'basic' | 'pro' | 'premium'; interval?: 'month' | 'year'; company?: string }) {
+    return request<{ ok: true; checkoutUrl?: string; checkoutUnavailable?: boolean }>('/api/registrations', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
