@@ -824,7 +824,7 @@ export class CelinaRepository implements CelinaDataStore {
   claimBusiness(id: string, email: string) {
     const current = this.getBusiness(id);
     if (!current) return null;
-    const business: Business = { ...current, tier: 'pending', email, isUnclaimed: false, ownerId: `owner-${id}` };
+    const business: Business = { ...current, tier: current.tier === 'pending' ? 'pending' : current.tier, email, isUnclaimed: false, ownerId: `owner-${id}` };
     this.upsertBusiness(business);
     return makeClaimPayload(business, email);
   }
@@ -1497,7 +1497,7 @@ export class PostgresRepository implements CelinaDataStore {
   async claimBusiness(id: string, email: string) {
     const current = await this.getBusiness(id);
     if (!current) return null;
-    const business: Business = { ...current, tier: 'pending', email, isUnclaimed: false, ownerId: `owner-${id}` };
+    const business: Business = { ...current, tier: current.tier === 'pending' ? 'pending' : current.tier, email, isUnclaimed: false, ownerId: `owner-${id}` };
     await this.upsertBusiness(business);
     return makeClaimPayload(business, email);
   }
