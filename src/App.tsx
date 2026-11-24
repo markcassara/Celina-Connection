@@ -317,7 +317,7 @@ function buildPageSeoConfig(activeTab: string, selectedBusiness: Business | null
     case 'join':
       return {
         title: 'Join Celina Connection | Celina, TX Business Directory & Community',
-        description: 'Join the Celina Connection community for event updates and get your Celina business listed in the local directory — one form, free to join.',
+        description: 'Join the Celina Connection community for event updates and get your Celina business listed in the local directory — one form. Event updates are free; directory listings start at $6/month or $60/year.',
         canonical: `${SITE_URL}/join`,
         ogImage: DEFAULT_OG_IMAGE,
       };
