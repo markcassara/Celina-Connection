@@ -1803,7 +1803,42 @@ The listing is live in the directory as an unclaimed listing. If the buyer claim
     }
   });
 
-  app.get("/api/bootstrap", async (_req, res) => {
+  app.get('/api/admin/events', requireAdminToken, async (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      return res.json({ events: await repository.listAdminEvents() });
+    } catch {
+      return res.status(503).json({ error: 'Admin events are temporarily unavailable.' });
+    }
+  });
+  
+  
+app.post('/api/admin/events', requireAdminToken, async (req, res) => {
+    try {
+      const { title, description, category, eventDate, startTime, endTime, location, address, rsvpsText, checkinsText } = req.body || {};
+      if (!title || !eventDate || !startTime || !endTime) {
+        return res.status(400).json({ error: 'Please add the event title, date, start time, and end time.' });
+      }
+      const event = await repository.createAdminEvent({
+        title: String(title).trim(),
+        description: String(description || '').trim(),
+        category: String(category || 'Activities & Community').trim(),
+        eventDate: String(eventDate).trim(),
+        startTime: String(startTime).trim(),
+        endTime: String(endTime).trim(),
+        location: String(location || '').trim(),
+        address: String(address || '').trim(),
+        rsvpsText: String(rsvpsText || ''),
+        checkinsText: String(checkinsText || ''),
+      });
+      return res.status(201).json(event);
+    } catch (error) {
+      console.error('Create admin event error.');
+      return res.status(500).json({ error: 'We could not save that event right now. Please try again.' });
+    }
+});
+       
+      app.get("/api/bootstrap", async (_req, res) => {
     try {
       const businesses = await readPublicDirectory();
       res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300');
