@@ -104,7 +104,35 @@ export interface ReportedBug {
   status: 'open' | 'in-progress' | 'resolved';
 }
 
-export interface LegacyHillsPetitionSignature {
+export interface AdminEvent {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  address: string;
+  rsvpsText: string;
+  checkinsText: string;
+  createdAt: string;
+}
+
+export interface CreateAdminEventInput {
+  title: string;
+  description: string;
+  category: string;
+  eventDate: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  address: string;
+  rsvpsText: string;
+  checkinsText: string;
+}
+  
+  export interface LegacyHillsPetitionSignature {
   id: string;
   firstName: string;
   lastName: string;
