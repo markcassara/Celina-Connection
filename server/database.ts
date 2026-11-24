@@ -25,7 +25,7 @@ try {
 const neonFn: any = typeof importedNeon === 'function' ? importedNeon : null;
 
 import { INITIAL_BUSINESSES } from '../src/data/mockBusinesses';
-import type { Business, ClaimRequest, LegacyHillsPetitionSignature, ReportedBug, Review, Tier, UserProfile } from '../src/types';
+import type { AdminEvent, Business, ClaimRequest, CreateAdminEventInput, LegacyHillsPetitionSignature, ReportedBug, Review, Tier, UserProfile } from '../src/types';
 
 export interface CreateBusinessInput {
   name: string;
@@ -123,6 +123,8 @@ export interface CelinaDataStore {
   createBug(input: CreateBugInput): ReportedBug | Promise<ReportedBug>;
   updateBug(id: string, updates: Partial<ReportedBug>): ReportedBug | null | Promise<ReportedBug | null>;
   deleteBug(id: string): boolean | Promise<boolean>;
+  listAdminEvents(): AdminEvent[] | Promise<AdminEvent[]>;
+  createAdminEvent(input: CreateAdminEventInput): AdminEvent | Promise<AdminEvent>;
   createLegacyHillsPetitionSignature(input: CreateLegacyHillsPetitionSignatureInput): LegacyHillsPetitionSignature | Promise<LegacyHillsPetitionSignature>;
   listLegacyHillsPetitionSignatures(): LegacyHillsPetitionSignature[] | Promise<LegacyHillsPetitionSignature[]>;
   getLegacyHillsPetitionSignatureByContact(email: string, phone: string): LegacyHillsPetitionSignature | null | Promise<LegacyHillsPetitionSignature | null>;
@@ -214,7 +216,24 @@ function rowToBug(row: any): ReportedBug {
   };
 }
 
-function rowToLegacyHillsPetitionSignature(row: any): LegacyHillsPetitionSignature {
+function rowToAdminEvent(row: any): AdminEvent {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    eventDate: row.event_date,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    location: row.location || '',
+    address: row.address || '',
+    rsvpsText: row.rsvps_text || '',
+    checkinsText: row.checkins_text || '',
+    createdAt: row.created_at,
+  };
+}
+
+    function rowToLegacyHillsPetitionSignature(row: any): LegacyHillsPetitionSignature {
   return {
     id: row.id,
     firstName: row.first_name,
@@ -371,10 +390,12 @@ export class CelinaRepository implements CelinaDataStore {
   private db: any = null;
   private businessesMap: Map<string, Business & { ownerPasswordHash?: string }> = new Map();
   private bugsMap: Map<string, ReportedBug> = new Map();
+  private adminEventsMap: Map<string, AdminEvent> = new Map();
   private claimsMap: Map<string, ClaimRequest> = new Map();
   private petitionsMap: Map<string, LegacyHillsPetitionSignature> = new Map();
 
   constructor(dbPath?: string) {
+    
     if (DatabaseSyncClass) {
       let resolvedDbPath = dbPath;
       if (!resolvedDbPath) {
@@ -457,6 +478,21 @@ export class CelinaRepository implements CelinaDataStore {
           status TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS admin_events (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL,
+        event_date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        location TEXT,
+        address TEXT,
+        rsvps_text TEXT,
+        checkins_text TEXT,
+        created_at TEXT NOT NULL
+        );
+        
         CREATE TABLE IF NOT EXISTS claim_requests (
           id TEXT PRIMARY KEY,
           business_id TEXT NOT NULL,
@@ -535,7 +571,7 @@ export class CelinaRepository implements CelinaDataStore {
 
   seedInitialData() {
     if (this.db) {
-      this.db.exec('DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM claim_requests; DELETE FROM legacy_hills_petition_signatures;');
+      this.db.exec('DELETE FROM businesses; DELETE FROM reported_bugs; DELETE FROM admin_events; DELETE FROM claim_requests; DELETE FROM legacy_hills_petition_signatures;');
       for (const business of INITIAL_BUSINESSES) {
         this.upsertBusiness(makeBusiness(business as CreateBusinessInput));
       }
@@ -868,6 +904,27 @@ export class CelinaRepository implements CelinaDataStore {
     return this.db.prepare('SELECT * FROM reported_bugs ORDER BY created_at DESC').all().map(rowToBug);
   }
 
+  listAdminEvents() {
+    if (!this.db) {
+      return Array.from(this.adminEventsMap.values());
+    }
+    return this.db.prepare('SELECT * FROM admin_events ORDER BY event_date DESC, created_at DESC').all().map(rowToAdminEvent);
+  }
+
+  createAdminEvent(input: CreateAdminEventInput) {
+    const event: AdminEvent = { id: randomId('admin-event'), ...input, createdAt: new Date().toISOString() };
+    if (!this.db) {
+      this.adminEventsMap.set(event.id, event);
+      return event;
+    }
+    this.db.prepare(`
+    INSERT INTO admin_events (id, title, description, category, event_date, start_time, end_time, location, address, rsvps_text, checkins_text, created_at)
+    VALUES (@id, @title, @description, @category, @event_date, @start_time, @end_time, @location, @address, @rsvps_text, @checkins_text, @created_at)
+    `).run(toAdminEventParams(event));
+    return event;
+  }
+
+  
   createLegacyHillsPetitionSignature(input: CreateLegacyHillsPetitionSignatureInput) {
     const signature = makeLegacyHillsPetitionSignature(input);
     if (!this.db) {
@@ -1156,6 +1213,22 @@ export class PostgresRepository implements CelinaDataStore {
       )
     `;
     await this.sql`
+    CREATE TABLE IF NOT EXISTS admin_events (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    category TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    location TEXT,
+    address TEXT,
+    rsvps_text TEXT,
+    checkins_text TEXT,
+    created_at TEXT NOT NULL
+    )
+    `;
+    await this.sql`
       CREATE TABLE IF NOT EXISTS claim_requests (
         id TEXT PRIMARY KEY,
         business_id TEXT NOT NULL,
@@ -1214,10 +1287,11 @@ export class PostgresRepository implements CelinaDataStore {
   private async seedInitialData() {
     await this.sql`DELETE FROM businesses`;
     await this.sql`DELETE FROM reported_bugs`;
+    await this.sql`DELETE FROM admin_events`;
     await this.sql`DELETE FROM claim_requests`;
     await this.sql`DELETE FROM legacy_hills_petition_signatures`;
     for (const business of INITIAL_BUSINESSES) {
-      await this.upsertBusiness(makeBusiness(business as CreateBusinessInput), false);
+         await this.upsertBusiness(makeBusiness(business as CreateBusinessInput), false);
     }
   }
 
@@ -1540,6 +1614,23 @@ export class PostgresRepository implements CelinaDataStore {
     return rows.map(rowToBug);
   }
 
+  async listAdminEvents() {
+    await this.ensureInitialized();
+    const rows = await this.sql`SELECT * FROM admin_events ORDER BY event_date DESC, created_at DESC` as any[];
+    return rows.map(rowToAdminEvent);
+  }
+  
+  async createAdminEvent(input: CreateAdminEventInput) {
+    await this.ensureInitialized();
+    const event: AdminEvent = { id: randomId('admin-event'), ...input, createdAt: new Date().toISOString() };
+    const values = toAdminEventParams(event);
+    await this.sql`
+    INSERT INTO admin_events (id, title, description, category, event_date, start_time, end_time, location, address, rsvps_text, checkins_text, created_at)
+    VALUES (${values.id}, ${values.title}, ${values.description}, ${values.category}, ${values.event_date}, ${values.start_time}, ${values.end_time}, ${values.location}, ${values.address}, ${values.rsvps_text}, ${values.checkins_text}, ${values.created_at})
+    `;
+    return event;
+  }
+
   async createLegacyHillsPetitionSignature(input: CreateLegacyHillsPetitionSignatureInput) {
     await this.ensureInitialized();
     const signature = makeLegacyHillsPetitionSignature(input);
@@ -1736,7 +1827,24 @@ function toBugParams(bug: ReportedBug) {
   };
 }
 
-export function createRepository(options: { dbPath?: string } = {}): CelinaDataStore {
+function toAdminEventParams(event: AdminEvent) {
+  return {
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    category: event.category,
+    event_date: event.eventDate,
+    start_time: event.startTime,
+    end_time: event.endTime,
+    location: event.location || '',
+    address: event.address || '',
+    rsvps_text: event.rsvpsText || '',
+    checkins_text: event.checkinsText || '',
+    created_at: event.createdAt,
+  };
+}
+
+    export function createRepository(options: { dbPath?: string } = {}): CelinaDataStore {
   const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
   if (!options.dbPath && databaseUrl) {
     return new PostgresRepository(databaseUrl);
