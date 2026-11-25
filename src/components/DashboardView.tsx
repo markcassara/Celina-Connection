@@ -3104,6 +3104,7 @@ function AdminDashboardView({
   const [adminEventsLoading, setAdminEventsLoading] = useState(false);
   const [adminEventsError, setAdminEventsError] = useState('');
   const [adminEventSavedMessage, setAdminEventSavedMessage] = useState('');
+  const [adminBusinessesList, setAdminBusinessesList] = useState<Business[] | null>(null);
   const [adminEventTitle, setAdminEventTitle] = useState('');
   const [adminEventDescription, setAdminEventDescription] = useState('');
   const [adminEventCategory, setAdminEventCategory] = useState('Activities & Community');
@@ -3343,7 +3344,7 @@ function AdminDashboardView({
   };
 
   // Stats calculation
-  const adminListings = businesses.filter((b) => !isHiddenFromAdminListings(b));
+  const adminListings = (adminBusinessesList ?? businesses).filter((b) => !isHiddenFromAdminListings(b));
   const totalListings = adminListings.length;
   const claimedListingsCount = adminListings.filter((b) => !b.isUnclaimed && b.ownerId).length;
   const unclaimedListingsCount = adminListings.filter((b) => b.isUnclaimed).length;
@@ -3641,6 +3642,14 @@ function AdminDashboardView({
       setAdminEventsLoading(false);
     }
   }, []);
+  const loadAdminBusinesses = React.useCallback(async () => {
+    try {
+      const payload = await api.adminListBusinesses();
+      setAdminBusinessesList(payload.businesses);
+    } catch {
+      setAdminBusinessesList(null);
+    }
+  }, []);
 
   const handleAdminEventSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3712,6 +3721,11 @@ function AdminDashboardView({
       loadAdminEvents();
     }
   }, [adminActiveTab, loadAdminEvents]);
+  React.useEffect(() => {
+    if (adminActiveTab === 'listings' || adminActiveTab === 'dashboard') {
+      loadAdminBusinesses();
+    }
+  }, [adminActiveTab, businesses, loadAdminBusinesses]);
 
   const handleLocalLogout = async () => {
     try {
