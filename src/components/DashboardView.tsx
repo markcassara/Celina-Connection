@@ -4717,7 +4717,6 @@ function AdminDashboardView({
               </tbody>
             </table>
           </div>
-        </div>
           <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in mt-4" id="admin-events-add-card">
             <div className="p-5 border-b border-slate-200 bg-slate-50">
               <h3 className="font-display text-xl font-black text-[var(--cc-deep-navy)] flex items-center gap-2">
@@ -4827,6 +4826,7 @@ function AdminDashboardView({
               ))}
             </div>
           </div>
+        </div>
       )}
 
       {adminActiveTab === 'petition' && (
