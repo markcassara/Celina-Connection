@@ -3514,34 +3514,38 @@ function AdminDashboardView({
     }
 
     const ownerId = newIsUnclaimed ? '' : `owner-${Math.random().toString(36).substring(2, 7)}`;
-    await onAddBusiness({
-      name: newName,
-      category: newCategory,
-      description: newDesc,
-      phone: newPhone,
-      email: newEmail,
-      tier: newTier,
-      ownerId: ownerId,
-      isUnclaimed: newIsUnclaimed,
-      address: newAddress,
-      website: newWebsite,
-      logoUrl: newLogoUrl,
-      images: newCoverImageUrl ? [newCoverImageUrl] : [],
-    });
+    try {
+      await onAddBusiness({
+        name: newName,
+        category: newCategory,
+        description: newDesc,
+        phone: newPhone,
+        email: newEmail,
+        tier: newTier,
+        ownerId: ownerId,
+        isUnclaimed: newIsUnclaimed,
+        address: newAddress,
+        website: newWebsite,
+        logoUrl: newLogoUrl,
+        images: newCoverImageUrl ? [newCoverImageUrl] : [],
+      });
 
-    // Reset states
-    setNewName('');
-    setNewCategory('Dining');
-    setNewPhone('');
-    setNewEmail('');
-    setNewDesc('');
-    setNewTier('basic');
-    setNewIsUnclaimed(true);
-    setNewAddress('');
-    setNewWebsite('');
-    setNewLogoUrl('');
-    setNewCoverImageUrl('');
-    setShowCreateModal(false);
+      // Reset states
+      setNewName('');
+      setNewCategory('Dining');
+      setNewPhone('');
+      setNewEmail('');
+      setNewDesc('');
+      setNewTier('basic');
+      setNewIsUnclaimed(true);
+      setNewAddress('');
+      setNewWebsite('');
+      setNewLogoUrl('');
+      setNewCoverImageUrl('');
+      setShowCreateModal(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'We could not save that listing. Please try again.');
+    }
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
