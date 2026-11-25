@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Business, BusinessEvent, Review, Tier, UserProfile, ReportedBug, LegacyHillsPetitionSignature } from '../types';
+import { AdminEvent, Business, BusinessEvent, Review, Tier, UserProfile, ReportedBug, LegacyHillsPetitionSignature } from '../types';
 import { CATEGORIES } from '../data/mockBusinesses';
 import { countOutsideUserClaimedListings } from '../lib/listingVisuals';
 import {
@@ -3100,6 +3100,20 @@ function AdminDashboardView({
   const [petitionError, setPetitionError] = useState('');
   const [editingPetitionSignature, setEditingPetitionSignature] = useState<LegacyHillsPetitionSignature | null>(null);
   const [petitionSaveMessage, setPetitionSaveMessage] = useState('');
+  const [adminEventsList, setAdminEventsList] = useState<AdminEvent[]>([]);
+  const [adminEventsLoading, setAdminEventsLoading] = useState(false);
+  const [adminEventsError, setAdminEventsError] = useState('');
+  const [adminEventSavedMessage, setAdminEventSavedMessage] = useState('');
+  const [adminEventTitle, setAdminEventTitle] = useState('');
+  const [adminEventDescription, setAdminEventDescription] = useState('');
+  const [adminEventCategory, setAdminEventCategory] = useState('Activities & Community');
+  const [adminEventDate, setAdminEventDate] = useState('');
+  const [adminEventStartTime, setAdminEventStartTime] = useState('');
+  const [adminEventEndTime, setAdminEventEndTime] = useState('');
+  const [adminEventLocation, setAdminEventLocation] = useState('');
+  const [adminEventAddress, setAdminEventAddress] = useState('');
+  const [adminEventRsvps, setAdminEventRsvps] = useState('');
+  const [adminEventCheckins, setAdminEventCheckins] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [tierFilter, setTierFilter] = useState<'all' | 'free' | 'pending' | 'premium' | 'pro' | 'basic' | 'unclaimed'>('all');
@@ -3611,6 +3625,57 @@ function AdminDashboardView({
     }
   }, []);
 
+  const loadAdminEvents = React.useCallback(async () => {
+    setAdminEventsLoading(true);
+    setAdminEventsError('');
+    try {
+      const payload = await api.adminListEvents();
+      setAdminEventsList(payload.events);
+    } catch (error) {
+      setAdminEventsError(error instanceof Error ? error.message : 'Unable to load admin events.');
+    } finally {
+      setAdminEventsLoading(false);
+    }
+  }, []);
+
+  const handleAdminEventSave = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!adminEventTitle.trim() || !adminEventDate.trim() || !adminEventStartTime.trim() || !adminEventEndTime.trim()) {
+      alert('Please add the event title, date, start time, and end time.');
+      return;
+    }
+    setAdminEventsError('');
+    setAdminEventSavedMessage('');
+    try {
+      const created = await api.adminCreateEvent({
+        title: adminEventTitle.trim(),
+        description: adminEventDescription.trim(),
+        category: adminEventCategory,
+        eventDate: adminEventDate,
+        startTime: adminEventStartTime.trim(),
+        endTime: adminEventEndTime.trim(),
+        location: adminEventLocation.trim(),
+        address: adminEventAddress.trim(),
+        rsvpsText: adminEventRsvps,
+        checkinsText: adminEventCheckins,
+      });
+      setAdminEventsList((current) => [created, ...current]);
+      setAdminEventTitle('');
+      setAdminEventDescription('');
+      setAdminEventCategory('Activities & Community');
+      setAdminEventDate('');
+      setAdminEventStartTime('');
+      setAdminEventEndTime('');
+      setAdminEventLocation('');
+      setAdminEventAddress('');
+      setAdminEventRsvps('');
+      setAdminEventCheckins('');
+      setAdminEventSavedMessage('Event saved.');
+    } catch (error) {
+      setAdminEventsError(error instanceof Error ? error.message : 'Unable to save that event.');
+    }
+  };
+
   const handleAdminPetitionSignatureSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editingPetitionSignature) return;
@@ -3637,6 +3702,12 @@ function AdminDashboardView({
       loadPetitionSignatures();
     }
   }, [adminActiveTab, loadPetitionSignatures]);
+
+  React.useEffect(() => {
+    if (adminActiveTab === 'events') {
+      loadAdminEvents();
+    }
+  }, [adminActiveTab, loadAdminEvents]);
 
   const handleLocalLogout = async () => {
     try {
@@ -4643,6 +4714,115 @@ function AdminDashboardView({
             </table>
           </div>
         </div>
+          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in mt-4" id="admin-events-add-card">
+            <div className="p-5 border-b border-slate-200 bg-slate-50">
+              <h3 className="font-display text-xl font-black text-[var(--cc-deep-navy)] flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-orange-500" /> Add Event
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Record a Celina Connection event here — no listing needed. RSVPs and check-ins are pasted in as text.
+              </p>
+            </div>
+            <form onSubmit={handleAdminEventSave} className="p-5 space-y-4 text-left">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Event Title</label>
+                <input type="text" value={adminEventTitle} onChange={(e) => setAdminEventTitle(e.target.value)} placeholder="Celina Connection Networking Event" className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Description</label>
+                <textarea value={adminEventDescription} onChange={(e) => setAdminEventDescription(e.target.value)} rows={3} placeholder="What happened, and what stood out." className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Category</label>
+                  <select value={adminEventCategory} onChange={(e) => setAdminEventCategory(e.target.value)} className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)] cursor-pointer">
+                    {CATEGORIES.filter(c => c !== 'All').map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Date</label>
+                  <input type="date" value={adminEventDate} onChange={(e) => setAdminEventDate(e.target.value)} className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Start Time</label>
+                  <input type="text" value={adminEventStartTime} onChange={(e) => setAdminEventStartTime(e.target.value)} placeholder="5:30 PM" className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">End Time</label>
+                  <input type="text" value={adminEventEndTime} onChange={(e) => setAdminEventEndTime(e.target.value)} placeholder="7:30 PM" className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Location</label>
+                  <input type="text" value={adminEventLocation} onChange={(e) => setAdminEventLocation(e.target.value)} placeholder="Voodoo Brewing Company – Frontier" className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Address</label>
+                  <input type="text" value={adminEventAddress} onChange={(e) => setAdminEventAddress(e.target.value)} placeholder="1440 W Frontier Pkwy, Ste 116, Prosper, TX 75078" className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">RSVP List</label>
+                <textarea value={adminEventRsvps} onChange={(e) => setAdminEventRsvps(e.target.value)} rows={4} placeholder="Name (Business, email); one per line or separated by semicolons." className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Check-in List</label>
+                <textarea value={adminEventCheckins} onChange={(e) => setAdminEventCheckins(e.target.value)} rows={4} placeholder="Name, time, and notes for each person who checked in." className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-orange-500 text-[var(--cc-deep-navy)]" />
+              </div>
+              {adminEventsError && (
+                <p className="text-xs font-bold text-rose-600">{adminEventsError}</p>
+              )}
+              {adminEventSavedMessage && (
+                <p className="text-xs font-bold text-emerald-700">{adminEventSavedMessage}</p>
+              )}
+              <div className="flex gap-2.5 justify-end pt-2 border-t border-slate-100">
+                <button type="submit" className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-[var(--cc-deep-navy)] font-bold text-xs rounded-xl shadow cursor-pointer">
+                  Save Event
+                </button>
+              </div>
+            </form>
+          </div>
+          <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm animate-fade-in mt-4" id="admin-events-saved-card">
+            <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="font-display text-xl font-black text-[var(--cc-deep-navy)] flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-orange-500" /> Saved Admin Events ({adminEventsList.length})
+              </h3>
+              <button type="button" onClick={loadAdminEvents} className="px-4 py-2 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 hover:bg-slate-100 cursor-pointer">
+                <RefreshCw className="w-3.5 h-3.5" /> Refresh
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {adminEventsLoading && (
+                <p className="text-xs text-slate-400 italic">Loading admin events…</p>
+              )}
+              {!adminEventsLoading && adminEventsList.length === 0 && (
+                <p className="text-xs text-slate-400 italic">No admin events saved yet.</p>
+              )}
+              {adminEventsList.map((savedEvent) => (
+                <div key={savedEvent.id} className="rounded-2xl border border-slate-200 p-4 space-y-2">
+                  <p className="font-black text-[var(--cc-deep-navy)] text-sm">{savedEvent.title}</p>
+                  <p className="text-[11px] font-semibold text-slate-500">{savedEvent.category} · {savedEvent.eventDate} · {savedEvent.startTime} – {savedEvent.endTime}</p>
+                  <p className="text-[11px] font-semibold text-slate-500">{savedEvent.location}{savedEvent.address ? ` — ${savedEvent.address}` : ''}</p>
+                  {savedEvent.description && (
+                    <p className="text-xs text-slate-600 leading-5">{savedEvent.description}</p>
+                  )}
+                  {savedEvent.rsvpsText && (
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">RSVPs</p>
+                      <p className="text-xs text-slate-600 leading-5 whitespace-pre-wrap">{savedEvent.rsvpsText}</p>
+                    </div>
+                  )}
+                  {savedEvent.checkinsText && (
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Check-ins</p>
+                      <p className="text-xs text-slate-600 leading-5 whitespace-pre-wrap">{savedEvent.checkinsText}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
       )}
 
       {adminActiveTab === 'petition' && (
