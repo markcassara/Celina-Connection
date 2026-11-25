@@ -178,6 +178,9 @@ export const api = {
   adminListEvents() {
     return request<{ events: AdminEvent[]}>('/api/admin/events');
   },
+  adminListBusinesses() {
+    return request<{ businesses: Business[] }>('/api/admin/businesses');
+  },
   adminCreateEvent(payload: Omit<AdminEvent, 'id' | 'createdAt'>) {
     return request<AdminEvent>('/api/admin/events', {
       method: 'POST',
