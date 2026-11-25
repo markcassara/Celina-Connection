@@ -1,4 +1,4 @@
-import type { Business, ClaimRequest, LegacyHillsPetitionSignature, ReportedBug, Review, UserProfile } from '../types';
+import type { AdminEvent, Business, ClaimRequest, LegacyHillsPetitionSignature, ReportedBug, Review, UserProfile } from '../types';
 
 export interface BusinessDiscoveryDraft {
   name: string;
@@ -174,6 +174,15 @@ export const api = {
   },
   adminBugs() {
     return request<{ reportedBugs: ReportedBug[] }>('/api/admin/bugs');
+  },
+  adminListEvents() {
+    return request<{ events: AdminEvent[]}>('/api/admin/events');
+  },
+  adminCreateEvent(payload: Omit<AdminEvent, 'id' | 'createdAt'>) {
+    return request<AdminEvent>('/api/admin/events', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
   createBug(payload: Omit<ReportedBug, 'id' | 'createdAt' | 'status'>) {
     return request<ReportedBug>('/api/bugs', {
