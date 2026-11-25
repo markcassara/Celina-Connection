@@ -3973,6 +3973,14 @@ ${urls}
       return res.status(503).json({ error: "Bug reports are temporarily unavailable." });
     }
   });
+  app.get("/api/admin/businesses", requireAdminToken, async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      return res.json({ businesses: await repository.listBusinesses() });
+    } catch {
+      return res.status(503).json({ error: "Admin listings are temporarily unavailable." });
+    }
+  });
   app.get("/api/admin/events", requireAdminToken, async (_req, res) => {
     res.setHeader("Cache-Control", "no-store");
     try {
