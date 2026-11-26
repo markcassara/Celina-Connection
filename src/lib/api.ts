@@ -49,6 +49,9 @@ export const api = {
   bootstrap() {
     return request<{ businesses: Business[]; reportedBugs: ReportedBug[] }>('/api/bootstrap');
   },
+  paymentConfig() {
+    return request<{ stripeEnabled: boolean; eventPromotionEnabled: boolean; blackFriday: { tier: string; interval: string; percentOff: number; firstYearCents: number; endsAt: string } | null }>('/api/payment-config');
+  },
   createBusiness(payload: Partial<Business> & { name: string; category: string; description: string; phone: string; email: string; tier: Business['tier'] }) {
     return request<Business>('/api/businesses', {
       method: 'POST',
