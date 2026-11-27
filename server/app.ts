@@ -268,8 +268,8 @@ export function createApp(options: { dbPath?: string; repository?: CelinaDataSto
     next();
   });
 
-  const BLACK_FRIDAY_COUPON_ID = "BLACKFRIDAY50";
-  const BLACK_FRIDAY_END_ISO = "2026-11-27T21:51:00.000Z";
+  const BLACK_FRIDAY_COUPON_ID = "BLACKFRIDAY50EXT";
+  const BLACK_FRIDAY_END_ISO = "2026-11-28T06:00:00.000Z";
   const blackFridayProAnnualActive = () => Date.now() < Date.parse(BLACK_FRIDAY_END_ISO);
   const resolveBlackFridayCoupon = async (stripe: Stripe): Promise<string | null> => {
     try {
